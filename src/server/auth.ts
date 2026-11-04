@@ -38,7 +38,8 @@ function precisaTrocarPin(j: { pinPrecisaTrocar: boolean; pinHash: string | null
 
 export type ResultadoEntrada =
   | { ok: true; precisaTrocar: boolean }
-  | { ok: false; motivo: 'pin_errado' | 'bloqueado' };
+  | { ok: false; motivo: 'pin_errado' }
+  | { ok: false; motivo: 'bloqueado'; bloqueadoAte: Date };
 
 /**
  * Confere o PIN do jogador. Bloqueado: responde `bloqueado` sem olhar o PIN.
@@ -50,7 +51,9 @@ export async function entrarJogador(db: DB, jogadorId: number, pin: string, now:
     // FOR UPDATE: tentativas simultâneas no mesmo perfil contam uma de cada vez.
     const [j] = await tx.select().from(jogadores).where(eq(jogadores.id, jogadorId)).for('update');
     if (!j || !j.ativo) return { ok: false, motivo: 'pin_errado' };
-    if (estaBloqueado(j.bloqueadoAte, now)) return { ok: false, motivo: 'bloqueado' };
+    if (j.bloqueadoAte && estaBloqueado(j.bloqueadoAte, now)) {
+      return { ok: false, motivo: 'bloqueado', bloqueadoAte: j.bloqueadoAte };
+    }
 
     const certo =
       pinValido(pin) && (j.pinHash === null ? pin === PIN_PADRAO : await conferirSegredo(pin, j.pinHash));
@@ -67,7 +70,9 @@ export async function entrarJogador(db: DB, jogadorId: number, pin: string, now:
       .update(jogadores)
       .set({ pinErros: erro.erros, bloqueadoAte: erro.bloqueadoAte })
       .where(eq(jogadores.id, j.id));
-    return { ok: false, motivo: erro.bloqueadoAte ? 'bloqueado' : 'pin_errado' };
+    return erro.bloqueadoAte
+      ? { ok: false, motivo: 'bloqueado', bloqueadoAte: erro.bloqueadoAte }
+      : { ok: false, motivo: 'pin_errado' };
   });
 }
 

@@ -49,13 +49,18 @@ describe('entrarJogador', () => {
     for (let i = 0; i < 4; i++) {
       expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'pin_errado' });
     }
-    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado' });
-    expect(await entrarJogador(db, caio.id, '1234', minutos(1))).toEqual({ ok: false, motivo: 'bloqueado' });
+    const ate = minutos(15);
+    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
+    expect(await entrarJogador(db, caio.id, '1234', minutos(1))).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
   });
 
   it('bloqueado não confere o PIN nem conta erro', async () => {
     const caio = await criarJogador('Caio', { bloqueadoAte: minutos(10), pinErros: 0 });
-    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado' });
+    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({
+      ok: false,
+      motivo: 'bloqueado',
+      bloqueadoAte: minutos(10),
+    });
     expect((await lerJogador(caio.id)).pinErros).toBe(0);
     expect((await lerJogador(caio.id)).bloqueadoAte).toEqual(minutos(10));
   });
