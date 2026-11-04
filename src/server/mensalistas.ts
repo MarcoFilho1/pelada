@@ -1,8 +1,7 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, mensalistasMes } from '@/db/schema';
-
-export const MAX_MENSALISTAS = 16;
+import { MAX_MENSALISTAS } from '@/domain/tempo';
 
 export function mesValido(mes: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);

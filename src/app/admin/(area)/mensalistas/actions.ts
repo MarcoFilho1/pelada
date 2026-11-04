@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
-import { definirMensalistas, MAX_MENSALISTAS, mesValido } from '@/server/mensalistas';
+import { MAX_MENSALISTAS } from '@/domain/tempo';
+import { definirMensalistas, mesValido } from '@/server/mensalistas';
 import { lerSessaoAdmin } from '@/server/sessao';
 
 export type Resposta = { ok: true } | { ok: false; erro: string };

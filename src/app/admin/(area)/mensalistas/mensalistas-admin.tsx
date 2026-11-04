@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
+import { MAX_MENSALISTAS as MAX } from '@/domain/tempo';
 import { Marca, SetaDireita, SetaEsquerda } from '@/components/icones';
 import { salvarMensalistas } from './actions';
 
-const MAX = 16;
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function deslocar(mes: string, delta: number): string {
