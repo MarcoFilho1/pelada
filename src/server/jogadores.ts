@@ -1,29 +1,10 @@
 import { eq } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
-import { normalizarNome } from '@/domain/nome';
+import { normalizarNome, parseNomesColados, separarNomes, TAM_MAX_NOME } from '@/domain/nome';
 import { revogarSessoesJogador } from './auth';
 
-export const NOTA_PADRAO = 3;
-export const TAM_MAX_NOME = 60;
-
-/**
- * Lista colada do WhatsApp para nomes: um por linha, sem numeração ("3. "), sem as marcas
- * (M), (D), (?) e sem os emojis ✅ ⏳. Linhas que sobram vazias somem.
- */
-export function parseNomesColados(texto: string): string[] {
-  return texto
-    .split(/\r?\n/)
-    .map((linha) =>
-      linha
-        .replace(/^\s*\d+\s*[.):\-–]\s*/, '')
-        .replace(/\((?:M|D|\?)\)/gi, '')
-        .replace(/[✅⏳️]/gu, '')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
-    .filter((nome) => nome !== '');
-}
+export { parseNomesColados };
 
 /**
  * Cria jogadores com nota 3,0 e PIN padrão (`pin_hash` nulo, troca obrigatória).
@@ -31,25 +12,15 @@ export function parseNomesColados(texto: string): string[] {
  */
 export async function criarJogadores(db: DB, nomes: string[]): Promise<{ criados: string[]; ignorados: string[] }> {
   const existentes = await db.select({ nome: jogadores.nome }).from(jogadores);
-  const usados = new Set(existentes.map((j) => normalizarNome(j.nome)));
+  const { criar, ignorar } = separarNomes(
+    nomes,
+    existentes.map((j) => j.nome),
+  );
   const criados: string[] = [];
-  const ignorados: string[] = [];
-
-  for (const bruto of nomes) {
-    const nome = bruto.trim().replace(/\s+/g, ' ');
-    if (!nome) continue;
-    const chave = normalizarNome(nome);
-    if (nome.length > TAM_MAX_NOME || usados.has(chave)) {
-      ignorados.push(nome);
-      continue;
-    }
+  const ignorados = [...ignorar];
+  for (const nome of criar) {
     // O índice único em lower(nome) segura dois cadastros simultâneos do mesmo nome.
-    const inseridos = await db
-      .insert(jogadores)
-      .values({ nome })
-      .onConflictDoNothing()
-      .returning({ id: jogadores.id });
-    usados.add(chave);
+    const inseridos = await db.insert(jogadores).values({ nome }).onConflictDoNothing().returning({ id: jogadores.id });
     (inseridos.length ? criados : ignorados).push(nome);
   }
   return { criados, ignorados };
