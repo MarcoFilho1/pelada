@@ -5,7 +5,11 @@ import { jwtVerify, SignJWT } from 'jose';
 export const COOKIE_JOGADOR = 'pelada_jogador';
 export const COOKIE_ADMIN = 'pelada_admin';
 
-export type TokenJogador = { tipo: 'jogador'; jogadorId: number; precisaTrocar: boolean };
+/**
+ * `precisaTrocar` aqui só serve ao redirecionamento otimista do proxy; quem decide é o banco.
+ * `versao` precisa bater com `jogadores.sessao_versao` (ver `validarSessaoJogador`).
+ */
+export type TokenJogador = { tipo: 'jogador'; jogadorId: number; precisaTrocar: boolean; versao: number };
 export type TokenAdmin = { tipo: 'admin'; adminId: number };
 export type Token = TokenJogador | TokenAdmin;
 
@@ -34,6 +38,10 @@ function ehIdValido(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v > 0;
 }
 
+function ehVersaoValida(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+}
+
 /** Lê o token; devolve `null` se faltar, estiver vencido, adulterado ou com formato errado. */
 export async function verificarToken(token: string | undefined): Promise<Token | null> {
   if (!token) return null;
@@ -44,8 +52,13 @@ export async function verificarToken(token: string | undefined): Promise<Token |
   } catch {
     return null;
   }
-  if (payload.tipo === 'jogador' && ehIdValido(payload.jogadorId) && typeof payload.precisaTrocar === 'boolean') {
-    return { tipo: 'jogador', jogadorId: payload.jogadorId, precisaTrocar: payload.precisaTrocar };
+  if (
+    payload.tipo === 'jogador' &&
+    ehIdValido(payload.jogadorId) &&
+    typeof payload.precisaTrocar === 'boolean' &&
+    ehVersaoValida(payload.versao)
+  ) {
+    return { tipo: 'jogador', jogadorId: payload.jogadorId, precisaTrocar: payload.precisaTrocar, versao: payload.versao };
   }
   if (payload.tipo === 'admin' && ehIdValido(payload.adminId)) {
     return { tipo: 'admin', adminId: payload.adminId };

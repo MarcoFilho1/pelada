@@ -17,8 +17,9 @@ export type ErroEntrar = 'pin_errado' | 'bloqueado';
 /** Confere o PIN; se certo, grava a sessão e redireciona (trocar PIN ou lista). */
 export async function entrar(jogadorId: number, pin: string): Promise<{ erro: ErroEntrar }> {
   if (!Number.isInteger(jogadorId) || typeof pin !== 'string') return { erro: 'pin_errado' };
-  const r = await entrarJogador(getDb(), jogadorId, pin, new Date());
+  const db = getDb();
+  const r = await entrarJogador(db, jogadorId, pin, new Date());
   if (!r.ok) return { erro: r.motivo };
-  await criarSessaoJogador(jogadorId, r.precisaTrocar);
+  await criarSessaoJogador(db, jogadorId);
   redirect(r.precisaTrocar ? '/trocar-pin' : '/lista');
 }

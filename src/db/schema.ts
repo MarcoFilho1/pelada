@@ -34,6 +34,8 @@ export const jogadores = pgTable(
     pinErros: integer('pin_erros').notNull().default(0),
     bloqueadoAte: timestamptz('bloqueado_ate'),
     ativo: boolean('ativo').notNull().default(true),
+    // Sobe para derrubar todas as sessões do jogador (zerar PIN, desativar).
+    sessaoVersao: integer('sessao_versao').notNull().default(0),
     criadoEm: timestamptz('criado_em').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('jogadores_nome_lower_uniq').on(sql`lower(${t.nome})`)],

@@ -16,7 +16,7 @@ async function pedir(caminho: string, cookies: Record<string, Token | string> = 
   return destino ? new URL(destino).pathname : 'segue';
 }
 
-const jogador = (precisaTrocar = false): Token => ({ tipo: 'jogador', jogadorId: 1, precisaTrocar });
+const jogador = (precisaTrocar = false): Token => ({ tipo: 'jogador', jogadorId: 1, precisaTrocar, versao: 0 });
 const admin: Token = { tipo: 'admin', adminId: 1 };
 
 describe('proxy', () => {

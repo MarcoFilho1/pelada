@@ -3,6 +3,7 @@ import type { DB } from '@/db/client';
 import { admins, jogadores } from '@/db/schema';
 import { estaBloqueado, PIN_PADRAO, pinNovoValido, pinValido, registrarErro } from '@/domain/pin';
 import { conferirSegredo, hashSegredo } from './senha';
+import type { TokenAdmin, TokenJogador } from './token';
 
 const MAX_SUGESTOES = 8;
 
@@ -25,6 +26,11 @@ export async function buscarJogadoresPorNome(db: DB, termo: string): Promise<{ i
     .where(and(eq(jogadores.ativo, true), ilike(jogadores.nome, `%${t}%`)))
     .orderBy(sql`${jogadores.nome} ilike ${`${t}%`} desc`, sql`lower(${jogadores.nome})`)
     .limit(MAX_SUGESTOES);
+}
+
+/** Com `pin_hash` nulo o PIN é o padrão, então a troca é obrigatória de qualquer jeito. */
+function precisaTrocarPin(j: { pinPrecisaTrocar: boolean; pinHash: string | null }): boolean {
+  return j.pinPrecisaTrocar || j.pinHash === null;
 }
 
 export type ResultadoEntrada =
@@ -50,7 +56,7 @@ export async function entrarJogador(db: DB, jogadorId: number, pin: string, now:
       if (j.pinErros !== 0 || j.bloqueadoAte !== null) {
         await tx.update(jogadores).set({ pinErros: 0, bloqueadoAte: null }).where(eq(jogadores.id, j.id));
       }
-      return { ok: true, precisaTrocar: j.pinPrecisaTrocar || j.pinHash === null };
+      return { ok: true, precisaTrocar: precisaTrocarPin(j) };
     }
 
     const erro = registrarErro(j.pinErros, now);
@@ -80,3 +86,53 @@ export async function entrarAdmin(db: DB, usuario: string, senha: string): Promi
   const certo = await conferirSegredo(senha, adm?.senhaHash ?? HASH_FALSO);
   return adm && certo ? { ok: true, adminId: adm.id } : { ok: false };
 }
+
+// ---- Sessões conferidas no banco -------------------------------------------------
+// O cookie (JWT) só prova quem assinou; aqui se confere se ele ainda vale.
+
+/** O que vai no token de um jogador que acabou de entrar; `null` se inativo ou inexistente. */
+export async function dadosSessaoJogador(
+  db: DB,
+  jogadorId: number,
+): Promise<{ versao: number; precisaTrocar: boolean } | null> {
+  const [j] = await db
+    .select({
+      ativo: jogadores.ativo,
+      versao: jogadores.sessaoVersao,
+      pinHash: jogadores.pinHash,
+      pinPrecisaTrocar: jogadores.pinPrecisaTrocar,
+    })
+    .from(jogadores)
+    .where(eq(jogadores.id, jogadorId));
+  if (!j || !j.ativo) return null;
+  return { versao: j.versao, precisaTrocar: precisaTrocarPin(j) };
+}
+
+/**
+ * A sessão vale se o jogador existe, está ativo e a versão do token é a atual.
+ * `precisaTrocar` sai do banco (o admin pode ter zerado o PIN depois do login).
+ */
+export async function validarSessaoJogador(
+  db: DB,
+  token: TokenJogador,
+): Promise<{ jogadorId: number; precisaTrocar: boolean } | null> {
+  const atual = await dadosSessaoJogador(db, token.jogadorId);
+  if (!atual || atual.versao !== token.versao) return null;
+  return { jogadorId: token.jogadorId, precisaTrocar: atual.precisaTrocar };
+}
+
+/** Derruba todas as sessões do jogador, em todos os aparelhos (zerar PIN, desativar). */
+export async function revogarSessoesJogador(db: DB, jogadorId: number): Promise<void> {
+  const atualizados = await db
+    .update(jogadores)
+    .set({ sessaoVersao: sql`${jogadores.sessaoVersao} + 1` })
+    .where(eq(jogadores.id, jogadorId))
+    .returning({ id: jogadores.id });
+  if (atualizados.length === 0) throw new Error(`Jogador ${jogadorId} não encontrado`);
+}
+
+export async function validarSessaoAdmin(db: DB, token: TokenAdmin): Promise<{ adminId: number } | null> {
+  const [adm] = await db.select({ id: admins.id }).from(admins).where(eq(admins.id, token.adminId));
+  return adm ? { adminId: adm.id } : null;
+}
+

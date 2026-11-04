@@ -8,6 +8,13 @@
       "when": 1793831528457,
       "tag": "0000_jazzy_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793833476152,
+      "tag": "0001_sessao_versao",
+      "breakpoints": true
     }
   ]
 }
