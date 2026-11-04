@@ -102,6 +102,8 @@ Interessados pra diarista
 
 ### Formato
 - Termina com **3 gols** de um time ou com **8 minutos** [decidido].
+- O cronômetro **corre direto, sem pausa** [decidido].
+- **Não existe gol contra** na contagem [decidido]: o placar de cada time é a soma dos gols dos seus jogadores.
 - **Quem perde sai. Se empatar, saem os dois** [decidido]. Os times de fora entram na ordem da fila de espera.
 - Com 4 times: 2 jogam e 2 esperam. O sistema sugere a próxima partida (quem ficou × próximo da fila), mas o admin escolhe livremente quais times jogam [proposta].
 
@@ -133,6 +135,7 @@ Interessados pra diarista
 
 ## 7. Painel admin
 
+- **Tudo começa do zero** [decidido]: sem importação de jogadores nem de histórico. Para agilizar o primeiro dia, o cadastro aceita colar vários nomes de uma vez, um por linha, todos com nota 3,0 para ajustar depois [proposta].
 - Jogadores: criar, editar nome, editar nota, zerar PIN, desativar (quem parou de vir some das listas, mas o histórico fica) [proposta].
 - Mensalistas do mês: marcar e desmarcar quem é mensalista em cada mês [proposta]. Por padrão, um mês novo copia a lista do mês anterior.
 - Pelada da semana: abrir, fechar, cancelar, mexer na lista.
