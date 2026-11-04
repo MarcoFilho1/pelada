@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // PGlite acha o próprio .wasm por caminho relativo ao módulo; empacotado, ele se perde.
+  serverExternalPackages: ['@electric-sql/pglite'],
   turbopack: {
     rules: {
       "*.css": {

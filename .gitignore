@@ -18,3 +18,7 @@ next-env.d.ts
 
 # pglite
 .pglite*
+
+# ferramentas de design (arquivos de trabalho)
+.taste-skill/
+.impeccable/review/
