@@ -7,6 +7,7 @@ import {
   atualizarJogador,
   criarJogadores,
   listarJogadores,
+  NomeEmUsoError,
   parseNomesColados,
   zerarPin,
 } from '@/server/jogadores';
@@ -81,7 +82,7 @@ describe('atualizarJogador', () => {
   it('renomeia, mas não para um nome que já existe', async () => {
     const [{ id }] = await db.insert(jogadores).values({ nome: 'Caio' }).returning();
     await db.insert(jogadores).values({ nome: 'João' });
-    await expect(atualizarJogador(db, id, { nome: 'joao' })).rejects.toThrow();
+    await expect(atualizarJogador(db, id, { nome: 'joao' })).rejects.toBeInstanceOf(NomeEmUsoError);
     await expect(atualizarJogador(db, id, { nome: '   ' })).rejects.toThrow();
     await atualizarJogador(db, id, { nome: ' Caio César ' });
     expect((await ler(id)).nome).toBe('Caio César');

@@ -31,6 +31,14 @@ export function notaValida(nota: number): boolean {
   return Number.isFinite(nota) && nota >= 0 && nota <= 5 && Number.isInteger(nota * 2);
 }
 
+/** Outro jogador já tem esse nome (Joao e João contam como o mesmo). */
+export class NomeEmUsoError extends Error {
+  constructor(nome: string) {
+    super(`Já existe um jogador chamado ${nome}.`);
+    this.name = 'NomeEmUsoError';
+  }
+}
+
 export async function atualizarJogador(
   db: DB,
   id: number,
@@ -52,7 +60,7 @@ export async function atualizarJogador(
     const todos = await db.select({ id: jogadores.id, nome: jogadores.nome }).from(jogadores);
     const chave = normalizarNome(nome);
     if (todos.some((j) => j.id !== id && normalizarNome(j.nome) === chave)) {
-      throw new Error(`Já existe um jogador chamado ${nome}.`);
+      throw new NomeEmUsoError(nome);
     }
     set.nome = nome;
   }

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { parseNomesColados } from '@/domain/nome';
-import { atualizarJogador, criarJogadores, zerarPin } from '@/server/jogadores';
+import { atualizarJogador, criarJogadores, NomeEmUsoError, zerarPin } from '@/server/jogadores';
 import { lerSessaoAdmin } from '@/server/sessao';
 
 export type Resposta = { ok: true } | { ok: false; erro: string };
@@ -53,4 +53,19 @@ export async function zerarPinDoJogador(id: number): Promise<Resposta> {
   await exigirAdmin();
   if (!Number.isInteger(id)) return { ok: false, erro: 'Pedido inválido.' };
   return tentar(() => zerarPin(getDb(), id));
+}
+
+export async function renomear(id: number, nome: string): Promise<Resposta> {
+  await exigirAdmin();
+  if (!Number.isInteger(id) || typeof nome !== 'string') return { ok: false, erro: 'Pedido inválido.' };
+  try {
+    await atualizarJogador(getDb(), id, { nome });
+    revalidatePath('/admin/jogadores');
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof NomeEmUsoError) {
+      return { ok: false, erro: 'Já existe um jogador com esse nome. Joao e João contam como o mesmo.' };
+    }
+    return { ok: false, erro: e instanceof Error ? e.message : 'Não deu para salvar o nome.' };
+  }
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Mais, Menos, SetaDireita } from '@/components/icones';
 import { normalizarNome, parseNomesColados, separarNomes } from '@/domain/nome';
 import type { JogadorListado } from '@/server/jogadores';
-import { colarNomes, mudarAtivo, mudarNota, zerarPinDoJogador } from './actions';
+import { colarNomes, mudarAtivo, mudarNota, renomear, zerarPinDoJogador } from './actions';
 import { SalvadorDeNotas } from './salvar-notas';
 
 const CAMPO =
@@ -23,6 +23,7 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
   const [verInativos, setVerInativos] = useState(false);
   const [aberto, setAberto] = useState<number | null>(null);
   const [confirmando, setConfirmando] = useState<Confirmando>(null);
+  const [rascunho, setRascunho] = useState<{ id: number; texto: string; erro: string | null } | null>(null);
   const [colando, setColando] = useState(false);
   const [texto, setTexto] = useState('');
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
@@ -109,6 +110,20 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
           : { tipo: 'erro', texto: r.erro },
       );
       if (r.ok && tipo === 'desativar') setAberto(null);
+    });
+  }
+
+  function salvarNome(j: JogadorListado) {
+    if (!rascunho || rascunho.id !== j.id) return;
+    const texto = rascunho.texto;
+    startAcao(async () => {
+      const r = await renomear(j.id, texto);
+      if (r.ok) {
+        setRascunho(null);
+        setAviso({ tipo: 'ok', texto: `Nome salvo: ${texto.trim().replace(/\s+/g, ' ')}.` });
+      } else {
+        setRascunho({ id: j.id, texto, erro: r.erro });
+      }
     });
   }
 
@@ -269,6 +284,7 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
                 onClick={() => {
                   setAberto(expandido ? null : j.id);
                   setConfirmando(null);
+                  setRascunho(null);
                 }}
                 className="flex min-h-toque w-full items-center justify-between gap-3 rounded-placa px-4 py-2 text-left transition-colors active:bg-placa-alta"
               >
@@ -313,6 +329,47 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
                     </button>
                     <span className="ml-1 text-base text-meta">de 0 a 5</span>
                   </div>
+
+                  {(() => {
+                    const r = rascunho?.id === j.id ? rascunho : null;
+                    const texto = r?.texto ?? j.nome;
+                    const mudou = texto.trim().replace(/\s+/g, ' ') !== j.nome;
+                    return (
+                      <form
+                        className="mt-3"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (mudou) salvarNome(j);
+                        }}
+                      >
+                        <label htmlFor={`nome-${j.id}`} className="block text-base font-medium text-apagado">
+                          Nome
+                        </label>
+                        <input
+                          id={`nome-${j.id}`}
+                          value={texto}
+                          onChange={(e) => setRascunho({ id: j.id, texto: e.target.value, erro: null })}
+                          maxLength={60}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="words"
+                          spellCheck={false}
+                          enterKeyHint="done"
+                          aria-invalid={r?.erro ? true : undefined}
+                          aria-describedby={`nome-erro-${j.id}`}
+                          className="mt-2 h-toque w-full rounded-placa bg-chao px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta aria-invalid:ring-2 aria-invalid:ring-erro"
+                        />
+                        <p id={`nome-erro-${j.id}`} role="alert" className="text-base font-medium text-erro empty:hidden">
+                          {r?.erro ? <span className="mt-2 block">{r.erro}</span> : null}
+                        </p>
+                        {mudou && (
+                          <button type="submit" disabled={ocupado || !texto.trim()} className={`${PILULA} mt-3`}>
+                            {ocupado ? 'Salvando…' : 'Salvar nome'}
+                          </button>
+                        )}
+                      </form>
+                    );
+                  })()}
 
                   {conf ? (
                     <div className="mt-3 rounded-placa bg-placa-alta p-4">

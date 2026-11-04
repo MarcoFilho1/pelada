@@ -216,6 +216,11 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   sozinho 500 ms depois do último toque (e na hora ao sair da tela); o valor local vale até o servidor devolver
   o mesmo número.
 
+### Nome editável (admin)
+- Na linha aberta, depois do seletor de nota: rótulo "Nome" em #b4b4b4, campo em #000 (raio 10px, 56px, 18px,
+  anel branco no foco). O botão "Salvar nome" (pílula branca) só aparece quando o texto mudou; Enter também
+  salva. Nome repetido: anel vermelho e mensagem com `role="alert"` logo abaixo do campo, sem aviso global.
+
 ### Painel de colar nomes
 - Placa #111 com título, instrução em #b4b4b4, área de texto em #000 (raio 10px, 18px, anel branco no foco) e,
   abaixo, a prévia: "Vão entrar N" numa placa alta com um nome por linha e, em Giz, "Ficam de fora (M)" com os
