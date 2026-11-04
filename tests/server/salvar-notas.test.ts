@@ -53,7 +53,6 @@ describe('SalvadorDeNotas', () => {
 
   it('pedidos do mesmo jogador seguem em fila, na ordem', async () => {
     const ordem: number[] = [];
-    const { s } = montar();
     const salvar = vi.fn(async (id: number, nota: number) => {
       void id;
       ordem.push(nota);
@@ -65,9 +64,10 @@ describe('SalvadorDeNotas', () => {
     await vi.advanceTimersByTimeAsync(500);
     t.agendar(1, 4.5);
     await vi.advanceTimersByTimeAsync(500);
+    expect(t.ocupado(1)).toBe(true); // o segundo pedido está a caminho
     await vi.advanceTimersByTimeAsync(300);
     expect(ordem).toEqual([4, 4.5]);
-    expect(s.ocupado(1)).toBe(false);
+    expect(t.ocupado(1)).toBe(false);
   });
 
   it('falha do servidor ou exceção chega em aoTerminar como erro', async () => {
