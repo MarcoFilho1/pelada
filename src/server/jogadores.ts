@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
 import { normalizarNome, parseNomesColados, separarNomes, TAM_MAX_NOME } from '@/domain/nome';
-import { revogarSessoesJogador } from './auth';
 
 export { parseNomesColados };
 
@@ -36,13 +36,15 @@ export async function atualizarJogador(
   id: number,
   mudancas: { nome?: string; nota?: number; ativo?: boolean },
 ): Promise<void> {
-  const set: Partial<typeof jogadores.$inferInsert> = {};
+  const set: PgUpdateSetSource<typeof jogadores> = {};
 
   if (mudancas.nota !== undefined) {
     if (!notaValida(mudancas.nota)) throw new Error(`Nota inválida: ${mudancas.nota}. Use de 0 a 5, de 0,5 em 0,5.`);
     set.nota = mudancas.nota.toFixed(1);
   }
   if (mudancas.ativo !== undefined) set.ativo = mudancas.ativo;
+  // Desativar derruba as sessões no mesmo UPDATE: sem janela entre uma coisa e outra.
+  if (mudancas.ativo === false) set.sessaoVersao = sql`${jogadores.sessaoVersao} + 1`;
   if (mudancas.nome !== undefined) {
     const nome = mudancas.nome.trim().replace(/\s+/g, ' ');
     if (!nome) throw new Error('O nome não pode ficar vazio.');
@@ -62,18 +64,22 @@ export async function atualizarJogador(
     const [existe] = await db.select({ id: jogadores.id }).from(jogadores).where(eq(jogadores.id, id));
     if (!existe) throw new Error(`Jogador ${id} não encontrado`);
   }
-  if (mudancas.ativo === false) await revogarSessoesJogador(db, id);
 }
 
 /** Volta o PIN para 1234 (`pin_hash` nulo), exige troca, limpa erros e bloqueio e derruba as sessões. */
 export async function zerarPin(db: DB, id: number): Promise<void> {
   const atualizados = await db
     .update(jogadores)
-    .set({ pinHash: null, pinPrecisaTrocar: true, pinErros: 0, bloqueadoAte: null })
+    .set({
+      pinHash: null,
+      pinPrecisaTrocar: true,
+      pinErros: 0,
+      bloqueadoAte: null,
+      sessaoVersao: sql`${jogadores.sessaoVersao} + 1`, // no mesmo UPDATE: derruba as sessões sem janela
+    })
     .where(eq(jogadores.id, id))
     .returning({ id: jogadores.id });
   if (atualizados.length === 0) throw new Error(`Jogador ${id} não encontrado`);
-  await revogarSessoesJogador(db, id);
 }
 
 export type JogadorListado = {
