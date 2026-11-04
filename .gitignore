@@ -5,3 +5,16 @@ node_modules/
 .superpowers/
 .next/
 dist/
+
+# next.js extras
+/out/
+/build
+/coverage
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+*.pem
+.pnpm-debug.log*
+
+# pglite
+.pglite*
