@@ -1,8 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
-import { jogadores } from '@/db/schema';
-import { buscarJogadoresPorNome, entrarJogador, trocarPin } from '@/server/auth';
+import { admins, jogadores } from '@/db/schema';
+import {
+  buscarJogadoresPorNome,
+  entrarAdmin,
+  entrarJogador,
+  trocarPin,
+} from '@/server/auth';
+import { hashSegredo } from '@/server/senha';
 import { createTestDb } from '../helpers/db';
 
 const now = new Date('2026-11-04T12:00:00-03:00');
@@ -112,5 +118,17 @@ describe('buscarJogadoresPorNome', () => {
     await criarJogador('Caio');
     expect(await buscarJogadoresPorNome(db, '%')).toEqual([]);
     expect(await buscarJogadoresPorNome(db, 'C_io')).toEqual([]);
+  });
+});
+
+describe('entrarAdmin', () => {
+  it('entra com a senha certa e recusa a errada ou usuário desconhecido', async () => {
+    const [adm] = await db
+      .insert(admins)
+      .values({ usuario: 'marco', senhaHash: await hashSegredo('segredo-forte') })
+      .returning();
+    expect(await entrarAdmin(db, 'marco', 'segredo-forte')).toEqual({ ok: true, adminId: adm.id });
+    expect(await entrarAdmin(db, 'marco', 'errada')).toEqual({ ok: false });
+    expect(await entrarAdmin(db, 'outro', 'segredo-forte')).toEqual({ ok: false });
   });
 });

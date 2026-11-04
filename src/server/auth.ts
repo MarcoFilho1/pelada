@@ -1,10 +1,14 @@
 import { and, eq, ilike, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
-import { jogadores } from '@/db/schema';
+import { admins, jogadores } from '@/db/schema';
 import { estaBloqueado, PIN_PADRAO, pinNovoValido, pinValido, registrarErro } from '@/domain/pin';
 import { conferirSegredo, hashSegredo } from './senha';
 
 const MAX_SUGESTOES = 8;
+
+// Hash bem formado que nunca confere: usado quando o usuário admin não existe,
+// para a resposta levar o mesmo tempo e não revelar quais usuários existem.
+const HASH_FALSO = `${'00'.repeat(16)}:${'00'.repeat(32)}`;
 
 /** Escapa os curingas do LIKE para o termo valer como texto. */
 function escaparLike(termo: string): string {
@@ -69,4 +73,10 @@ export async function trocarPin(db: DB, jogadorId: number, novoPin: string): Pro
     .where(eq(jogadores.id, jogadorId))
     .returning({ id: jogadores.id });
   if (atualizados.length === 0) throw new Error(`Jogador ${jogadorId} não encontrado`);
+}
+
+export async function entrarAdmin(db: DB, usuario: string, senha: string): Promise<{ ok: boolean; adminId?: number }> {
+  const [adm] = await db.select().from(admins).where(eq(admins.usuario, usuario.trim()));
+  const certo = await conferirSegredo(senha, adm?.senhaHash ?? HASH_FALSO);
+  return adm && certo ? { ok: true, adminId: adm.id } : { ok: false };
 }
