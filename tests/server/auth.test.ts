@@ -144,7 +144,7 @@ describe('entrarAdmin', () => {
       .values({ usuario: 'marco', senhaHash: await hashSegredo('segredo-forte') })
       .returning();
     expect(await entrarAdmin(db, 'marco', 'segredo-forte')).toEqual({ ok: true, adminId: adm.id });
-    expect(await entrarAdmin(db, 'marco', 'errada')).toEqual({ ok: false });
-    expect(await entrarAdmin(db, 'outro', 'segredo-forte')).toEqual({ ok: false });
+    expect(await entrarAdmin(db, 'marco', 'errada')).toEqual({ ok: false, motivo: 'credenciais' });
+    expect(await entrarAdmin(db, 'outro', 'segredo-forte')).toEqual({ ok: false, motivo: 'credenciais' });
   });
 });

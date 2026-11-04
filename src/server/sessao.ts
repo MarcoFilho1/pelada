@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import type { DB } from '@/db/client';
-import { dadosSessaoJogador, validarSessaoAdmin, validarSessaoJogador, type SessaoJogador } from './auth';
+import { dadosSessaoJogador, validarSessaoAdmin, versaoSessaoAdmin, validarSessaoJogador, type SessaoJogador } from './auth';
 import { assinarToken, COOKIE_ADMIN, COOKIE_JOGADOR, verificarToken, type Token } from './token';
 
 const DIA = 24 * 60 * 60;
@@ -32,9 +32,11 @@ export async function criarSessaoJogador(db: DB, jogadorId: number): Promise<voi
   );
 }
 
-/** Grava a sessão admin (30 dias), separada da do jogador. */
-export async function criarSessaoAdmin(adminId: number): Promise<void> {
-  await gravar(COOKIE_ADMIN, { tipo: 'admin', adminId }, VALIDADE_ADMIN);
+/** Grava a sessão admin (30 dias), separada da do jogador, com a versão de sessão atual do banco. */
+export async function criarSessaoAdmin(db: DB, adminId: number): Promise<void> {
+  const versao = await versaoSessaoAdmin(db, adminId);
+  if (versao === null) throw new Error(`Admin ${adminId} inexistente`);
+  await gravar(COOKIE_ADMIN, { tipo: 'admin', adminId, versao }, VALIDADE_ADMIN);
 }
 
 /**

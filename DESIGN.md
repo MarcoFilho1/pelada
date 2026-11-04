@@ -226,6 +226,23 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   pílula branca com o verbo ("Zerar PIN") e link "Cancelar". Sem modal. O resultado aparece como mensagem de
   status em lima (`role="status"`) ou vermelho em erro, acima da lista.
 
+### Linha de marcar (mensalistas)
+- Botão-linha (`role="checkbox"`) de 56px em placa #111, raio 10px, nome em Inter 500 18px à esquerda e, à direita,
+  uma casinha de 32px: vazia = quadrado #000; marcada = traço de check em lima sobre #000 e a linha sobe para
+  placa alta #2a2a2a. Lista com 8px de intervalo. Com 16 marcados as outras linhas ficam em Giz,
+  `aria-disabled`, sem reagir ao toque.
+
+### Contador e seletor de mês
+- "x/16" em Barlow 44px tabular, com a instrução em #b4b4b4 ao lado ("Vagas cheias. Tire alguém para pôr outro.").
+  Seletor de mês: seta 56×56 em placa alta, nome do mês por extenso no meio (Inter 500 18px). Com mudança não
+  salva as setas apagam (placa #111, Giz) para não perder a marcação; a barra de baixo (fixa, fundo #000) traz
+  "Desfazer" em texto e a pílula "Salvar mensalistas".
+
+### Formulário em seções (admins)
+- Seções de formulário separadas por 40–48px de espaço, cada uma com h2 em Barlow 24px. Campo com dica em Giz
+  (16px) ligada por `aria-describedby`; o anel vermelho vai só no campo que errou; mensagem de status/erro entre a
+  dica e a pílula.
+
 ### Placas do PIN (componente-assinatura)
 - Quatro placas de 64×76px, raio 10px, 12px entre elas, centralizadas. Um único `<input inputMode="numeric">`
   transparente fica por cima: o toque em qualquer placa abre o teclado numérico, e o leitor de tela vê um

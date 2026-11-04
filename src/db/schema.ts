@@ -45,6 +45,11 @@ export const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
   usuario: text('usuario').notNull().unique(),
   senhaHash: text('senha_hash').notNull(),
+  // Mesma regra do PIN do jogador: 5 erros seguidos bloqueiam por 15 min.
+  erros: integer('erros').notNull().default(0),
+  bloqueadoAte: timestamptz('bloqueado_ate'),
+  // Sobe para derrubar as sessões do admin (troca de senha).
+  sessaoVersao: integer('sessao_versao').notNull().default(0),
   criadoEm: timestamptz('criado_em').notNull().defaultNow(),
 });
 

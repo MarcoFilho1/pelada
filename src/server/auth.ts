@@ -99,10 +99,43 @@ export async function trocarPin(db: DB, jogadorId: number, novoPin: string): Pro
   if (atualizados.length === 0) throw new Error(`Jogador ${jogadorId} não encontrado`);
 }
 
-export async function entrarAdmin(db: DB, usuario: string, senha: string): Promise<{ ok: boolean; adminId?: number }> {
-  const [adm] = await db.select().from(admins).where(eq(admins.usuario, usuario.trim()));
-  const certo = await conferirSegredo(senha, adm?.senhaHash ?? HASH_FALSO);
-  return adm && certo ? { ok: true, adminId: adm.id } : { ok: false };
+export type ResultadoEntradaAdmin =
+  | { ok: true; adminId: number }
+  | { ok: false; motivo: 'credenciais' }
+  | { ok: false; motivo: 'bloqueado'; bloqueadoAte: Date };
+
+/**
+ * Confere usuário e senha do admin, com a mesma regra de bloqueio dos jogadores
+ * (5 erros seguidos, 15 min). Usuário desconhecido gasta o mesmo tempo (hash falso)
+ * e responde igual a senha errada.
+ */
+export async function entrarAdmin(
+  db: DB,
+  usuario: string,
+  senha: string,
+  now: Date = new Date(),
+): Promise<ResultadoEntradaAdmin> {
+  return db.transaction(async (tx) => {
+    const [adm] = await tx.select().from(admins).where(eq(admins.usuario, usuario.trim())).for('update');
+    if (!adm) {
+      await conferirSegredo(senha, HASH_FALSO);
+      return { ok: false, motivo: 'credenciais' };
+    }
+    if (adm.bloqueadoAte && estaBloqueado(adm.bloqueadoAte, now)) {
+      return { ok: false, motivo: 'bloqueado', bloqueadoAte: adm.bloqueadoAte };
+    }
+    if (await conferirSegredo(senha, adm.senhaHash)) {
+      if (adm.erros !== 0 || adm.bloqueadoAte !== null) {
+        await tx.update(admins).set({ erros: 0, bloqueadoAte: null }).where(eq(admins.id, adm.id));
+      }
+      return { ok: true, adminId: adm.id };
+    }
+    const erro = registrarErro(adm.erros, now);
+    await tx.update(admins).set({ erros: erro.erros, bloqueadoAte: erro.bloqueadoAte }).where(eq(admins.id, adm.id));
+    return erro.bloqueadoAte
+      ? { ok: false, motivo: 'bloqueado', bloqueadoAte: erro.bloqueadoAte }
+      : { ok: false, motivo: 'credenciais' };
+  });
 }
 
 // ---- Sessões conferidas no banco -------------------------------------------------
@@ -152,8 +185,14 @@ export async function revogarSessoesJogador(db: DB, jogadorId: number): Promise<
   if (atualizados.length === 0) throw new Error(`Jogador ${jogadorId} não encontrado`);
 }
 
-export async function validarSessaoAdmin(db: DB, token: TokenAdmin): Promise<{ adminId: number } | null> {
-  const [adm] = await db.select({ id: admins.id }).from(admins).where(eq(admins.id, token.adminId));
-  return adm ? { adminId: adm.id } : null;
+/** Versão de sessão atual do admin; `null` se ele não existe. */
+export async function versaoSessaoAdmin(db: DB, adminId: number): Promise<number | null> {
+  const [adm] = await db.select({ versao: admins.sessaoVersao }).from(admins).where(eq(admins.id, adminId));
+  return adm ? adm.versao : null;
 }
 
+/** A sessão vale se o admin existe e a versão do token é a atual (troca de senha derruba as outras). */
+export async function validarSessaoAdmin(db: DB, token: TokenAdmin): Promise<{ adminId: number } | null> {
+  const versao = await versaoSessaoAdmin(db, token.adminId);
+  return versao !== null && versao === token.versao ? { adminId: token.adminId } : null;
+}

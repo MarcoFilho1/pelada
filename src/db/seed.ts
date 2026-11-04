@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import type { DB } from './client';
 import { admins } from './schema';
+import { MSG_SENHA_CURTA, senhaAdminValida } from '../domain/admin';
 import { hashSegredo } from '../server/senha';
 
 type EnvSeed = Record<string, string | undefined>;
@@ -11,6 +12,8 @@ export async function semearAdmin(db: DB, env: EnvSeed): Promise<'criado' | 'ja_
   const senha = env.ADMIN_SENHA;
   if (!usuario) throw new Error('Defina ADMIN_USUARIO para criar o primeiro admin');
   if (!senha) throw new Error('Defina ADMIN_SENHA para criar o primeiro admin');
+
+  if (!senhaAdminValida(senha)) throw new Error(`ADMIN_SENHA: ${MSG_SENHA_CURTA}`);
 
   const [existente] = await db.select({ id: admins.id }).from(admins).limit(1);
   if (existente) return 'ja_existe';
