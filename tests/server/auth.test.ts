@@ -108,6 +108,17 @@ describe('buscarJogadoresPorNome', () => {
     ]);
   });
 
+  it('ignora acentos e maiúsculas nos dois sentidos', async () => {
+    await criarJogador('João');
+    await criarJogador('Lucas');
+    await criarJogador('Ana João');
+    expect((await buscarJogadoresPorNome(db, 'joao')).map((j) => j.nome)).toEqual(['João', 'Ana João']);
+    expect((await buscarJogadoresPorNome(db, 'JOAO')).map((j) => j.nome)).toEqual(['João', 'Ana João']);
+    await criarJogador('Antônio');
+    expect((await buscarJogadoresPorNome(db, 'antonio')).map((j) => j.nome)).toEqual(['Antônio']);
+    expect((await buscarJogadoresPorNome(db, 'ANTÔ')).map((j) => j.nome)).toEqual(['Antônio']);
+  });
+
   it('devolve no máximo 8 e nada para termo vazio', async () => {
     for (let i = 1; i <= 10; i++) await criarJogador(`Jogador ${i}`);
     expect(await buscarJogadoresPorNome(db, 'jog')).toHaveLength(8);

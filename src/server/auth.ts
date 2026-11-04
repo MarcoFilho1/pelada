@@ -1,6 +1,7 @@
-import { and, eq, ilike, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { admins, jogadores } from '@/db/schema';
+import { normalizarNome } from '@/domain/nome';
 import { estaBloqueado, PIN_PADRAO, pinNovoValido, pinValido, registrarErro } from '@/domain/pin';
 import { conferirSegredo, hashSegredo } from './senha';
 import type { TokenAdmin, TokenJogador } from './token';
@@ -11,21 +12,23 @@ const MAX_SUGESTOES = 8;
 // para a resposta levar o mesmo tempo e não revelar quais usuários existem.
 const HASH_FALSO = `${'00'.repeat(16)}:${'00'.repeat(32)}`;
 
-/** Escapa os curingas do LIKE para o termo valer como texto. */
-function escaparLike(termo: string): string {
-  return termo.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
-
-/** Jogadores ativos cujo nome contém o termo (quem começa com ele vem primeiro). */
+/**
+ * Jogadores ativos cujo nome contém o termo, sem diferenciar acento nem maiúsculas
+ * (quem começa com ele vem primeiro). São umas 40 linhas: filtra em JS.
+ */
 export async function buscarJogadoresPorNome(db: DB, termo: string): Promise<{ id: number; nome: string }[]> {
-  const t = escaparLike(termo.trim());
+  const t = normalizarNome(termo);
   if (!t) return [];
-  return db
+  const ativos = await db
     .select({ id: jogadores.id, nome: jogadores.nome })
     .from(jogadores)
-    .where(and(eq(jogadores.ativo, true), ilike(jogadores.nome, `%${t}%`)))
-    .orderBy(sql`${jogadores.nome} ilike ${`${t}%`} desc`, sql`lower(${jogadores.nome})`)
-    .limit(MAX_SUGESTOES);
+    .where(eq(jogadores.ativo, true));
+  return ativos
+    .map((j) => ({ ...j, chave: normalizarNome(j.nome) }))
+    .filter((j) => j.chave.includes(t))
+    .sort((x, y) => Number(y.chave.startsWith(t)) - Number(x.chave.startsWith(t)) || (x.chave < y.chave ? -1 : x.chave > y.chave ? 1 : 0))
+    .slice(0, MAX_SUGESTOES)
+    .map(({ id, nome }) => ({ id, nome }));
 }
 
 /** Com `pin_hash` nulo o PIN é o padrão, então a troca é obrigatória de qualquer jeito. */
