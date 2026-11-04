@@ -9,11 +9,12 @@ export const metadata: Metadata = { title: 'Crie seu PIN · Pelada' };
 
 export default async function TrocarPinPage() {
   // Fora do grupo (jogador) de propósito: aqui entra quem ainda precisa trocar o PIN.
-  if (!(await lerSessaoJogador(getDb()))) redirect('/entrar');
+  const sessao = await lerSessaoJogador(getDb());
+  if (!sessao) redirect('/entrar');
   return (
     <Tela>
       <Topo />
-      <TrocarPin />
+      <TrocarPin nome={sessao.nome} />
     </Tela>
   );
 }

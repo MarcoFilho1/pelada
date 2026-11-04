@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { SetaEsquerda } from '@/components/icones';
 import { PlacasPin } from '@/components/placas-pin';
 import { PIN_PADRAO } from '@/domain/pin';
-import { salvarPin } from './actions';
+import { sairDoPerfil, salvarPin } from './actions';
 
 type Etapa = 'novo' | 'confirmar';
 
@@ -13,7 +14,7 @@ const ERROS = {
   servidor: 'Não deu para salvar esse PIN. Crie de novo.',
 } as const;
 
-export function TrocarPin() {
+export function TrocarPin({ nome }: { nome: string }) {
   const [etapa, setEtapa] = useState<Etapa>('novo');
   const [primeiro, setPrimeiro] = useState('');
   const [pin, setPin] = useState('');
@@ -51,7 +52,20 @@ export function TrocarPin() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">{confirmando ? 'Digite de novo' : 'Crie seu PIN'}</h1>
+      {/* No primeiro dia todo perfil é 1234: quem tocou no nome errado sai daqui sem tomar o perfil de outro. */}
+      <form action={sairDoPerfil}>
+        <button
+          type="submit"
+          disabled={salvando}
+          className="-mx-3 mt-2 flex h-12 w-fit items-center gap-1 px-3 text-base font-medium text-apagado transition-colors hover:text-tinta disabled:opacity-60"
+        >
+          <SetaEsquerda />
+          Não é você? Sair
+        </button>
+      </form>
+      <h1 className="mt-4 font-placa text-titulo font-semibold break-words">
+        {confirmando ? 'Digite de novo' : `Crie seu PIN, ${nome}`}
+      </h1>
       <p className="mt-2 text-base text-apagado">
         {confirmando ? 'Só para conferir que está certo.' : `4 números que só você sabe. Não pode ser ${PIN_PADRAO}.`}
       </p>
