@@ -17,6 +17,8 @@ describe('schema', () => {
   it('rejeita nome repetido sem diferenciar maiúsculas', async () => {
     const db = await createTestDb();
     await db.insert(jogadores).values({ nome: 'Pepe' });
-    await expect(db.insert(jogadores).values({ nome: 'pepe' })).rejects.toThrow();
+    await expect(db.insert(jogadores).values({ nome: 'pepe' })).rejects.toMatchObject({
+      cause: { code: '23505', constraint: 'jogadores_nome_lower_uniq' },
+    });
   });
 });
