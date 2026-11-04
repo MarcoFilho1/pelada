@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, mensalistasMes } from '@/db/schema';
 import { mesDe } from '@/domain/tempo';
-import { definirMensalistas, mensalistasDoMes } from '@/server/mensalistas';
+import { definirMensalistas, mensalistasDoMes, previaMensalistasDoMes } from '@/server/mensalistas';
 import { createTestDb } from '../helpers/db';
 
 let db: DB;
@@ -63,17 +63,38 @@ describe('definirMensalistas', () => {
     expect(await mensalistasDoMes(db, '2026-11')).toEqual([a]);
   });
 
-  it('lista vazia esvazia o mês (e o mês continua sem copiar do anterior depois de tocado)', async () => {
+  it('lista vazia lança min_1 e mantém o mês como estava', async () => {
     const [a] = await criarJogadores(1);
-    await definirMensalistas(db, '2026-10', [a]);
-    await definirMensalistas(db, '2026-11', []);
-    // Mês sem linhas volta a copiar: é a regra "sem nenhum registro".
+    await definirMensalistas(db, '2026-11', [a]);
+    await expect(definirMensalistas(db, '2026-11', [])).rejects.toThrow('min_1');
     expect(await mensalistasDoMes(db, '2026-11')).toEqual([a]);
   });
 
   it('recusa mês fora do formato YYYY-MM', async () => {
     await expect(definirMensalistas(db, '2026-13', [])).rejects.toThrow();
     await expect(definirMensalistas(db, 'novembro', [])).rejects.toThrow();
+  });
+});
+
+describe('previaMensalistasDoMes', () => {
+  it('mês vazio devolve a cópia do anterior sem gravar nada', async () => {
+    const ids = await criarJogadores(3);
+    await definirMensalistas(db, '2026-10', ids);
+    const p = await previaMensalistasDoMes(db, '2026-11');
+    expect(ordenar(p.ids)).toEqual(ids);
+    expect(p.copiado).toBe(true);
+    expect(p.origem).toBe('2026-10');
+    expect(await db.select().from(mensalistasMes).where(eq(mensalistasMes.mes, '2026-11'))).toHaveLength(0);
+    // mudança no mês atual ainda se propaga ao mês futuro que só foi visto
+    await definirMensalistas(db, '2026-10', ids.slice(0, 1));
+    expect((await previaMensalistasDoMes(db, '2026-11')).ids).toEqual(ids.slice(0, 1));
+  });
+
+  it('mês com registros devolve os dele, sem histórico devolve vazio', async () => {
+    const ids = await criarJogadores(2);
+    await definirMensalistas(db, '2026-11', ids);
+    expect(await previaMensalistasDoMes(db, '2026-11')).toMatchObject({ copiado: false, origem: null });
+    expect(await previaMensalistasDoMes(db, '2026-01')).toEqual({ ids: [], copiado: false, origem: null });
   });
 });
 

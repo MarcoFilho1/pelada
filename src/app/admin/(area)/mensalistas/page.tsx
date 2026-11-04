@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { mesDe } from '@/domain/tempo';
 import { listarJogadores } from '@/server/jogadores';
-import { mensalistasDoMes, mesValido } from '@/server/mensalistas';
+import { mesValido, previaMensalistasDoMes } from '@/server/mensalistas';
 import { lerSessaoAdmin } from '@/server/sessao';
 import { MensalistasAdmin } from './mensalistas-admin';
 
@@ -24,16 +24,17 @@ export default async function MensalistasPage({ searchParams }: PageProps<'/admi
   if (!(await lerSessaoAdmin(db))) redirect('/admin/entrar');
   const pedido = (await searchParams).mes;
   const mes = typeof pedido === 'string' && mesValido(pedido) ? pedido : mesDaProximaQuarta(new Date());
-  const [jogadores, marcados] = await Promise.all([
+  const [jogadores, previa] = await Promise.all([
     listarJogadores(db, { incluirInativos: false }),
-    mensalistasDoMes(db, mes),
+    previaMensalistasDoMes(db, mes),
   ]);
   return (
     <MensalistasAdmin
       key={mes}
       mes={mes}
       jogadores={jogadores.map((j) => ({ id: j.id, nome: j.nome }))}
-      marcados={marcados}
+      marcados={previa.ids}
+      copiadoDe={previa.origem}
     />
   );
 }

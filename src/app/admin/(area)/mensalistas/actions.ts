@@ -19,6 +19,7 @@ export async function salvarMensalistas(mes: string, jogadorIds: number[]): Prom
     revalidatePath('/admin/mensalistas');
     return { ok: true };
   } catch (e) {
+    if (e instanceof Error && e.message === 'min_1') return { ok: false, erro: 'Marque pelo menos 1 mensalista.' };
     if (e instanceof Error && e.message === 'max_16') {
       return { ok: false, erro: `No máximo ${MAX_MENSALISTAS} mensalistas por mês.` };
     }

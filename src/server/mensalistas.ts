@@ -12,8 +12,40 @@ function exigirMes(mes: string) {
   if (!mesValido(mes)) throw new Error(`Mês inválido: ${mes}. Use AAAA-MM.`);
 }
 
+type Previa = { ids: number[]; copiado: boolean; origem: string | null };
+
 /**
- * Mensalistas ativos do mês. Mês sem nenhum registro copia o do mês anterior mais recente
+ * Só leitura: os mensalistas ativos do mês ou, se o mês não tem registro, o que seria copiado
+ * do mês anterior mais recente (`copiado: true`, `origem` = esse mês). Não grava nada.
+ */
+export async function previaMensalistasDoMes(db: DB, mes: string): Promise<Previa> {
+  exigirMes(mes);
+  return previa(db, mes);
+}
+
+async function previa(db: DB | Parameters<Parameters<DB['transaction']>[0]>[0], mes: string): Promise<Previa> {
+  const ativosDe = async (m: string) =>
+    (
+      await db
+        .select({ id: mensalistasMes.jogadorId })
+        .from(mensalistasMes)
+        .innerJoin(jogadores, eq(jogadores.id, mensalistasMes.jogadorId))
+        .where(and(eq(mensalistasMes.mes, m), eq(jogadores.ativo, true)))
+    ).map((r) => r.id);
+  const [existe] = await db.select({ mes: mensalistasMes.mes }).from(mensalistasMes).where(eq(mensalistasMes.mes, mes)).limit(1);
+  if (existe) return { ids: await ativosDe(mes), copiado: false, origem: null };
+  const [anterior] = await db
+    .select({ mes: mensalistasMes.mes })
+    .from(mensalistasMes)
+    .where(lt(mensalistasMes.mes, mes))
+    .orderBy(desc(mensalistasMes.mes))
+    .limit(1);
+  if (!anterior) return { ids: [], copiado: false, origem: null };
+  return { ids: await ativosDe(anterior.mes), copiado: true, origem: anterior.mes };
+}
+
+/**
+ * Mensalistas ativos do mês (grava!). Mês sem nenhum registro copia o do mês anterior mais recente
  * que tenha (só jogadores ativos), grava e devolve. Transação + `onConflictDoNothing`:
  * duas chamadas juntas não duplicam nem falham.
  */
@@ -48,10 +80,11 @@ export async function mensalistasDoMes(db: DB, mes: string): Promise<number[]> {
   });
 }
 
-/** Troca o conjunto de mensalistas do mês por inteiro. Máximo 16 (`max_16`); só jogadores ativos. */
+/** Troca o conjunto de mensalistas do mês por inteiro. De 1 a 16 (`min_1`, `max_16`); só jogadores ativos. */
 export async function definirMensalistas(db: DB, mes: string, jogadorIds: number[]): Promise<void> {
   exigirMes(mes);
   const ids = [...new Set(jogadorIds)];
+  if (ids.length === 0) throw new Error('min_1');
   if (ids.length > MAX_MENSALISTAS) throw new Error('max_16');
   await db.transaction(async (tx) => {
     if (ids.length > 0) {

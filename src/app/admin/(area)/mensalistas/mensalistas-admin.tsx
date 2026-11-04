@@ -23,10 +23,12 @@ const BOTAO_MES =
   'flex size-toque shrink-0 items-center justify-center rounded-placa bg-placa-alta text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60';
 const BOTAO_MES_OFF = 'flex size-toque shrink-0 items-center justify-center rounded-placa bg-placa text-meta';
 
-type Props = { mes: string; jogadores: { id: number; nome: string }[]; marcados: number[] };
+type Props = { mes: string; jogadores: { id: number; nome: string }[]; marcados: number[]; copiadoDe: string | null };
 
-export function MensalistasAdmin({ mes, jogadores, marcados }: Props) {
+export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props) {
   const [salvos, setSalvos] = useState(() => new Set(marcados));
+  // Mês copiado do anterior ainda não existe no banco: salvar o grava, mesmo sem mudança.
+  const [pendenteDeGravar, setPendente] = useState(copiadoDe !== null);
   const [escolhidos, setEscolhidos] = useState(() => new Set(marcados));
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [salvando, startSalvar] = useTransition();
@@ -50,6 +52,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados }: Props) {
       const r = await salvarMensalistas(mes, [...escolhidos]);
       if (r.ok) {
         setSalvos(new Set(escolhidos));
+        setPendente(false);
         setAviso({ tipo: 'ok', texto: `Mensalistas de ${nomeDoMes(mes)} salvos.` });
       } else {
         setAviso({ tipo: 'erro', texto: r.erro });
@@ -90,9 +93,15 @@ export function MensalistasAdmin({ mes, jogadores, marcados }: Props) {
           {total}/{MAX}
         </span>
         <span className="text-base text-apagado">
-          {cheio ? 'Vagas cheias. Tire alguém para pôr outro.' : 'Toque no nome para marcar.'}
+          {cheio ? 'Vagas cheias. Tire alguém para pôr outro.' : total === 0 ? 'Marque pelo menos 1 mensalista.' : 'Toque no nome para marcar.'}
         </span>
       </p>
+
+      {pendenteDeGravar && (
+        <p className="mt-2 text-base text-apagado">
+          Copiado de {nomeDoMes(copiadoDe ?? mes)}, ainda não salvo.
+        </p>
+      )}
 
       {jogadores.length === 0 ? (
         <p className="mt-6 text-base text-apagado">Nenhum jogador ativo. Cadastre em Jogadores.</p>
@@ -148,7 +157,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados }: Props) {
         <button
           type="button"
           onClick={salvar}
-          disabled={!mudou || salvando}
+          disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
           className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado"
         >
           {salvando ? 'Salvando…' : 'Salvar mensalistas'}
