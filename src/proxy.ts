@@ -28,6 +28,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Tudo, menos arquivos do Next e arquivos estáticos (com extensão).
-  matcher: ['/((?!_next/static|_next/image|.*\\.[a-zA-Z0-9]+$).*)'],
+  // Tudo, menos os arquivos do Next e os estáticos conhecidos (imagens e fontes). Uma rota
+  // com ponto no fim (ex.: /admin/jogadores/1.0) continua passando pelo proxy.
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico$|.*\\.(?:svg|png|jpe?g|gif|ico|webp|avif|woff2?)$).*)'],
 };
