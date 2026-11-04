@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import type { DB } from '@/db/client';
-import { dadosSessaoJogador, validarSessaoAdmin, validarSessaoJogador } from './auth';
+import { dadosSessaoJogador, validarSessaoAdmin, validarSessaoJogador, type SessaoJogador } from './auth';
 import { assinarToken, COOKIE_ADMIN, COOKIE_JOGADOR, verificarToken, type Token } from './token';
 
 const DIA = 24 * 60 * 60;
@@ -41,7 +41,7 @@ export async function criarSessaoAdmin(adminId: number): Promise<void> {
  * Sessão do jogador conferida no banco: `null` (deslogado) se o cookie falta ou é inválido,
  * se o jogador foi desativado ou se as sessões dele foram revogadas.
  */
-export async function lerSessaoJogador(db: DB): Promise<{ jogadorId: number; precisaTrocar: boolean } | null> {
+export async function lerSessaoJogador(db: DB): Promise<SessaoJogador | null> {
   const t = await verificarToken((await cookies()).get(COOKIE_JOGADOR)?.value);
   return t?.tipo === 'jogador' ? validarSessaoJogador(db, t) : null;
 }

@@ -28,17 +28,20 @@ beforeEach(async () => {
 });
 
 describe('sessão do jogador conferida no banco', () => {
-  it('token da versão atual vale', async () => {
-    await trocarPin(db, caioId, '7788');
+  it('token da versão atual vale e traz o nome', async () => {
     const t = await tokenAtual(caioId);
     expect(t.versao).toBe(0);
-    expect(await validarSessaoJogador(db, t)).toEqual({ jogadorId: caioId, precisaTrocar: false });
+    expect(await validarSessaoJogador(db, t)).toEqual({ jogadorId: caioId, nome: 'Caio', precisaTrocar: true });
   });
 
-  it('trocar o PIN não derruba a sessão do aparelho', async () => {
-    const antes = await tokenAtual(caioId);
+  it('trocar PIN derruba as outras sessões; token reemitido vale', async () => {
+    // quem entrou com 1234 antes do dono criar o PIN perde a sessão
+    const intruso = await tokenAtual(caioId);
     await trocarPin(db, caioId, '7788');
-    expect(await validarSessaoJogador(db, antes)).not.toBeNull();
+    expect(await validarSessaoJogador(db, intruso)).toBeNull();
+    const reemitido = await tokenAtual(caioId);
+    expect(reemitido.versao).toBe(1);
+    expect(await validarSessaoJogador(db, reemitido)).toEqual({ jogadorId: caioId, nome: 'Caio', precisaTrocar: false });
   });
 
   it('depois de revogar, o token antigo é recusado e o novo vale', async () => {
@@ -63,7 +66,7 @@ describe('sessão do jogador conferida no banco', () => {
     const t = await tokenAtual(caioId);
     expect(t.precisaTrocar).toBe(false);
     await db.update(jogadores).set({ pinPrecisaTrocar: true }).where(eq(jogadores.id, caioId));
-    expect(await validarSessaoJogador(db, t)).toEqual({ jogadorId: caioId, precisaTrocar: true });
+    expect(await validarSessaoJogador(db, t)).toEqual({ jogadorId: caioId, nome: 'Caio', precisaTrocar: true });
   });
 
   it('revogar jogador inexistente lança erro', async () => {

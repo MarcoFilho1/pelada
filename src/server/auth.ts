@@ -68,14 +68,24 @@ export async function entrarJogador(db: DB, jogadorId: number, pin: string, now:
   });
 }
 
-/** Grava o PIN novo (4 dígitos, diferente de 1234) e tira a obrigação de trocar. */
+/**
+ * Grava o PIN novo (4 dígitos, diferente de 1234) e tira a obrigação de trocar.
+ * Também derruba as sessões abertas: quem entrou no perfil com 1234 antes do dono criar o
+ * PIN sai. O aparelho que trocou recebe um cookie novo (`criarSessaoJogador`).
+ */
 export async function trocarPin(db: DB, jogadorId: number, novoPin: string): Promise<void> {
   if (!pinNovoValido(novoPin)) {
     throw new Error(`PIN novo inválido: precisa ter 4 números e não pode ser ${PIN_PADRAO}`);
   }
   const atualizados = await db
     .update(jogadores)
-    .set({ pinHash: await hashSegredo(novoPin), pinPrecisaTrocar: false, pinErros: 0, bloqueadoAte: null })
+    .set({
+      pinHash: await hashSegredo(novoPin),
+      pinPrecisaTrocar: false,
+      pinErros: 0,
+      bloqueadoAte: null,
+      sessaoVersao: sql`${jogadores.sessaoVersao} + 1`,
+    })
     .where(eq(jogadores.id, jogadorId))
     .returning({ id: jogadores.id });
   if (atualizados.length === 0) throw new Error(`Jogador ${jogadorId} não encontrado`);
@@ -90,13 +100,16 @@ export async function entrarAdmin(db: DB, usuario: string, senha: string): Promi
 // ---- Sessões conferidas no banco -------------------------------------------------
 // O cookie (JWT) só prova quem assinou; aqui se confere se ele ainda vale.
 
+export type SessaoJogador = { jogadorId: number; nome: string; precisaTrocar: boolean };
+
 /** O que vai no token de um jogador que acabou de entrar; `null` se inativo ou inexistente. */
 export async function dadosSessaoJogador(
   db: DB,
   jogadorId: number,
-): Promise<{ versao: number; precisaTrocar: boolean } | null> {
+): Promise<{ nome: string; versao: number; precisaTrocar: boolean } | null> {
   const [j] = await db
     .select({
+      nome: jogadores.nome,
       ativo: jogadores.ativo,
       versao: jogadores.sessaoVersao,
       pinHash: jogadores.pinHash,
@@ -105,7 +118,7 @@ export async function dadosSessaoJogador(
     .from(jogadores)
     .where(eq(jogadores.id, jogadorId));
   if (!j || !j.ativo) return null;
-  return { versao: j.versao, precisaTrocar: precisaTrocarPin(j) };
+  return { nome: j.nome, versao: j.versao, precisaTrocar: precisaTrocarPin(j) };
 }
 
 /**
@@ -115,10 +128,10 @@ export async function dadosSessaoJogador(
 export async function validarSessaoJogador(
   db: DB,
   token: TokenJogador,
-): Promise<{ jogadorId: number; precisaTrocar: boolean } | null> {
+): Promise<SessaoJogador | null> {
   const atual = await dadosSessaoJogador(db, token.jogadorId);
   if (!atual || atual.versao !== token.versao) return null;
-  return { jogadorId: token.jogadorId, precisaTrocar: atual.precisaTrocar };
+  return { jogadorId: token.jogadorId, nome: atual.nome, precisaTrocar: atual.precisaTrocar };
 }
 
 /** Derruba todas as sessões do jogador, em todos os aparelhos (zerar PIN, desativar). */
