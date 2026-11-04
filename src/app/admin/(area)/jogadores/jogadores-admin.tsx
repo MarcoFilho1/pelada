@@ -6,8 +6,7 @@ import { Mais, Menos, SetaDireita, SetaEsquerda } from '@/components/icones';
 import { normalizarNome, parseNomesColados, separarNomes } from '@/domain/nome';
 import type { JogadorListado } from '@/server/jogadores';
 import { colarNomes, mudarAtivo, mudarNota, zerarPinDoJogador } from './actions';
-
-const ESPERA_NOTA_MS = 500;
+import { SalvadorDeNotas } from './salvar-notas';
 
 const CAMPO =
   'h-toque w-full rounded-placa bg-placa px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta';
@@ -30,11 +29,51 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [notasLocais, setNotasLocais] = useState<Record<number, number>>({});
   const [ocupado, startAcao] = useTransition();
-  const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const jogadoresAtuais = useRef(jogadores);
+  const salvador = useRef<SalvadorDeNotas | null>(null);
+
+  // A nota local só sai quando o servidor já devolveu o mesmo valor e nada está esperando ou a caminho.
+  function soltarNotasLocais() {
+    setNotasLocais((locais) => {
+      const resto = Object.entries(locais).filter(([id, nota]) => {
+        const salva = jogadoresAtuais.current.find((j) => j.id === Number(id))?.nota;
+        return salvador.current?.ocupado(Number(id)) || salva !== nota;
+      });
+      return resto.length === Object.keys(locais).length ? locais : Object.fromEntries(resto);
+    });
+  }
 
   useEffect(() => {
-    const t = timers.current;
-    return () => Object.values(t).forEach(clearTimeout);
+    jogadoresAtuais.current = jogadores;
+    soltarNotasLocais();
+  }, [jogadores]);
+
+  useEffect(() => {
+    const s = new SalvadorDeNotas(
+      mudarNota,
+      (id, r) => {
+        if (r.ok) {
+          soltarNotasLocais();
+        } else {
+          setNotasLocais((n) => Object.fromEntries(Object.entries(n).filter(([k]) => Number(k) !== id)));
+          setAviso({ tipo: 'erro', texto: r.erro });
+        }
+      },
+    );
+    salvador.current = s;
+    // Nota esperando os 500 ms não pode se perder ao sair da tela ou esconder a aba.
+    const aoEsconder = () => {
+      if (document.visibilityState === 'hidden') s.descarregar();
+    };
+    const aoSair = () => s.descarregar();
+    window.addEventListener('pagehide', aoSair);
+    document.addEventListener('visibilitychange', aoEsconder);
+    return () => {
+      s.descarregar();
+      window.removeEventListener('pagehide', aoSair);
+      document.removeEventListener('visibilitychange', aoEsconder);
+      salvador.current = null;
+    };
   }, []);
 
   const ativos = jogadores.filter((j) => j.ativo).length;
@@ -58,13 +97,7 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
     const nova = Math.min(5, Math.max(0, nota(j) + passo));
     if (nova === nota(j)) return;
     setNotasLocais((n) => ({ ...n, [j.id]: nova }));
-    clearTimeout(timers.current[j.id]);
-    // Vários toques seguidos viram um pedido só.
-    timers.current[j.id] = setTimeout(async () => {
-      const r = await mudarNota(j.id, nova);
-      setNotasLocais((n) => Object.fromEntries(Object.entries(n).filter(([id]) => Number(id) !== j.id)));
-      if (!r.ok) setAviso({ tipo: 'erro', texto: r.erro });
-    }, ESPERA_NOTA_MS);
+    salvador.current?.agendar(j.id, nova);
   }
 
   function confirmar(j: JogadorListado, tipo: 'zerar' | 'desativar') {
