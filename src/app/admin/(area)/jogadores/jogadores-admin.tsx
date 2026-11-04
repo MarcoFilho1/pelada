@@ -1,8 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Mais, Menos, SetaDireita, SetaEsquerda } from '@/components/icones';
+import { Mais, Menos, SetaDireita } from '@/components/icones';
 import { normalizarNome, parseNomesColados, separarNomes } from '@/domain/nome';
 import type { JogadorListado } from '@/server/jogadores';
 import { colarNomes, mudarAtivo, mudarNota, zerarPinDoJogador } from './actions';
@@ -140,11 +139,7 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
 
   return (
     <main className="flex flex-1 flex-col">
-      <Link href="/admin" className="-mx-3 mt-2 flex h-12 w-fit items-center gap-1 px-3 text-base font-medium text-apagado transition-colors hover:text-tinta">
-        <SetaEsquerda />
-        Painel
-      </Link>
-      <h1 className="mt-2 font-placa text-titulo font-semibold">Jogadores</h1>
+      <h1 className="mt-4 font-placa text-titulo font-semibold">Jogadores</h1>
       <p className="mt-2 text-base text-apagado">
         {ativos} {ativos === 1 ? 'ativo' : 'ativos'}
         {inativos > 0 && ` · ${inativos} ${inativos === 1 ? 'inativo' : 'inativos'}`}
