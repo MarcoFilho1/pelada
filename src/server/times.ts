@@ -93,7 +93,9 @@ export async function salvarTimesDefinitivos(
   if (elencos.some((e) => e.length === 0)) throw new ErroTimes('time_vazio');
   if (completes.flat().some((n) => !notaValida(n))) throw new ErroTimes('nota_invalida');
   if (completes.length > elencos.length) throw new ErroTimes('pedido_invalido');
-  if (elencos.some((e, i) => e.length + (completes[i]?.length ?? 0) > VAGAS_POR_TIME)) throw new ErroTimes('time_cheio');
+  // O limite de 4 vale só para time com COMPLETE (ele completa até 4); time só de jogadores, como 5,4,4,4 com 17, não tem.
+  const comComplete = (i: number) => completes[i]?.length ?? 0;
+  if (elencos.some((e, i) => comComplete(i) > 0 && e.length + comComplete(i) > VAGAS_POR_TIME)) throw new ErroTimes('time_cheio');
   const ids = elencos.flat();
   if (new Set(ids).size !== ids.length) throw new ErroTimes('jogador_repetido');
 

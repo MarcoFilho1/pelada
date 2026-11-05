@@ -316,7 +316,17 @@ describe('salvarTimesDefinitivos e timesDaPelada', () => {
     const peladaId = await novaPelada('2026-11-11');
     const ids = await criar(['A', 'B', 'C', 'D']);
     expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0], ids[1], ids[2]]], [[3, 3]]).catch((e) => e.motivo)).toBe('time_cheio');
+    expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0], ids[1], ids[2], ids[3]]], [[3]]).catch((e) => e.motivo)).toBe('time_cheio');
     expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0]]], [[], [3]]).catch((e) => e.motivo)).toBe('pedido_invalido');
+  });
+
+  it('noite com 17: time só de jogadores não tem limite (5, 4, 4, 4 sem COMPLETE)', async () => {
+    const peladaId = await novaPelada('2026-11-11');
+    const ids = await criar(Array.from({ length: 17 }, (_, i) => `J${i + 1}`));
+    await salvarTimesDefinitivos(db, peladaId, [ids.slice(0, 5), ids.slice(5, 9), ids.slice(9, 13), ids.slice(13)]);
+    const ts = await timesDaPelada(db, peladaId);
+    expect(ts.map((t) => t.jogadores.length)).toEqual([5, 4, 4, 4]);
+    expect(ts.every((t) => t.completes.length === 0)).toBe(true);
   });
 
   it('sorteio novo sem partida apaga também os COMPLETE antigos', async () => {

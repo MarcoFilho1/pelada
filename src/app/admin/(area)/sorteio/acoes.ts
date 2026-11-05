@@ -22,9 +22,8 @@ export type Proposta = { times: TimeSorteado[]; diferenca: number; diferencaMedi
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 /** Bem mais que uma noite cheia; só barra pedido absurdo. */
 const MAX_PARTICIPANTES = 64;
-/** 4 times de 4: o sorteio completa até aqui com COMPLETE e não cabe mais que isso. */
+/** O sorteio completa cada time com COMPLETE até 4 (com 16 ou mais não entra COMPLETE: 17 viram 5,4,4,4). */
 const POR_TIME = 4;
-const MAX_NA_QUADRA = CORES.length * POR_TIME;
 
 async function exigirAdmin() {
   if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
@@ -41,9 +40,6 @@ export async function sortear(ids: number[]): Promise<({ ok: true } & Proposta) 
   if (!listaDeIds(ids)) return PEDIDO_INVALIDO;
   const unicos = [...new Set(ids)];
   if (unicos.length < 2) return { ok: false, erro: 'Marque pelo menos 2 jogadores.' };
-  if (unicos.length > MAX_NA_QUADRA) {
-    return { ok: false, erro: `Cabem ${MAX_NA_QUADRA} (4 times de 4). Desmarque ${unicos.length - MAX_NA_QUADRA}.` };
-  }
   try {
     const ativos = new Map((await listarJogadores(getDb(), { incluirInativos: false })).map((j) => [j.id, j]));
     const participantes: JogadorNota[] = [];

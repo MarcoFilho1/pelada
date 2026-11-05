@@ -119,7 +119,6 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   const visiveis = linhas.filter((id) => porId.has(id));
   const escolhidos = visiveis.filter((id) => marcados.has(id));
   const nTimes = Math.min(CORES.length, escolhidos.length);
-  const sobram = escolhidos.length - CORES.length * VAGAS;
   const viramComplete = Math.max(0, nTimes * VAGAS - escolhidos.length);
 
   function alternar(id: number) {
@@ -288,9 +287,20 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
           ) : confirmando ? (
             <div className="rounded-placa bg-placa-alta p-4">
               <p className="text-base font-medium text-tinta">{fraseDasJogadas(p.jogadas)}</p>
-              <button type="button" className={`mt-4 ${PILULA}`} disabled={pendente || motivoTravado !== null} onClick={definir}>
+              <button
+                type="button"
+                className={`mt-4 ${PILULA}`}
+                disabled={pendente || motivoTravado !== null}
+                aria-describedby={motivoTravado ? 'motivo-travado' : undefined}
+                onClick={definir}
+              >
                 {acao === 'definir' ? 'Salvando…' : 'Usar os times novos'}
               </button>
+              {motivoTravado && (
+                <p id="motivo-travado" className="mt-2 text-base text-apagado">
+                  {motivoTravado}
+                </p>
+              )}
               <button type="button" className={`mx-auto mt-1 ${TEXTO}`} disabled={pendente} onClick={() => setConfirmando(false)}>
                 Voltar
               </button>
@@ -388,14 +398,12 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
       </section>
 
       <Barra>
-        <button type="button" className={PILULA} disabled={pendente || escolhidos.length < 2 || sobram > 0} onClick={rodarSorteio}>
+        <button type="button" className={PILULA} disabled={pendente || escolhidos.length < 2} onClick={rodarSorteio}>
           {acao === 'sortear'
             ? 'Sorteando…'
             : escolhidos.length < 2
               ? 'Marque pelo menos 2'
-              : sobram > 0
-                ? `Cabem ${CORES.length * VAGAS}: desmarque ${sobram}`
-                : `Sortear ${escolhidos.length} em ${nTimes} times`}
+              : `Sortear ${escolhidos.length} em ${nTimes} times`}
         </button>
         {escolhidos.length >= 2 && viramComplete > 0 && (
           <p className="mt-2 text-center text-base text-meta">
