@@ -436,6 +436,37 @@ describe('moverJogador', () => {
     await moverJogador(db, ids[0], azul, azul);
     expect((await elencos(peladaId))[0]).toEqual([ids[0], ids[1]].sort());
   });
+
+  it('pôr num time com COMPLETE: o jogador ocupa a vaga de um COMPLETE (o mais antigo)', async () => {
+    const { peladaId, ids, azul, laranja } = await cenario();
+    const primeiro = await adicionarComplete(db, azul, 2.5);
+    const segundo = await adicionarComplete(db, azul, 3.5);
+    await moverJogador(db, ids[2], laranja, azul);
+    const [a, l] = await timesDaPelada(db, peladaId);
+    expect(a.jogadores.map((j) => j.id).sort()).toEqual([ids[0], ids[1], ids[2]].sort());
+    expect(a.completes).toEqual([{ id: segundo, nota: 3.5 }]);
+    expect(l.jogadores.map((j) => j.id)).toEqual([ids[3]]);
+    expect(l.completes).toEqual([]); // sair de um time não cria COMPLETE
+    expect(primeiro).toBeLessThan(segundo);
+    // quem estava fora também consome
+    const [novo] = await criar(['Novo']);
+    await moverJogador(db, novo, null, azul);
+    expect((await timesDaPelada(db, peladaId))[0].completes).toEqual([]);
+  });
+
+  it('pôr num time sem COMPLETE: como antes, sem limite (time de 5 vale)', async () => {
+    const peladaId = await novaPelada('2026-11-11');
+    const ids = await criar(['A', 'B', 'C', 'D', 'E']);
+    await salvarTimesDefinitivos(db, peladaId, [[ids[0], ids[1], ids[2], ids[3]], [ids[4]]], [[], [3]]);
+    const [azul, laranja] = await timesDaPelada(db, peladaId);
+    const [novo] = await criar(['Novo']);
+    await moverJogador(db, novo, null, azul.id);
+    const [a, l] = await timesDaPelada(db, peladaId);
+    expect(a.jogadores).toHaveLength(5);
+    expect(a.completes).toEqual([]);
+    expect(l.completes).toHaveLength(1); // o COMPLETE do outro time fica
+    expect(laranja.completes).toHaveLength(1);
+  });
 });
 
 describe('COMPLETE de um time', () => {

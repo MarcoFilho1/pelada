@@ -174,6 +174,7 @@ export async function partidasJogadas(db: DB, peladaId: number): Promise<{ jogad
  * Entre partidas: troca o jogador de time (`de` → `para`), tira (`para` = null) ou põe quem
  * estava fora (`de` = null). Um jogador fica em um time só por pelada: pôr num time tira do
  * time antigo na mesma transação. Jogador desativado não entra em time, mas pode sair.
+ * Num time com COMPLETE, quem entra ocupa a vaga do mais antigo (ele some). Sair não cria COMPLETE.
  */
 export async function moverJogador(db: DB, jogadorId: number, deTimeId: number | null, paraTimeId: number | null): Promise<void> {
   if (deTimeId === null && paraTimeId === null) throw new ErroTimes('pedido_invalido');
@@ -208,7 +209,16 @@ export async function moverJogador(db: DB, jogadorId: number, deTimeId: number |
       await tx.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)))
     ).map((t) => t.id);
     await tx.delete(timeJogadores).where(and(eq(timeJogadores.jogadorId, jogadorId), inArray(timeJogadores.timeId, daPelada)));
-    if (paraTimeId !== null) await tx.insert(timeJogadores).values({ timeId: paraTimeId, jogadorId });
+    if (paraTimeId !== null) {
+      await tx.insert(timeJogadores).values({ timeId: paraTimeId, jogadorId });
+      const [vaga] = await tx
+        .select({ id: timeCompletes.id })
+        .from(timeCompletes)
+        .where(eq(timeCompletes.timeId, paraTimeId))
+        .orderBy(timeCompletes.id)
+        .limit(1);
+      if (vaga) await tx.delete(timeCompletes).where(eq(timeCompletes.id, vaga.id));
+    }
   });
 }
 
