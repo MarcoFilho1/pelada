@@ -50,4 +50,4 @@ O e2e sobe o `pnpm dev` na porta 3217 com um banco PGlite só dele (`.pglite-e2e
 
 ## Produção
 
-Deploy na Vercel com o banco no Neon. Rode `pnpm db:migrate` e `pnpm db:seed` com as variáveis de produção.
+Planejado: Vercel + Neon (ver [docs/operacao.md](docs/operacao.md)). Quando for ao ar, rode `pnpm db:migrate` e `pnpm db:seed` com as variáveis de produção.
