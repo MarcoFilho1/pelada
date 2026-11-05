@@ -8,7 +8,7 @@ const INICIAL: EstadoEntrarAdmin = { erro: null, usuario: '' };
 const CAMPO =
   'mt-2 h-toque w-full rounded-placa bg-placa px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta aria-invalid:ring-2 aria-invalid:ring-erro';
 
-export function EntrarAdmin() {
+export function EntrarAdmin({ aviso = null }: { aviso?: string | null }) {
   const [estado, acao, enviando] = useActionState(entrarComoAdmin, INICIAL);
   const invalido = estado.erro ? true : undefined;
 
@@ -16,6 +16,11 @@ export function EntrarAdmin() {
     <main className="flex flex-1 flex-col">
       <h1 className="mt-6 font-placa text-titulo font-semibold">Área do admin</h1>
       <p className="mt-2 text-base text-apagado">Cadastro, lista e partidas.</p>
+      {aviso && (
+        <p role="status" className="mt-4 text-base font-medium text-lima">
+          {aviso}
+        </p>
+      )}
 
       <form action={acao} className="mt-8 flex flex-col" noValidate>
         <label htmlFor="usuario" className="text-base font-medium text-apagado">
