@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularLista, podeConfirmar, travaDoJogador, type EstadoManual, type Presenca } from '@/domain/lista';
+import { calcularLista, podeConfirmar, situacaoDoJogador, travaDoJogador, type EstadoManual, type Presenca } from '@/domain/lista';
 
 const QUARTA = '2026-11-04';
 const ANTES_PRAZO = new Date('2026-11-04T13:00:00-03:00');
@@ -181,5 +181,29 @@ describe('travaDoJogador', () => {
     expect(trava('fechada', ANTES_JOGO)).toBe('fechada');
     expect(trava('cancelada', ANTES_JOGO)).toBe('cancelada');
     expect(trava(null, new Date('2026-11-01T23:59:00-03:00'))).toBe('fechada');
+  });
+});
+
+describe('situacaoDoJogador', () => {
+  const item = (jogadorId: number, confirmado = false, tipo: 'M' | 'D' = 'M') => ({ jogadorId, nome: `J${jogadorId}`, tipo, confirmado });
+  const estado = {
+    aberta: true,
+    cancelada: false,
+    vagas: 16,
+    principal: [item(1, true), item(2, false, 'D')],
+    fila: [item(3, false, 'D'), item(4, false, 'D')],
+    foraDoPrazo: [item(5)],
+  };
+
+  it('na lista principal: posição, confirmado e tipo', () => {
+    expect(situacaoDoJogador(estado, 1)).toEqual({ onde: 'principal', posicao: 1, confirmado: true, tipo: 'M' });
+    expect(situacaoDoJogador(estado, 2)).toEqual({ onde: 'principal', posicao: 2, confirmado: false, tipo: 'D' });
+  });
+  it('na fila: posição na fila', () => {
+    expect(situacaoDoJogador(estado, 4)).toEqual({ onde: 'fila', posicao: 2 });
+  });
+  it('mensalista que perdeu o prazo, e quem não está', () => {
+    expect(situacaoDoJogador(estado, 5)).toEqual({ onde: 'perdeu_prazo' });
+    expect(situacaoDoJogador(estado, 6)).toEqual({ onde: 'fora' });
   });
 });

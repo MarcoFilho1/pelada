@@ -18,6 +18,11 @@ typography:
     fontWeight: 600
     lineHeight: 1.05
     letterSpacing: "-0.01em"
+  subtitulo:
+    fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
+    fontSize: "1.75rem"
+    fontWeight: 600
+    lineHeight: 1.1
   numero:
     fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
     fontSize: "2.75rem"
@@ -57,6 +62,12 @@ components:
   botao-primario-desabilitado:
     backgroundColor: "{colors.placa-alta}"
     textColor: "{colors.apagado}"
+  botao-secundario:
+    backgroundColor: "{colors.placa-alta}"
+    textColor: "{colors.tinta}"
+    typography: "{typography.linha}"
+    rounded: "{rounded.pilula}"
+    height: "56px"
   campo:
     backgroundColor: "{colors.placa}"
     textColor: "{colors.tinta}"
@@ -143,6 +154,8 @@ leitura sem chamar atenção. Duas letras, nunca três.
 
 ### Hierarchy
 - **Título** (Barlow Condensed 600, 32px, 1.05, -0.01em): o h1 de cada tela, uma frase curta ("Quem é você?").
+- **Subtítulo** (Barlow Condensed 600, 28px, 1.1): o h2 do bloco "sua vaga" ("Você vai?") e a contagem
+  "x/16" ao lado do h2 das listas.
 - **Número** (Barlow Condensed 600, 44px, 1): o dígito pintado na placa do PIN; depois o placar e a contagem.
 - **Marca** (Barlow Condensed 600, 24px): "Pelada" no topo.
 - **Linha** (Inter 500, 18px, 1.4): itens tocáveis (nomes sugeridos), texto de campo, rótulo do botão.
@@ -182,6 +195,10 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - **Primary:** fundo branco #fff, texto preto, Inter 600 18px.
 - **Hover / Active / Disabled:** hover #b4b4b4, ativo #949494, desabilitado placa alta #2a2a2a com texto
   #b4b4b4 e rótulo no gerúndio ("Entrando…").
+- **Secondary:** a mesma pílula de 56px em placa alta #2a2a2a com texto branco (hover #949494 a 40%, ativo a
+  60%). Para a segunda ação grande de um bloco ("Não vou", "Sair da fila", "Tirar da lista", "Copiar lista
+  pro WhatsApp"), quando um link de texto seria pequeno demais para o dedo. Nunca duas pílulas brancas no
+  mesmo bloco.
 - **Tertiary:** link de texto Inter 500 16px em #b4b4b4 que vai para branco no hover ("Não sou eu", "Começar de
   novo", "Admin").
 
@@ -200,7 +217,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   pílulas coloridas.
 
 ### Navegação do admin
-- Linha de texto logo abaixo da barra (Painel · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
+- Linha de texto logo abaixo da barra (Painel · Pelada · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
   48px de altura com 10px de folga lateral. Seção atual: texto branco sobre placa #111 (raio 10px) e
   `aria-current="page"`; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. Se não couber,
   rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar não tem.
@@ -247,6 +264,47 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - Seções de formulário separadas por 40–48px de espaço, cada uma com h2 em Barlow 24px. Campo com dica em Giz
   (16px) ligada por `aria-describedby`; o anel vermelho vai só no campo que errou; mensagem de status/erro entre a
   dica e a pílula.
+
+### Bloco "sua vaga" (lista do jogador)
+- A primeira coisa abaixo do título da quarta: placa #111, raio 10px, 20px de respiro. h2 em Subtítulo com a
+  resposta ("Você vai?", "Você vai", "Abriu vaga pra você", "Você é o 2º da fila", "Você perdeu o prazo das
+  14h", "Você não está na lista"), uma frase em #b4b4b4 com a regra que importa agora, e as ações em
+  pílulas de largura total empilhadas (primária branca em cima, secundária em placa alta embaixo).
+- Confirmado: traço de check lima de 28px ao lado do h2. Lima só aí e nas linhas confirmadas.
+- Sair (Não vou, Sair da fila) pergunta antes, no lugar dos botões: placa alta com a consequência ("Você
+  perde a vaga. Se voltar, entra no fim da fila."), pílula branca com o verbo e "Voltar" em texto.
+- Lista travada (antes de segunda 00:00, fechada pelo admin, cancelada, jogo começou): o mesmo bloco sem
+  botões, com o porquê e, em branco, onde a pessoa está ("Você está confirmado na vaga 3.").
+- Erro da ação: frase em vermelho com `role="alert"` logo abaixo dos botões.
+
+### Linhas da lista (jogador)
+- Lista numerada (`<ol>`) de 44px por linha, sem placa (não são tocáveis): número em Barlow 20px Giz à
+  direita de uma coluna de 24px, nome em Inter 500 18px, "M"/"D" em Giz 16px e, à direita, o estado:
+  confirmado = check lima de 24px; pendente = ampulheta desenhada de 20px em Giz. Os dois têm texto para
+  leitor de tela. O ✅/⏳ de verdade só existe no texto copiado pro WhatsApp, nunca na tela.
+- A linha da própria pessoa ganha placa alta #2a2a2a e " · você" em #b4b4b4.
+- Vaga vazia: número e "Vaga aberta" em Giz. Fila vazia: "Ninguém na fila." em Giz.
+- Cabeçalho de cada lista: h2 em Barlow 24px à esquerda e, na principal, "x/16" em Subtítulo + "confirmados".
+
+### Copiar lista
+- Pílula secundária de largura total com o ícone de copiar (20px) no fim da tela. Copiou: "Copiado. Agora é
+  colar no grupo." em lima, centralizado, com `role="status"`, por 2,5 s. Sem área de transferência: abre
+  uma área de texto (#111, 16px) com o texto já selecionado e a instrução acima.
+
+### Escolha de estado (admin, rádio 2×2)
+- Quatro botões-linha `role="radio"` em grade de 2 colunas (8px de intervalo), 56px, placa #111, rótulo em
+  Inter 500 18px; o escolhido sobe para placa alta e mostra o check lima à direita (como a Linha de marcar).
+  Abaixo, em #b4b4b4, o que o estado escolhido faz.
+
+### Linha da pelada (admin)
+- Como a Linha de jogador recolhível: placa #111, 56px, número, nome, M/D, estado (check lima ou ampulheta) e
+  seta que gira. Aberta: placa alta com as ações em pílulas ("Confirmar presença" branca; "Tirar da lista"
+  secundária, que pede confirmação em linha; "Pôr no fim da fila" para quem perdeu o prazo).
+
+### Tela de erro
+- Para erro inesperado (`error.tsx`, `global-error.tsx`): título "Algo deu errado" a 80px do topo, uma frase
+  em #b4b4b4 com a saída ("Tente de novo; se continuar, avise o admin no grupo.") e a pílula branca
+  "Tentar de novo". Nenhum detalhe técnico na tela.
 
 ### Placas do PIN (componente-assinatura)
 - Quatro placas de 64×76px, raio 10px, 12px entre elas, centralizadas. Um único `<input inputMode="numeric">`

@@ -8,6 +8,7 @@ import { lerSessaoAdmin } from '@/server/sessao';
 export const metadata: Metadata = { title: 'Painel · Pelada' };
 
 const SECOES = [
+  { href: '/admin/pelada', titulo: 'Pelada', texto: 'Abrir, fechar e mexer na lista da semana' },
   { href: '/admin/jogadores', titulo: 'Jogadores', texto: 'Cadastro, nota e PIN' },
   { href: '/admin/mensalistas', titulo: 'Mensalistas', texto: 'Quem tem vaga fixa no mês' },
   { href: '/admin/admins', titulo: 'Admins', texto: 'Quem pode mexer no painel' },

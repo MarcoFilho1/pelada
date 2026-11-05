@@ -81,3 +81,25 @@ export function travaDoJogador(
   if (estadoManual !== 'aberta' && now >= inicioJogo(dataQuarta)) return 'comecou';
   return null;
 }
+
+/** Onde o jogador está na lista da semana, para o bloco do topo da tela. */
+export type Situacao =
+  | { onde: 'principal'; posicao: number; confirmado: boolean; tipo: 'M' | 'D' }
+  | { onde: 'fila'; posicao: number }
+  | { onde: 'perdeu_prazo' }
+  | { onde: 'fora' };
+
+export function situacaoDoJogador(
+  estado: EstadoLista & { foraDoPrazo: ItemLista[] },
+  jogadorId: number,
+): Situacao {
+  const i = estado.principal.findIndex((x) => x.jogadorId === jogadorId);
+  if (i >= 0) {
+    const item = estado.principal[i];
+    return { onde: 'principal', posicao: i + 1, confirmado: item.confirmado, tipo: item.tipo };
+  }
+  const f = estado.fila.findIndex((x) => x.jogadorId === jogadorId);
+  if (f >= 0) return { onde: 'fila', posicao: f + 1 };
+  if (estado.foraDoPrazo.some((x) => x.jogadorId === jogadorId)) return { onde: 'perdeu_prazo' };
+  return { onde: 'fora' };
+}

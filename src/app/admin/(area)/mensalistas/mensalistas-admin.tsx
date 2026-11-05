@@ -97,6 +97,14 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         </span>
       </p>
 
+      <p className="mt-2 text-base text-apagado">
+        Mudanças valem a partir da próxima pelada. Para esta semana, ajuste em{' '}
+        <Link href="/admin/pelada" className="-my-3 inline-block py-3 font-medium text-tinta underline underline-offset-4">
+          Pelada
+        </Link>
+        .
+      </p>
+
       {pendenteDeGravar && (
         <p className="mt-2 text-base text-apagado">
           Copiado de {nomeDoMes(copiadoDe ?? mes)}, ainda não salvo.

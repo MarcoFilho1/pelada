@@ -43,6 +43,9 @@ export class ErroLista extends ErroDeValidacao {
  * Quem criou é quem insere as presenças: duas chamadas juntas não duplicam nada.
  */
 export async function obterPeladaDaSemana(db: DB, now: Date): Promise<Pelada> {
+  // Caminho comum (a lista recarrega a cada 5 s): já existe, só lê.
+  const existente = await peladaExistenteDaSemana(db, now);
+  if (existente) return existente;
   const data = proximaQuarta(now);
   return db.transaction(async (tx) => {
     const criada = await tx.insert(peladas).values({ data }).onConflictDoNothing({ target: peladas.data }).returning();

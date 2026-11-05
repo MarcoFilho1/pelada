@@ -25,6 +25,8 @@
   --text-titulo--letter-spacing: -0.01em;
   --text-linha: 1.125rem; /* 18px, linhas tocáveis */
   --text-linha--line-height: 1.4;
+  --text-subtitulo: 1.75rem; /* 28px, h2 de bloco e contagem "x/16" */
+  --text-subtitulo--line-height: 1.1;
   --text-numero: 2.75rem; /* 44px, número pintado */
   --text-numero--line-height: 1;
 
