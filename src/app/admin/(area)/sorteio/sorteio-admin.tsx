@@ -23,6 +23,8 @@ type Props = {
   sugeridos: number[];
   times: TimeDaPelada[];
   temPartida: boolean;
+  /** Tem partida rolando: o que mudar aqui só vale para a próxima. */
+  emAndamento: boolean;
 };
 
 const NOME_DA_COR: Record<Cor, string> = { azul: 'Azul', laranja: 'Laranja', verde: 'Verde', preto: 'Preto' };
@@ -48,6 +50,11 @@ export function SorteioAdmin(p: Props) {
           </span>
         )}
       </p>
+      {p.emAndamento && (
+        <p role="status" className="mt-3 rounded-placa bg-placa px-4 py-3 text-base font-medium text-tinta">
+          Partida em andamento — mudanças valem para a próxima.
+        </p>
+      )}
       {definitivo ? (
         <Definitivo {...p} onRefazer={() => setRefazendo(true)} />
       ) : (
