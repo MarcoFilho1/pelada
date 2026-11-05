@@ -18,6 +18,7 @@ export function QuemCompleta({
   cor,
   nota,
   jaCompleta,
+  faltam,
   jogaSemCom,
   deFora,
   corDe,
@@ -33,6 +34,8 @@ export function QuemCompleta({
   nota: number;
   /** Quem já completa outra vaga deste time nesta partida. */
   jaCompleta: string[];
+  /** Outras vagas do mesmo lado que ainda esperam resposta. */
+  faltam: number;
   /** Quantos o time fica se esta vaga for "Jogar sem". */
   jogaSemCom: number;
   /** Jogadores dos outros times da noite, ainda livres. */
@@ -59,7 +62,7 @@ export function QuemCompleta({
         </button>
       </div>
       <p className="mt-1 text-base text-apagado">
-        {jaCompleta.length > 0 && `${jaCompleta.join(' e ')} já ${jaCompleta.length === 1 ? 'completa' : 'completam'}. Falta mais um. `}
+        {jaCompleta.length > 0 && `${jaCompleta.join(' e ')} já ${jaCompleta.length === 1 ? 'completa' : 'completam'}. ${faltam === 0 ? '' : faltam === 1 ? 'Falta mais um. ' : `Faltam mais ${faltam}. `}`}
         No lugar do COMPLETE ({formatarNota(nota)}), só nesta partida.
       </p>
 

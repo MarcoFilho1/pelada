@@ -347,6 +347,24 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - **Cartão de time:** grade 2×2 com 8px de intervalo, placa #111 raio 10px, 6px de respiro. Cabeçalho de 48px:
   bolinha do colete, nome da cor em Inter 600 16px, soma em Barlow 28px tabular à direita. Jogadores em linhas
   de 48px: nome Inter 500 16px (truncado), nota em Giz tabular. Time vazio: "Ninguém." em Giz.
+- **COMPLETE (vaga no cartão):** time com menos de 4 ganha vagas "COMPLETE", linhas de 48px que são um buraco na
+  placa: fundo #000 (`bg-chao`), rótulo "COMPLETE" em Inter 500 16px #b4b4b4 e a nota em Giz tabular (conta na
+  soma e na diferença). Escolhida, vira placa alta com anel lima de 2px por dentro (`aria-pressed`). Abaixo, a
+  linha "+ COMPLETE" (ícone de mais de 20px e rótulo em Giz, sem placa) acrescenta uma vaga com nota 3,0 enquanto o
+  time tiver menos de 4 entre jogadores e COMPLETE; a nota automática do sorteio é só 2,5, 3,0 ou 3,5.
+- **Folha do COMPLETE:** a mesma folha do jogador escolhido (placa #111, raio 20px em cima, sombra para cima):
+  "COMPLETE do Azul" em Inter 500 18px com a soma e a diferença ao vivo em #b4b4b4 (a folha cobre os cartões no
+  celular) e "Fechar" em texto; o seletor de nota (o mesmo dos jogadores, 0 a 5, passo 0,5, salva sozinho depois
+  de 500 ms); "Pôr alguém no lugar" (pílula branca, só nos times definitivos) e "Tirar o COMPLETE" (pílula
+  secundária: o time joga com um a menos, avisado em lima na barra).
+- **Quem entra no Azul?:** tela cheia no lugar da lista (h2 em Barlow 24px com "Cancelar" em texto à direita;
+  "No lugar do COMPLETE (3,0). Fica no time pelo resto da noite." em #b4b4b4). Primeiro "Na lista, sem time",
+  depois a busca com a Lista tocável (e "Cadastrar “Fulano”"); linhas de 56px com nome, nota em Giz e o mais.
+  Escolher preenche a vaga e volta aos times.
+- **Sortear de novo (times definitivos):** seção no pé da tela com a pílula secundária "Sortear de novo" e, em
+  #b4b4b4, que os times salvos só mudam quando o novo sorteio for marcado como definitivo (e que as partidas já
+  jogadas não mudam). Com partidas jogadas, "Marcar como definitivo" abre na própria barra uma placa alta com a
+  frase do que muda ("Usar os times novos" em pílula branca, "Voltar" em texto); nada de `confirm`.
 - **Jogador escolhido:** placa alta com anel lima de 2px por dentro (`aria-pressed`). Tocar de novo cancela;
   tocar outro do mesmo time troca a escolha. Os dois trocados entram com o passo de pendurar (90ms, 2 quadros).
 - **Barra de baixo:** fixa no rodapé, fundo #000 (como a dos mensalistas): "Sortear 16 em 4 times" (pílula
@@ -374,6 +392,20 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   terceiro troca o último escolhido (quem fica continua). Fora da sugestão: "Escolha livre. Toque para trocar." e o
   link "Voltar para a sugerida". A pílula diz a conta: "Iniciar Azul × Laranja"; sem dois, "Escolha dois times"
   desabilitada.
+- **Chip "N COMPLETE":** nos cartões da fila, quando o time tem vaga de COMPLETE, um chip abaixo dos nomes:
+  "COMPLETE" (ou "2 COMPLETE"), Inter 500 14px #b4b4b4 sobre #000 (o buraco da placa, como no Sorteio), raio
+  `placa` (10px), 24px de linha e 6px de respiro lateral. Sob a pílula, "Antes de começar, você escolhe quem
+  completa o Azul." em Giz.
+- **Quem completa o Azul?:** com COMPLETE entre os dois times, Iniciar não começa na hora: um passo por vaga, tela
+  cheia no lugar da fila. h2 em Barlow 24px com a bolinha do colete e "Voltar" em texto à direita; abaixo, em
+  #b4b4b4, quem já completa o mesmo lado ("Pepe já completa. Falta mais um." / "Faltam mais 2.") e "No lugar do
+  COMPLETE (3,0), só nesta partida.". Primeiro "Dos outros times" (linhas de 56px com bolinha do time, nome,
+  nota e o mais), depois a busca ("Alguém sem time" / "Buscar pelo nome") e "Jogar sem" em pílula secundária
+  com a conta de quantos jogam. Quem já está no jogo aparece como "Já está no jogo".
+- **Conferência:** depois da última vaga, h2 em Barlow 24px com o confronto ("Azul × Laranja") e "Voltar aos
+  times" em texto; "Na próxima partida, a vaga volta a ser COMPLETE." em #b4b4b4. Uma placa #111 de 56px por vaga
+  (raio 10px): bolinha, "Pepe completa o Azul" (nome em branco Inter 500) ou "Ninguém: o Azul joga com 3" e
+  "Trocar" em texto, que volta àquele passo. Embaixo, a pílula branca "Iniciar Azul × Laranja" ("Iniciando…").
 - **Sem como iniciar** (não é o dia, pelada cancelada, menos de 2 times): uma placa #111 com o porquê em #b4b4b4 e o
   link para onde resolver ("Pelada", "Sorteio") sublinhado em branco.
 - **Já jogadas:** `<ol>` de placas #111 (raio 10px, 8px entre elas): número da partida em Barlow 20px Giz, o

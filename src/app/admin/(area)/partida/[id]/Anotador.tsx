@@ -306,7 +306,7 @@ function CartaoDoJogador({
         {jogador.completando && (
           // Buraco na placa, como o COMPLETE no Sorteio: está no lugar de uma vaga só nesta partida.
           <p className="flex">
-            <span className="flex-none rounded-md bg-chao px-1.5 text-sm leading-5 whitespace-nowrap text-apagado baixa:leading-4">completando</span>
+            <span className="flex-none rounded-placa bg-chao px-1.5 text-sm leading-5 whitespace-nowrap text-apagado baixa:leading-4">completando</span>
           </p>
         )}
         <p className="text-sm text-meta tabular-nums baixa:leading-4">

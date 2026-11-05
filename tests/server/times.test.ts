@@ -294,6 +294,12 @@ describe('salvarTimesDefinitivos e timesDaPelada', () => {
     expect(await adicionarComplete(db, antigos[0].id, 3).catch((e) => e.motivo)).toBe('time_inexistente');
   });
 
+  it('COMPLETE que já não existe vira complete_inexistente (não time_inexistente)', async () => {
+    expect(await removerComplete(db, 999_999).catch((e) => e.motivo)).toBe('complete_inexistente');
+    expect(await mudarNotaComplete(db, 999_999, 3).catch((e) => e.motivo)).toBe('complete_inexistente');
+    expect(await preencherComplete(db, 999_999, 1).catch((e) => e.motivo)).toBe('complete_inexistente');
+  });
+
   it('guarda os COMPLETE de cada time', async () => {
     const peladaId = await novaPelada('2026-11-11');
     const ids = await criar(['A', 'B', 'C', 'D', 'E', 'F', 'G']);

@@ -24,6 +24,7 @@ export type MotivoTimes =
   | 'jogador_repetido'
   | 'jogador_inativo'
   | 'time_inexistente'
+  | 'complete_inexistente'
   | 'fora_do_time'
   | 'peladas_diferentes'
   | 'pedido_invalido';
@@ -39,6 +40,7 @@ const MENSAGENS: Record<MotivoTimes, string> = {
   jogador_repetido: 'O mesmo jogador está em dois times.',
   jogador_inativo: 'Tem jogador desativado ou que não existe. Recarregue a página.',
   time_inexistente: 'Esse time não existe mais. Recarregue a página.',
+  complete_inexistente: 'Essa vaga de COMPLETE não existe mais. Recarregue a página.',
   fora_do_time: 'Esse jogador já não está nesse time. Recarregue a página.',
   peladas_diferentes: 'Os dois times são de peladas diferentes.',
   pedido_invalido: 'Pedido inválido.',
@@ -239,7 +241,7 @@ async function travarTimeAtual(tx: Tx, timeId: number): Promise<number> {
 
 async function completeAtual(tx: Tx, completeId: number): Promise<{ id: number; timeId: number }> {
   const [c] = await tx.select({ id: timeCompletes.id, timeId: timeCompletes.timeId }).from(timeCompletes).where(eq(timeCompletes.id, completeId));
-  if (!c) throw new ErroTimes('time_inexistente');
+  if (!c) throw new ErroTimes('complete_inexistente');
   return c;
 }
 

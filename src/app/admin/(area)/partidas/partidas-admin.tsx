@@ -221,7 +221,7 @@ function ProximaPartida(p: Props) {
               <span className="mt-1 line-clamp-2 text-sm text-apagado">{t.jogadores.map((j) => j.nome).join(', ') || 'Ninguém.'}</span>
               {t.completes.length > 0 && (
                 // O COMPLETE é um buraco na placa, como no Sorteio.
-                <span className="mt-1.5 flex-none self-start rounded-md bg-chao px-1.5 text-sm leading-6 font-medium whitespace-nowrap text-apagado">
+                <span className="mt-1.5 flex-none self-start rounded-placa bg-chao px-1.5 text-sm leading-6 font-medium whitespace-nowrap text-apagado">
                   {t.completes.length === 1 ? 'COMPLETE' : `${t.completes.length} COMPLETE`}
                 </span>
               )}
@@ -311,6 +311,7 @@ function PassosDeQuemCompleta({
         const r = c.respostas[i];
         return i !== atual && v.lado === vaga.lado && r?.tipo === 'jogador' ? [r.jogador.nome] : [];
       })}
+      faltam={c.vagas.filter((v, i) => i !== atual && v.lado === vaga.lado && c.respostas[i] === undefined).length}
       jogaSemCom={jogaCom(vaga.lado, c.respostas.map((x, i) => (i === atual ? { tipo: 'sem' } : x)))}
       deFora={c.deFora.filter((j) => !ocupados.has(j.id))}
       corDe={(id) => corDe.get(id)}
