@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Ampulheta, Marca, Mais, SetaDireita } from '@/components/icones';
+import { CAMPO, PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import type { EstadoManual, ItemLista } from '@/domain/lista';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { adicionar, buscar, confirmarPor, mudarEstado, tirar, type EstadoEscolhido, type Resposta } from './acoes';
@@ -17,15 +18,6 @@ type Props = {
   foraDoPrazo: ItemLista[];
   vagas: number;
 };
-
-const PILULA =
-  'flex h-toque w-full items-center justify-center rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado';
-const PILULA_SEGUNDA =
-  'flex h-toque w-full items-center justify-center rounded-full bg-placa-alta text-linha font-semibold text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60 disabled:text-meta';
-const TEXTO =
-  'flex h-12 items-center justify-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta disabled:text-meta';
-const CAMPO =
-  'h-toque w-full rounded-placa bg-placa px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta';
 
 const OPCOES: { valor: EstadoEscolhido; rotulo: string; dica: string }[] = [
   { valor: 'automatico', rotulo: 'Automático', dica: 'Abre segunda 00:00 e fecha no fim do jogo.' },

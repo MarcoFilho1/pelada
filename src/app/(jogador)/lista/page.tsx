@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import { situacaoDoJogador, travaDoJogador, travaParaSair } from '@/domain/lista';
-import { aberturaLista } from '@/domain/tempo';
+import { aberturaLista, diaDaSemana, diaMes } from '@/domain/tempo';
 import { estadoDaSemana } from '@/server/presencas';
 import { lerSessaoJogador } from '@/server/sessao';
 import { Tela, Topo } from '@/components/topo';
@@ -11,20 +11,6 @@ import { sairDaConta } from './acoes';
 import { ListaJogador, type TravaTela } from './lista-jogador';
 
 export const metadata: Metadata = { title: 'Lista · Pelada' };
-
-const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-
-/** 'YYYY-MM-DD' → 'DD/MM'. */
-function diaMes(data: string): string {
-  const [, mes, dia] = data.split('-');
-  return `${dia}/${mes}`;
-}
-
-/** Dia da semana e data de um instante, no fuso de Recife (UTC-3). */
-function diaDaSemana(instante: Date): string {
-  const local = new Date(instante.getTime() - 3 * 60 * 60 * 1000);
-  return `${DIAS[local.getUTCDay()]}, ${diaMes(local.toISOString().slice(0, 10))}`;
-}
 
 export default async function ListaPage() {
   const db = getDb();

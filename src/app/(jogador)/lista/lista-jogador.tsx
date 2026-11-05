@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Ampulheta, Copiar, Marca } from '@/components/icones';
+import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import type { ItemLista, Situacao } from '@/domain/lista';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { naoVou, queroEntrar, vou, type Resposta } from './acoes';
@@ -22,13 +23,6 @@ type Props = {
   podeSair: boolean;
   texto: string;
 };
-
-const PILULA =
-  'flex h-toque w-full items-center justify-center gap-2 rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado';
-const PILULA_SEGUNDA =
-  'flex h-toque w-full items-center justify-center gap-2 rounded-full bg-placa-alta text-linha font-semibold text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60 disabled:text-meta';
-const TEXTO =
-  'flex h-12 items-center justify-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta disabled:text-meta';
 
 export function ListaJogador(p: Props) {
   useAutoRefresh(5000);
