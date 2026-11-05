@@ -398,13 +398,13 @@ describe('corrigirContagem', () => {
 });
 
 describe('partidaAoVivo', () => {
-  it('traz placar, lados com cores e números de cada jogador, cronômetro e o último lance', async () => {
+  it('traz placar, lados com cores e números de cada jogador, cronômetro e os lances em ordem', async () => {
     const c = await cenario();
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    await registrarLance(db, id, c.a1, 'gol');
-    await registrarLance(db, id, c.a2, 'assistencia');
-    await registrarLance(db, id, c.a1, 'gol');
-    const ultimo = await registrarLance(db, id, c.l1, 'gol');
+    const l1 = await registrarLance(db, id, c.a1, 'gol');
+    const l2 = await registrarLance(db, id, c.a2, 'assistencia');
+    const l3 = await registrarLance(db, id, c.a1, 'gol');
+    const l4 = await registrarLance(db, id, c.l1, 'gol');
 
     const v = await partidaAoVivo(db, id, depois(3 * MIN));
     expect(v).toEqual({
@@ -416,7 +416,12 @@ describe('partidaAoVivo', () => {
       placar: { A: 2, B: 1 },
       tempoRestanteMs: 5 * MIN,
       sugerirEncerrar: null,
-      ultimoLance: { id: ultimo, jogadorId: c.l1, tipo: 'gol' },
+      lances: [
+        { id: l1, jogadorId: c.a1, tipo: 'gol' },
+        { id: l2, jogadorId: c.a2, tipo: 'assistencia' },
+        { id: l3, jogadorId: c.a1, tipo: 'gol' },
+        { id: l4, jogadorId: c.l1, tipo: 'gol' },
+      ],
       lados: {
         A: {
           timeId: c.azul,
@@ -460,10 +465,10 @@ describe('partidaAoVivo', () => {
     });
   });
 
-  it('sem lances: último lance null; partida que não existe: null', async () => {
+  it('sem lances: lista vazia; partida que não existe: null', async () => {
     const c = await cenario();
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    expect((await partidaAoVivo(db, id, NOITE))!.ultimoLance).toBeNull();
+    expect((await partidaAoVivo(db, id, NOITE))!.lances).toEqual([]);
     expect(await partidaAoVivo(db, 999_999, NOITE)).toBeNull();
   });
 });

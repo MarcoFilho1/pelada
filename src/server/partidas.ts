@@ -253,6 +253,7 @@ export async function corrigirContagem(
   });
 }
 
+export type LanceDaPartida = { id: number; jogadorId: number; tipo: TipoLance };
 export type JogadorNaPartida = { id: number; nome: string; gols: number; assistencias: number };
 export type LadoAoVivo = { timeId: number; cor: Cor; jogadores: JogadorNaPartida[] };
 export type PartidaAoVivo = {
@@ -266,8 +267,11 @@ export type PartidaAoVivo = {
   tempoRestanteMs: number;
   /** Só para partida em andamento. */
   sugerirEncerrar: null | 'tres_gols' | 'tempo';
-  /** O que o Desfazer vai tirar ("Desfazer: gol do Pepe"); o id vai junto como `esperadoId`. */
-  ultimoLance: { id: number; jogadorId: number; tipo: TipoLance } | null;
+  /**
+   * Os lances em ordem (id crescente). O anotador refaz a conta com eles e os toques ainda em voo,
+   * e o último é o que o Desfazer tira ("Desfazer: gol de Pepe", com o id como `esperadoId`).
+   */
+  lances: LanceDaPartida[];
   lados: Record<Lado, LadoAoVivo>;
 };
 
@@ -311,7 +315,7 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     placar: pl,
     tempoRestanteMs: tempoRestanteMs(p.iniciadaEm, relogio),
     sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, p.iniciadaEm, now),
-    ultimoLance: ls.length ? ls[ls.length - 1] : null,
+    lances: ls,
     lados: { A: lado('A', p.timeAId), B: lado('B', p.timeBId) },
   };
 }
