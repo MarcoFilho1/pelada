@@ -37,6 +37,15 @@ export function diferencaMedia(times: TimeSorteado[]): number {
 }
 
 /**
+ * A manchete de equilíbrio: a diferença das somas quando os times têm o mesmo tamanho; com tamanhos
+ * diferentes (a soma seria injusta), a diferença das médias, "por jogador".
+ */
+export function rotuloDaDiferenca(times: TimeSorteado[]): string {
+  const igual = new Set(times.map((t) => t.jogadores.length)).size <= 1
+  return igual ? `Diferença: ${formatarNota(diferenca(times))}` : `Diferença: ${formatarNota(diferencaMedia(times))} por jogador`
+}
+
+/**
  * Sorteia times equilibrados por nota.
  * Custo = diferença entre a maior e a menor MÉDIA (com 4,3,3,3 a soma seria injusta).
  * A tolerância "melhor custo + 0,5" vale 0,5 em soma para times do mesmo tamanho;

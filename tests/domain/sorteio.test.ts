@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diferenca, diferencaMedia, sortearTimes, type JogadorNota } from '@/domain/sorteio'
+import { diferenca, diferencaMedia, rotuloDaDiferenca, sortearTimes, type JogadorNota } from '@/domain/sorteio'
 import { criarRng } from '../helpers/rng'
 
 function jogadores(notas: number[]): JogadorNota[] {
@@ -98,5 +98,18 @@ describe('diferenca', () => {
         { jogadores: [], soma: 7.5 },
       ]),
     ).toBe(2.5)
+  })
+})
+
+describe('rotuloDaDiferenca', () => {
+  const time = (notas: number[]) => ({ jogadores: jogadores(notas), soma: notas.reduce((a, b) => a + b, 0) })
+
+  it('tamanhos iguais: diferença das somas', () => {
+    expect(rotuloDaDiferenca([time([4, 3]), time([3, 2.5])])).toBe('Diferença: 1,5')
+  })
+
+  it('tamanhos diferentes: diferença das médias, uma casa, por jogador', () => {
+    // médias 3,5 e 3,0 (somas 10,5 x 6): a soma diria 4,5
+    expect(rotuloDaDiferenca([time([4, 3.5, 3]), time([3, 3])])).toBe('Diferença: 0,5 por jogador')
   })
 })
