@@ -8,6 +8,7 @@ import { SetaEsquerda } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { DURACAO_MS, GOLS_PARA_VENCER, relogio, type Lado, type TipoLance } from '@/domain/partida';
+import { bipar, destravarAudio } from '@/lib/bipe';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { JogadorNaPartida } from '@/server/partidas';
 import { anotar, desfazer, encerrar } from './acoes';
@@ -77,14 +78,17 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         : null;
   const chaveDoAviso = sugestao && `${sugestao}:${placar.A}x${placar.B}`;
   const mostrarSugestao = chaveDoAviso !== null && chaveDoAviso !== dispensado;
+  useBipeNaSugestao(sugestao === 'tres_gols' ? chaveDoAviso : null);
 
   function tocar(j: JogadorNaPartida, tipo: TipoLance) {
+    destravarAudio();
     navigator.vibrate?.(30);
     setErroAoEncerrar(null);
     fila.tocar(j.id, tipo);
   }
 
   function desfazerUltimo() {
+    destravarAudio();
     navigator.vibrate?.(30);
     setErroAoEncerrar(null);
     fila.desfazer();
@@ -379,13 +383,25 @@ function useAgoraDoServidor(lidoEmInicial: number): number | null {
   return agora;
 }
 
-/** Vibração longa quando o cronômetro chega a 0:00 com a tela aberta (uma vez). */
+/** Vibração longa e bipe quando o cronômetro chega a 0:00 com a tela aberta (uma vez). */
 function useVibrarNoFim(acabou: boolean) {
   const antes = useRef(acabou);
   useEffect(() => {
-    if (acabou && !antes.current) navigator.vibrate?.([200, 100, 200]);
+    if (acabou && !antes.current) {
+      navigator.vibrate?.([200, 100, 200]);
+      bipar();
+    }
     antes.current = acabou;
   }, [acabou]);
+}
+
+/** Bipe quando o aviso do 3º gol aparece (cada placar novo com 3 gols, uma vez). */
+function useBipeNaSugestao(chave: string | null) {
+  const antes = useRef(chave);
+  useEffect(() => {
+    if (chave && chave !== antes.current) bipar();
+    antes.current = chave;
+  }, [chave]);
 }
 
 /** Wake Lock: a tela não apaga enquanto a partida está aberta. O navegador solta ao trocar de aba; pede de novo na volta. */
