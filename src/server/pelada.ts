@@ -77,10 +77,14 @@ export async function peladaExistenteDaSemana(db: DB, now: Date): Promise<Pelada
 
 /**
  * A pelada da noite, para sorteio e partidas: a de hoje (Recife) ou, fora da quarta, a última
- * até hoje. Nunca uma futura. Não usa `proximaQuarta`, que vira para a semana seguinte às 22:30.
+ * até hoje. Nunca uma futura. Na quarta, se a de hoje ainda não existe (ninguém abriu a lista),
+ * cria por `obterPeladaDaSemana`, com os mensalistas, em vez de mostrar a da semana passada.
+ * Depois das 22:30 não cria: aí `proximaQuarta` já é a semana seguinte.
  */
 export async function peladaDoDia(db: DB, now: Date): Promise<Pelada | null> {
-  const [p] = await db.select().from(peladas).where(lte(peladas.data, dataDe(now))).orderBy(desc(peladas.data)).limit(1);
+  const hoje = dataDe(now);
+  const [p] = await db.select().from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1);
+  if (p?.data !== hoje && proximaQuarta(now) === hoje) return obterPeladaDaSemana(db, now);
   return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
 }
 
