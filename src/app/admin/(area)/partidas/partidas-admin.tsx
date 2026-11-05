@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useTransition, type ReactNode } from 'react';
 import { Colete, NOME_DA_COR } from '@/components/colete';
-import { PILULA, TEXTO } from '@/components/pilula';
+import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import type { Placar, Resultado } from '@/domain/partida';
 import type { Cor } from '@/domain/sorteio';
@@ -25,7 +25,11 @@ type Props = {
   fila: number[];
   emAndamento: { id: number; corA: Cor; corB: Cor; placar: Placar } | null;
   historico: Jogada[];
+  /** Partidas abertas de peladas anteriores ('DD/MM'): ninguém encerrou. */
+  esquecidas: Esquecida[];
 };
+
+type Esquecida = { id: number; data: string; corA: Cor; corB: Cor; placar: Placar };
 
 /** A noite das partidas: a que está rolando, a próxima (sugerida pela fila, escolha livre) e as já jogadas. */
 export function PartidasAdmin(p: Props) {
@@ -37,6 +41,8 @@ export function PartidasAdmin(p: Props) {
         Quarta, {p.data} · {p.hoje ? 'Hoje' : 'A última pelada'}
         {p.cancelada && <span className="font-medium text-tinta"> · Cancelada</span>}
       </p>
+
+      <Esquecidas partidas={p.esquecidas} />
 
       {p.emAndamento ? (
         <EmAndamento partida={p.emAndamento} />
@@ -64,6 +70,25 @@ export function PartidasAdmin(p: Props) {
 
       <Historico jogadas={p.historico} />
     </main>
+  );
+}
+
+/** Partida de outra noite que ficou aberta: "Partida de 04/11 ficou aberta" e o caminho para encerrar. */
+export function Esquecidas({ partidas }: { partidas: Esquecida[] }) {
+  if (!partidas.length) return null;
+  return (
+    <section aria-label="Partidas que ficaram abertas" className="mt-6 flex flex-col gap-2">
+      {partidas.map((e) => (
+        <div key={e.id} className="rounded-placa bg-placa p-4">
+          <h2 className="text-base font-medium text-tinta">Partida de {e.data} ficou aberta</h2>
+          <Confronto corA={e.corA} corB={e.corB} placar={e.placar} className="mt-1" />
+          <p className="mt-1 text-base text-apagado">Ela só conta no ranking depois de encerrada.</p>
+          <Link href={`/admin/partida/${e.id}`} className={`mt-3 ${PILULA_SEGUNDA}`}>
+            Abrir anotador
+          </Link>
+        </div>
+      ))}
+    </section>
   );
 }
 

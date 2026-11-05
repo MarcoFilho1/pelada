@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, timeJogadores, times } from '@/db/schema';
 import {
@@ -328,6 +328,46 @@ export async function partidaEmAndamento(db: DB, peladaId: number): Promise<numb
     .where(and(eq(partidas.peladaId, peladaId), isNull(partidas.encerradaEm)))
     .limit(1);
   return p?.id ?? null;
+}
+
+export type PartidaEsquecida = { id: number; data: string; corA: Cor; corB: Cor; placar: Placar };
+
+/**
+ * Partidas que ficaram abertas em outras peladas (ninguém encerrou na noite delas). A tela da
+ * noite mostra essas para o admin abrir o anotador e encerrar; senão sumiriam e nunca contariam.
+ * `peladaAtualId` null (não há pelada até hoje): todas as abertas.
+ */
+export async function partidasAbertasDeOutrasPeladas(db: DB, peladaAtualId: number | null): Promise<PartidaEsquecida[]> {
+  const abertas = await db
+    .select({ id: partidas.id, data: peladas.data, timeA: partidas.timeAId, timeB: partidas.timeBId })
+    .from(partidas)
+    .innerJoin(peladas, eq(peladas.id, partidas.peladaId))
+    .where(and(isNull(partidas.encerradaEm), peladaAtualId === null ? undefined : ne(partidas.peladaId, peladaAtualId)))
+    .orderBy(asc(peladas.data), asc(partidas.id));
+  if (!abertas.length) return [];
+  const ids = abertas.map((p) => p.id);
+  const [cores, elenco, ls] = await Promise.all([
+    db
+      .select({ id: times.id, cor: times.cor })
+      .from(times)
+      .where(inArray(times.id, abertas.flatMap((p) => [p.timeA, p.timeB]))),
+    db.select().from(partidaJogadores).where(inArray(partidaJogadores.partidaId, ids)),
+    db
+      .select({ partidaId: lances.partidaId, jogadorId: lances.jogadorId, tipo: lances.tipo })
+      .from(lances)
+      .where(inArray(lances.partidaId, ids)),
+  ]);
+  const corDe = new Map(cores.map((t) => [t.id, t.cor]));
+  return abertas.map((p) => ({
+    id: p.id,
+    data: p.data,
+    corA: corDe.get(p.timeA)!,
+    corB: corDe.get(p.timeB)!,
+    placar: placar(
+      ls.filter((l) => l.partidaId === p.id),
+      new Map(elenco.filter((j) => j.partidaId === p.id).map((j) => [j.jogadorId, j.lado])),
+    ),
+  }));
 }
 
 export type PartidaDoHistorico = {

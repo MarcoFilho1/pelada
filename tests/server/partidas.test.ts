@@ -14,8 +14,10 @@ import {
   iniciarPartida,
   partidaAoVivo,
   partidaEmAndamento,
+  partidasAbertasDeOutrasPeladas,
   registrarLance,
 } from '@/server/partidas';
+import { definirEstadoManual, ErroLista } from '@/server/pelada';
 import { moverJogador, salvarTimesDefinitivos, timesDaPelada } from '@/server/times';
 import { createTestDb } from '../helpers/db';
 
@@ -535,5 +537,50 @@ describe('noite: partidaEmAndamento, historicoDaPelada e filaDeTimes', () => {
     const peladaId = await novaPelada(HOJE);
     expect(await filaDeTimes(db, peladaId)).toEqual([]);
     expect(await historicoDaPelada(db, peladaId)).toEqual([]);
+  });
+});
+
+describe('partidasAbertasDeOutrasPeladas (Parte 5)', () => {
+  it('acha partida que ninguém encerrou numa pelada anterior, com data, cores e placar', async () => {
+    const semanaPassada = await novaPelada('2026-11-04');
+    const [x1, x2, y1] = await criar(['Xavier', 'Yuri', 'Zeca']);
+    await salvarTimesDefinitivos(db, semanaPassada, [[x1, x2], [y1]]);
+    const [t1, t2] = (await timesDaPelada(db, semanaPassada)).map((t) => t.id);
+    const quarta = new Date('2026-11-04T21:00:00-03:00');
+    const aberta = await iniciarPartida(db, semanaPassada, t1, t2, quarta);
+    await registrarLance(db, aberta, x1, 'gol');
+    const encerrada = await iniciarPartida(db, semanaPassada, t2, t1, quarta).catch(() => null);
+    expect(encerrada).toBeNull(); // só uma em andamento por pelada
+
+    const c = await cenario();
+    const rolandoHoje = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+
+    expect(await partidasAbertasDeOutrasPeladas(db, c.peladaId)).toEqual([
+      { id: aberta, data: '2026-11-04', corA: 'azul', corB: 'laranja', placar: { A: 1, B: 0 } },
+    ]);
+    // Sem pelada atual (nenhuma até hoje): todas as abertas.
+    expect((await partidasAbertasDeOutrasPeladas(db, null)).map((p) => p.id).sort()).toEqual([aberta, rolandoHoje].sort());
+
+    await encerrarPartida(db, aberta, depois(MIN));
+    expect(await partidasAbertasDeOutrasPeladas(db, c.peladaId)).toEqual([]);
+  });
+});
+
+describe('cancelar pelada com partida (Parte 5, P5-c)', () => {
+  it('recusa cancelar quando a pelada já tem partida; os outros estados continuam valendo', async () => {
+    const c = await cenario();
+    await definirEstadoManual(db, c.peladaId, 'cancelada'); // sem partida: pode
+    await definirEstadoManual(db, c.peladaId, null);
+    await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+
+    const erro = await definirEstadoManual(db, c.peladaId, 'cancelada').catch((e) => e);
+    expect(erro).toBeInstanceOf(ErroLista);
+    expect(erro.motivo).toBe('ja_tem_partida');
+    expect(erro.message).toBe('Já tem partida jogada nessa pelada; não dá pra cancelar.');
+    const [p] = await db.select().from(peladas).where(eq(peladas.id, c.peladaId));
+    expect(p.estadoManual).toBeNull();
+
+    await definirEstadoManual(db, c.peladaId, 'fechada');
+    await definirEstadoManual(db, c.peladaId, null);
   });
 });
