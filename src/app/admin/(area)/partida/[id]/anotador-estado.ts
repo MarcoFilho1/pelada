@@ -83,7 +83,10 @@ export function tempoNaTela(estado: EstadoDaPartida, agora: number | null): numb
   return tempoRestanteMs(new Date(estado.iniciadaEm), new Date(agora));
 }
 
-export type Instantaneo = Vista & { estado: EstadoDaPartida; aviso: Aviso | null };
+/** Uma escrita sem resposta há mais que isto vira o aviso "Salvando há mais de 10 s". */
+export const ESCRITA_LENTA_MS = 10_000;
+
+export type Instantaneo = Vista & { estado: EstadoDaPartida; aviso: Aviso | null; /** Alguma escrita na fila há mais de 10 s. */ lento: boolean };
 
 /**
  * A fila do anotador. A tela lê `instantaneo()` (com `useSyncExternalStore`) e chama `tocar`,
@@ -100,6 +103,8 @@ export class Anotacoes {
   private chave = 0;
   private avisos = 0;
   private aviso: Aviso | null = null;
+  private relogios = new Map<number, ReturnType<typeof setTimeout>>();
+  private lentas = new Set<number>();
   private cauda: Promise<void> = Promise.resolve();
   private ouvintes = new Set<() => void>();
   private atual: Instantaneo;
@@ -211,10 +216,33 @@ export class Anotacoes {
   }
 
   private montar(): Instantaneo {
-    return { ...derivar(this.base, this.escritas), estado: this.base, aviso: this.aviso };
+    return { ...derivar(this.base, this.escritas), estado: this.base, aviso: this.aviso, lento: this.lentas.size > 0 };
+  }
+
+  /** Um relógio de 10 s por escrita na fila; escrita que saiu da fila leva o relógio (e o aviso) embora. */
+  private vigiarLentidao() {
+    const naFila = new Set(this.escritas.map((e) => e.chave));
+    for (const [chave, t] of this.relogios) {
+      if (naFila.has(chave)) continue;
+      clearTimeout(t);
+      this.relogios.delete(chave);
+      this.lentas.delete(chave);
+    }
+    for (const chave of naFila) {
+      if (this.relogios.has(chave)) continue;
+      this.relogios.set(
+        chave,
+        setTimeout(() => {
+          if (!this.relogios.has(chave)) return;
+          this.lentas.add(chave);
+          this.emitir();
+        }, ESCRITA_LENTA_MS),
+      );
+    }
   }
 
   private emitir() {
+    this.vigiarLentidao();
     this.atual = this.montar();
     for (const o of this.ouvintes) o();
   }

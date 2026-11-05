@@ -1,5 +1,5 @@
 import { asc, eq } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, lances, peladas } from '@/db/schema';
 import type { TipoLance } from '@/domain/partida';
@@ -153,6 +153,44 @@ describe('fila de escritas (T12-1)', () => {
     expect(gols(b, pepe)).toBe(0);
     expect(b.instantaneo().aviso).toBeNull();
     expect(await lancesNoBanco()).toEqual([]);
+  });
+
+  describe('escrita parada há mais de 10 s', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('liga o aviso aos 10 s com a escrita ainda na fila e desliga quando a fila esvazia', async () => {
+      const real = escritorReal();
+      const p = portao();
+      const a = new Anotacoes(await estado(), {
+        ...real,
+        anotar: async (j, t) => {
+          await p.aberto;
+          return real.anotar(j, t);
+        },
+      });
+      vi.useFakeTimers();
+      a.tocar(pepe, 'gol');
+      expect(a.instantaneo().lento).toBe(false);
+      vi.advanceTimersByTime(9_999);
+      expect(a.instantaneo().lento).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(a.instantaneo().lento).toBe(true);
+      vi.useRealTimers();
+      p.abrir();
+      await a.ocioso();
+      expect(a.instantaneo().lento).toBe(false);
+    });
+
+    it('resposta antes dos 10 s: o aviso nunca liga', async () => {
+      const a = new Anotacoes(await estado(), escritorReal());
+      vi.useFakeTimers();
+      a.tocar(pepe, 'gol');
+      vi.useRealTimers();
+      await a.ocioso();
+      vi.useFakeTimers();
+      vi.advanceTimersByTime(30_000);
+      expect(a.instantaneo().lento).toBe(false);
+    });
   });
 
   it('servidor recusa o toque: o número volta, os Desfazer daquele toque caem e o erro aparece', async () => {

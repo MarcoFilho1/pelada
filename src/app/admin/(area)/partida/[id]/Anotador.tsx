@@ -193,6 +193,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
               mostrarSugestao || confirmando ? 'rounded-t-cartao bg-placa shadow-[0_-12px_32px_rgba(0,0,0,0.7)]' : 'bg-chao'
             }`}
           >
+            {!textoDoErro && v.lento && (
+              <p role="status" className="mb-3 text-base font-medium text-apagado">
+                Salvando há mais de 10 s — confira a conexão.
+              </p>
+            )}
             {textoDoErro && (
               <p role="alert" className="mb-3 text-base font-medium text-erro">
                 {textoDoErro}
