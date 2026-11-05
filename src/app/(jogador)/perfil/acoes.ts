@@ -28,11 +28,20 @@ export async function trocarMeuPin(atual: unknown, novo: unknown): Promise<Respo
         ? { ok: false, erro: 'bloqueado', bloqueadoAte: r.bloqueadoAte.toISOString() }
         : { ok: false, erro: r.motivo };
     }
-    await criarSessaoJogador(db, sessao.jogadorId);
   } catch (e) {
     console.error(e);
     return { ok: false, erro: 'falha' };
   }
+  // A troca já valeu e derrubou as sessões. Se só o cookie novo falhar, dizer "falha" faria a pessoa
+  // tentar de novo com o PIN antigo (que já não vale): leva ao login com o aviso.
+  let cookieNovo = true;
+  try {
+    await criarSessaoJogador(db, sessao.jogadorId);
+  } catch (e) {
+    console.error(e);
+    cookieNovo = false;
+  }
+  if (!cookieNovo) redirect('/entrar?aviso=pin_trocado'); // fora do try: redirect lança
   return { ok: true };
 }
 

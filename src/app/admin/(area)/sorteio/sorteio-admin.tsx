@@ -6,7 +6,7 @@ import { Colete, NOME_DA_COR } from '@/components/colete';
 import { Marca, Mais } from '@/components/icones';
 import { CAMPO, PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { normalizarNome } from '@/domain/nome';
-import { CORES, diferenca, diferencaMedia, formatarNota, type Cor, type JogadorNota } from '@/domain/sorteio';
+import { CORES, formatarNota, rotuloDaDiferenca, type Cor, type JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { TimeDaPelada } from '@/server/times';
 import { cadastrarRapido, marcarDefinitivo, mover, sortear } from './acoes';
@@ -74,7 +74,7 @@ type Selecao = { time: number; id: number };
 
 function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   const [cadastrados, setCadastrados] = useState<JogadorNota[]>([]);
-  const todos = useMemo(() => [...p.ativos, ...cadastrados], [p.ativos, cadastrados]);
+  const todos = useMemo(() => [...p.ativos, ...cadastrados.filter((c) => !p.ativos.some((a) => a.id === c.id))], [p.ativos, cadastrados]);
   const porId = useMemo(() => new Map(todos.map((j) => [j.id, j])), [todos]);
   const [linhas, setLinhas] = useState<number[]>(() => [...p.marcados, ...p.sugeridos]);
   const [marcados, setMarcados] = useState<Set<number>>(() => new Set(p.marcados));
@@ -415,22 +415,16 @@ function Definitivo(p: Props & { onRefazer: () => void }) {
 // ---- Peças -------------------------------------------------------------------------------
 
 /**
- * A diferença de força dita com todas as letras (maior soma menos a menor), o que dá para fazer
+ * A diferença de força dita com todas as letras (soma, ou média por jogador se os tamanhos diferem), o que dá para fazer
  * nos cartões e, à direita, uma ação de texto opcional.
  */
 function Equilibrio({ times, dica, acao }: { times: { jogadores: JogadorNota[]; soma: number }[]; dica: string; acao?: ReactNode }) {
-  const tamanhos = new Set(times.map((t) => t.jogadores.length));
   return (
     <div className="mt-5">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-placa text-subtitulo font-semibold tabular-nums">Diferença: {formatarNota(diferenca(times))}</p>
+        <p className="font-placa text-subtitulo font-semibold tabular-nums">{rotuloDaDiferenca(times)}</p>
         {acao}
       </div>
-      {tamanhos.size > 1 && (
-        <p className="text-base text-apagado">
-          Times de tamanhos diferentes: por jogador, a diferença é {diferencaMedia(times).toFixed(2).replace('.', ',')}.
-        </p>
-      )}
       <p className="mt-1 text-base text-meta">{dica}</p>
     </div>
   );

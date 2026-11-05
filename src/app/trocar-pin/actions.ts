@@ -14,13 +14,22 @@ export async function salvarPin(novoPin: string): Promise<{ erro: 'pin_invalido'
   if (typeof novoPin !== 'string' || !pinNovoValido(novoPin)) return { erro: 'pin_invalido' };
   try {
     await trocarPin(db, sessao.jogadorId, novoPin);
-    // trocarPin subiu a versão de sessão (derruba os outros aparelhos); este recebe um
-    // cookie novo com a versão atual e continua logado, já sem precisar trocar
-    await criarSessaoJogador(db, sessao.jogadorId);
   } catch (e) {
     console.error(e);
     return { erro: 'falha' };
   }
+  // trocarPin subiu a versão de sessão (derruba os outros aparelhos); este recebe um
+  // cookie novo com a versão atual e continua logado, já sem precisar trocar. Se só o cookie
+  // falhar, a troca já valeu: dizer "falha" faria a pessoa criar o PIN de novo à toa (e o
+  // antigo já não vale), então vai ao login com o aviso.
+  let cookieNovo = true;
+  try {
+    await criarSessaoJogador(db, sessao.jogadorId);
+  } catch (e) {
+    console.error(e);
+    cookieNovo = false;
+  }
+  if (!cookieNovo) redirect('/entrar?aviso=pin_trocado'); // fora do try: redirect lança
   redirect('/lista');
 }
 

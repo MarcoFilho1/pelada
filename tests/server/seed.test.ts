@@ -19,4 +19,12 @@ describe('semearAdmin', () => {
     expect(await db.select().from(admins)).toHaveLength(1);
     expect((await entrarAdmin(db, 'marco', 'segredo-longo')).ok).toBe(true);
   });
+
+  it('com admin já criado, rodar de novo com senha curta ou sem variáveis é um no-op, não um erro', async () => {
+    const db = await createTestDb();
+    await semearAdmin(db, { ADMIN_USUARIO: 'marco', ADMIN_SENHA: 'segredo-longo' });
+    expect(await semearAdmin(db, { ADMIN_USUARIO: 'marco', ADMIN_SENHA: 'curta' })).toBe('ja_existe');
+    expect(await semearAdmin(db, {})).toBe('ja_existe');
+    expect(await db.select().from(admins)).toHaveLength(1);
+  });
 });

@@ -9,4 +9,6 @@ export const E2E = {
   senha: 'senha-do-e2e-123',
   azul: ['Pepe', 'Rafa', 'Tonho', 'Zé'],
   laranja: ['Biel', 'Duda', 'Igor', 'Lucas'],
+  // Jogadores de PIN padrão (1234) que cada teste de jogador usa só para si.
+  novatos: { lista: 'Bruno Lista', perfil: 'Carla Perfil', ranking: 'Diego Ranking' },
 } as const;

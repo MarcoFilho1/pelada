@@ -52,8 +52,35 @@ test('anotador: inicia, anota, desfaz, avisa no 3º gol, encerra e entra no hist
   await expect(golsAzul).toHaveText(/1$/);
   await expect(page.getByRole('button', { name: `Desfazer: gol de ${pepe}` })).toBeVisible();
 
-  // Mais dois gols → 3×0 e o aviso de encerrar, sem encerrar sozinho.
+  // Servidor lento (as escritas demoram 11,5 s): a faixa "Salvando há mais de 10 s" aparece, pega o
+  // toque sem anotar nada, e a última linha da lista continua ao alcance (rolando). 360×640, o pior caso.
+  let lento = true;
+  await page.route('**/*', async (route) => {
+    if (lento && route.request().method() === 'POST') await new Promise((r) => setTimeout(r, 11_500));
+    await route.continue();
+  });
+  await page.setViewportSize({ width: 360, height: 640 });
   await page.getByRole('button', { name: `GOL de ${rafa}` }).click();
+  await expect(golsAzul).toHaveText(/2$/); // conta na hora, antes da resposta
+  const faixa = page.getByRole('status').filter({ hasText: 'Salvando há mais de 10 s' });
+  await expect(faixa).toBeVisible({ timeout: 15_000 });
+  const caixa = (await faixa.boundingBox())!;
+  const noMeio = { x: caixa.x + caixa.width / 2, y: caixa.y + caixa.height / 2 };
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button, [role="status"]')?.getAttribute('role'), noMeio)).toBe('status');
+  await page.mouse.click(noMeio.x, noMeio.y); // tocar na faixa não anota (nem abaixo dela)
+  const alcance = await page.evaluate((topoDaFaixa) => {
+    const lista = document.querySelector('main .overflow-y-auto')!;
+    lista.scrollTop = lista.scrollHeight;
+    const botoes = [...document.querySelectorAll('main li button')].map((b) => b.getBoundingClientRect().bottom);
+    return Math.max(...botoes) <= topoDaFaixa;
+  }, caixa.y);
+  expect(alcance, 'última linha acima da faixa depois de rolar').toBe(true);
+  lento = false;
+  await expect(faixa).toBeHidden({ timeout: 20_000 });
+  await expect(golsAzul).toHaveText(/2$/); // o toque na faixa não virou lance
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // Mais um gol → 3×0 e o aviso de encerrar, sem encerrar sozinho.
   await page.getByRole('button', { name: `GOL de ${pepe}` }).click();
   await expect(golsAzul).toHaveText(/3$/);
   await expect(page.getByText('Azul venceu 3×0 — encerrar?')).toBeVisible();

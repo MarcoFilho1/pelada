@@ -1,5 +1,5 @@
 import { asc, eq } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, lances, peladas } from '@/db/schema';
 import type { TipoLance } from '@/domain/partida';
@@ -47,8 +47,8 @@ function escritorReal(): Escritor {
       return { ok: true, estado: await estado(), lanceId };
     },
     async desfazer(esperadoId: number) {
-      await desfazerUltimo(db, partidaId, esperadoId);
-      return { ok: true, estado: await estado() };
+      const apagado = await desfazerUltimo(db, partidaId, esperadoId);
+      return { ok: true, estado: await estado(), desfeito: apagado !== null };
     },
   };
 }
@@ -127,6 +127,161 @@ describe('fila de escritas (T12-1)', () => {
     expect(a.instantaneo().aviso).toMatchObject({ tipo: 'erro' });
   });
 
+  it('Desfazer de um lance que o outro admin já desfez: nada some a mais e não avisa', async () => {
+    await registrarLance(db, partidaId, pepe, 'gol');
+    const a = new Anotacoes(await estado(), escritorReal()); // a tela mostra o gol do Pepe
+    await desfazerUltimo(db, partidaId); // o outro admin desfaz antes
+    a.desfazer();
+    await a.ocioso();
+    expect(a.instantaneo().aviso).toBeNull();
+    expect(gols(a, pepe)).toBe(0);
+  });
+
+  it('toque gravou mas a leitura depois falhou (estado null): conta como sucesso, sem reverter nem aviso', async () => {
+    const real = escritorReal();
+    const a = new Anotacoes(await estado(), {
+      ...real,
+      anotar: async (j, t) => {
+        const r = await real.anotar(j, t);
+        return r.ok ? { ok: true, estado: null, lanceId: r.lanceId } : r;
+      },
+    });
+    a.tocar(pepe, 'gol');
+    await a.ocioso();
+    expect(gols(a, pepe)).toBe(1);
+    expect(a.instantaneo().aviso).toBeNull();
+    // O Desfazer logo depois usa o id do lance e também aceita estado null.
+    const b = new Anotacoes(a.instantaneo().estado, {
+      ...real,
+      desfazer: async (id) => {
+        const r = await real.desfazer(id);
+        return r.ok ? { ok: true, estado: null, desfeito: r.desfeito } : r;
+      },
+    });
+    expect(b.desfazer()).toBe(true);
+    await b.ocioso();
+    expect(gols(b, pepe)).toBe(0);
+    expect(b.instantaneo().aviso).toBeNull();
+    expect(await lancesNoBanco()).toEqual([]);
+  });
+
+  describe('resposta sem leitura (estado null) e páginas antigas', () => {
+    const escritorNulo = (real: Escritor, gate?: Promise<void>): Escritor => ({
+      anotar: async (j, t) => {
+        await gate;
+        const r = await real.anotar(j, t);
+        return r.ok ? { ok: true, estado: null, lanceId: r.lanceId } : r;
+      },
+      desfazer: async (id) => {
+        await gate;
+        const r = await real.desfazer(id);
+        return r.ok ? { ok: true, estado: null, desfeito: r.desfeito } : r;
+      },
+    });
+    const semLance = (e: EstadoDaPartida, mais: number): EstadoDaPartida => ({ ...e, lidoEm: e.lidoEm + mais });
+
+    it('leitura da página sem o lance chegou durante a fila: depois da resposta null o gol continua contado', async () => {
+      const p = portao();
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal(), p.aberto));
+      a.tocar(pepe, 'gol');
+      a.receberDaPagina(semLance(inicial, 1000)); // leitura que ainda não tinha o toque
+      p.abrir();
+      await a.ocioso();
+      expect(gols(a, pepe)).toBe(1);
+    });
+
+    it('refresh de 5 s que começou antes do commit e chega depois da resposta null: não derruba o gol', async () => {
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.tocar(pepe, 'gol');
+      await a.ocioso();
+      a.receberDaPagina(semLance(inicial, 1000));
+      expect(gols(a, pepe)).toBe(1);
+      // Uma página que já traz o lance concorda: entra e libera a base.
+      await registrarLance(db, partidaId, rafa, 'gol');
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 2000 });
+      expect(gols(a, pepe)).toBe(1);
+      expect(gols(a, rafa)).toBe(1);
+    });
+
+    it('Desfazer com resposta null: página antiga que ainda tem o lance não o traz de volta', async () => {
+      await registrarLance(db, partidaId, pepe, 'gol');
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.desfazer();
+      await a.ocioso();
+      expect(gols(a, pepe)).toBe(0);
+      a.receberDaPagina({ ...inicial, lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(0);
+    });
+
+    it('Desfazer recusado pelo servidor com resposta null: não marca o lance como desfeito e avisa', async () => {
+      await registrarLance(db, partidaId, pepe, 'gol');
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      await registrarLance(db, partidaId, biel, 'gol'); // o outro admin anotou depois: o servidor não desfaz
+      a.desfazer();
+      await a.ocioso();
+      expect(a.instantaneo().aviso?.texto).toMatch(/Não deu para desfazer/);
+      expect(gols(a, pepe)).toBe(1);
+      // A página que traz os dois lances não pode ser recusada por um "desfeito" que nunca houve.
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(1);
+      expect(gols(a, biel)).toBe(1);
+    });
+
+    it('a trava expira: duas páginas seguidas recusadas limpam as listas e a página entra', async () => {
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.tocar(pepe, 'gol');
+      await a.ocioso();
+      await db.delete(lances).where(eq(lances.partidaId, partidaId)); // o lance sumiu do servidor por outro caminho
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(1); // 1ª recusa: ainda pode ser leitura anterior ao commit
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 2000 });
+      expect(gols(a, pepe)).toBe(0); // 2ª recusa: a trava expira e a página vale
+    });
+  });
+
+  describe('escrita parada há mais de 10 s', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('liga o aviso aos 10 s com a escrita ainda na fila e desliga quando a fila esvazia', async () => {
+      const real = escritorReal();
+      const p = portao();
+      const a = new Anotacoes(await estado(), {
+        ...real,
+        anotar: async (j, t) => {
+          await p.aberto;
+          return real.anotar(j, t);
+        },
+      });
+      vi.useFakeTimers();
+      a.tocar(pepe, 'gol');
+      expect(a.instantaneo().lento).toBe(false);
+      vi.advanceTimersByTime(9_999);
+      expect(a.instantaneo().lento).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(a.instantaneo().lento).toBe(true);
+      vi.useRealTimers();
+      p.abrir();
+      await a.ocioso();
+      expect(a.instantaneo().lento).toBe(false);
+    });
+
+    it('resposta antes dos 10 s: o aviso nunca liga', async () => {
+      // Um relógio falso só, do começo ao fim (só os timers; as promessas seguem reais).
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const a = new Anotacoes(await estado(), escritorReal());
+      a.tocar(pepe, 'gol');
+      await a.ocioso();
+      expect(vi.getTimerCount()).toBe(0); // o relógio da escrita saiu com ela da fila
+      vi.advanceTimersByTime(30_000);
+      expect(a.instantaneo().lento).toBe(false);
+    });
+  });
+
   it('servidor recusa o toque: o número volta, os Desfazer daquele toque caem e o erro aparece', async () => {
     const real = escritorReal();
     const a = new Anotacoes(await estado(), {
@@ -160,6 +315,34 @@ describe('fila de escritas (T12-1)', () => {
     expect(await lancesNoBanco()).toEqual([{ jogadorId: rafa, tipo: 'gol' }]);
     expect(a.instantaneo().placar).toEqual({ A: 1, B: 0 });
     expect(a.instantaneo().aviso).toMatchObject({ tipo: 'erro' });
+  });
+
+  it('a ação grava e depois lança (resposta perdida): não manda tocar de novo, pede recarga e a página traz o gol uma vez', async () => {
+    const real = escritorReal();
+    const inicial = await estado();
+    let recargas = 0;
+    const a = new Anotacoes(
+      inicial,
+      {
+        ...real,
+        anotar: async (j, t) => {
+          await real.anotar(j, t); // chegou ao servidor e gravou
+          throw new Error('rede caiu antes da resposta');
+        },
+      },
+      () => recargas++,
+    );
+    a.tocar(pepe, 'gol');
+    await a.ocioso();
+    const aviso = a.instantaneo().aviso;
+    expect(aviso?.texto).toBeDefined();
+    expect(aviso?.texto).not.toMatch(/tente de novo/i);
+    expect(aviso?.texto).toMatch(/confira o placar/i);
+    expect(recargas).toBe(1);
+    // A leitura seguinte da página já traz o gol: conta uma vez só.
+    a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+    expect(gols(a, pepe)).toBe(1);
+    expect(await lancesNoBanco()).toEqual([{ jogadorId: pepe, tipo: 'gol' }]);
   });
 });
 

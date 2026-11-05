@@ -34,10 +34,18 @@ export async function trocarMinhaSenha(_antes: EstadoForm, form: FormData): Prom
   const db = getDb();
   try {
     await trocarSenhaAdmin(db, adminId, String(form.get('atual') ?? ''), String(form.get('nova') ?? ''));
-    // A versão subiu e derrubou todos os aparelhos; este recebe cookie novo e segue logado.
-    await criarSessaoAdmin(db, adminId);
   } catch (e) {
     return { ok: false, mensagem: mensagemParaUsuario(e) };
   }
+  let cookieNovo = true;
+  try {
+    // A versão subiu e derrubou todos os aparelhos; este recebe cookie novo e segue logado.
+    await criarSessaoAdmin(db, adminId);
+  } catch (e) {
+    // A troca já valeu: dizer "erro" levaria a tentar de novo com a senha antiga.
+    console.error(e);
+    cookieNovo = false;
+  }
+  if (!cookieNovo) redirect('/admin/entrar?aviso=senha_trocada'); // fora do try: redirect lança
   return { ok: true, mensagem: 'Senha trocada. Os outros aparelhos saíram da conta.' };
 }

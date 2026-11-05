@@ -21,7 +21,7 @@ function mensagem(erro: ErroEntrar): string {
     : 'PIN errado. Tente de novo.';
 }
 
-export function EntrarJogador() {
+export function EntrarJogador({ aviso = null }: { aviso?: string | null }) {
   const [termo, setTermo] = useState('');
   const [sugestoes, setSugestoes] = useState<Jogador[] | null>(null);
   const [escolhido, setEscolhido] = useState<Jogador | null>(null);
@@ -136,6 +136,11 @@ export function EntrarJogador() {
     <main className="flex flex-1 flex-col">
       <h1 className="mt-6 font-placa text-titulo font-semibold">Quem é você?</h1>
       <p className="mt-2 text-base text-apagado">Pelada de quarta, 20h30.</p>
+      {aviso && (
+        <p role="status" className="mt-4 text-base font-medium text-lima">
+          {aviso}
+        </p>
+      )}
       <label htmlFor="nome" className="mt-6 block text-base font-medium text-apagado">
         Seu nome
       </label>

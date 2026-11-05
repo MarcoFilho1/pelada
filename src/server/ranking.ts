@@ -1,11 +1,11 @@
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, times } from '@/db/schema';
 import {
   calcularRanking,
   historicoDoJogador,
-  prefixoDoPeriodo,
+  intervaloDoPeriodo,
   type LinhaRanking,
   type LinhaRankingComNota,
   type PartidaEncerrada,
@@ -18,7 +18,7 @@ const timeB = alias(times, 'time_b');
 
 /** Partidas encerradas com resultado cuja quarta cai no período, com as cores dos dois times: 3 consultas, sem N+1. */
 async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEncerrada[]> {
-  const prefixo = prefixoDoPeriodo(periodo);
+  const intervalo = intervaloDoPeriodo(periodo);
   const ps = await db
     .select({
       id: partidas.id,
@@ -32,7 +32,14 @@ async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEnce
     .innerJoin(peladas, eq(partidas.peladaId, peladas.id))
     .innerJoin(timeA, eq(partidas.timeAId, timeA.id))
     .innerJoin(timeB, eq(partidas.timeBId, timeB.id))
-    .where(and(isNotNull(partidas.encerradaEm), isNotNull(partidas.resultado), sql`${peladas.data}::text like ${prefixo + "%"}`));
+    .where(
+      and(
+        isNotNull(partidas.encerradaEm),
+        isNotNull(partidas.resultado),
+        intervalo ? gte(peladas.data, intervalo.de) : undefined,
+        intervalo ? lt(peladas.data, intervalo.ate) : undefined,
+      ),
+    );
   if (!ps.length) return [];
   const ids = ps.map((p) => p.id);
   const [elenco, ls] = await Promise.all([

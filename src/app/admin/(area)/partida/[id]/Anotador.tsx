@@ -8,6 +8,7 @@ import { SetaEsquerda } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { DURACAO_MS, GOLS_PARA_VENCER, relogio, type Lado, type TipoLance } from '@/domain/partida';
+import { bipar, destravarAudio } from '@/lib/bipe';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { JogadorNaPartida } from '@/server/partidas';
 import { anotar, desfazer, encerrar } from './acoes';
@@ -28,10 +29,14 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
   const router = useRouter();
   const [fila] = useState(
     () =>
-      new Anotacoes(doServidor, {
-        anotar: (jogadorId, tipo) => anotar(doServidor.id, jogadorId, tipo),
-        desfazer: (esperadoId) => desfazer(doServidor.id, esperadoId),
-      }),
+      new Anotacoes(
+        doServidor,
+        {
+          anotar: (jogadorId, tipo) => anotar(doServidor.id, jogadorId, tipo),
+          desfazer: (esperadoId) => desfazer(doServidor.id, esperadoId),
+        },
+        () => router.refresh(), // resposta perdida: o lance pode ter gravado, confere já na base
+      ),
   );
   useEffect(() => fila.receberDaPagina(doServidor), [fila, doServidor]);
   const v = useSyncExternalStore(fila.assinar, fila.instantaneo, fila.instantaneo);
@@ -77,14 +82,17 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         : null;
   const chaveDoAviso = sugestao && `${sugestao}:${placar.A}x${placar.B}`;
   const mostrarSugestao = chaveDoAviso !== null && chaveDoAviso !== dispensado;
+  useBipeNaSugestao(sugestao === 'tres_gols' ? chaveDoAviso : null);
 
   function tocar(j: JogadorNaPartida, tipo: TipoLance) {
+    destravarAudio();
     navigator.vibrate?.(30);
     setErroAoEncerrar(null);
     fila.tocar(j.id, tipo);
   }
 
   function desfazerUltimo() {
+    destravarAudio();
     navigator.vibrate?.(30);
     setErroAoEncerrar(null);
     fila.desfazer();
@@ -162,7 +170,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         {atual.encerrada ? (
           <Encerrada estado={atual} frase={fraseDoPlacar} />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-3 baixa:pt-1.5 baixa:pb-2">
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto px-4 pt-2 baixa:pt-1.5 ${
+              v.lento && !textoDoErro ? 'pb-24 baixa:pb-24' : 'pb-3 baixa:pb-2'
+            }`}
+          >
             <div
               className="grid grid-cols-2 items-start gap-2 baixa:gap-1.5"
               style={{ '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1) } as CSSProperties}
@@ -189,10 +201,19 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         {/* ---- Embaixo, preso: Desfazer e Encerrar, ou a pergunta de encerrar ---- */}
         {!atual.encerrada && (
           <footer
-            className={`shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] baixa:pt-2 baixa:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
+            className={`relative shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] baixa:pt-2 baixa:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
               mostrarSugestao || confirmando ? 'rounded-t-cartao bg-placa shadow-[0_-12px_32px_rgba(0,0,0,0.7)]' : 'bg-chao'
             }`}
           >
+            {/* Faixa sobre a lista, sem empurrar nada (4 contra 4 segue sem rolar). Ela pega o toque (sem fazer nada), para o dedo não cair num GOL escondido; a lista ganha folga embaixo enquanto a faixa aparece. */}
+            {!textoDoErro && v.lento && (
+              <p
+                role="status"
+                className="absolute inset-x-4 bottom-full mb-2 rounded-placa bg-placa-alta px-3 py-2 text-base font-medium text-tinta shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
+              >
+                Salvando há mais de 10 s — confira a conexão.
+              </p>
+            )}
             {textoDoErro && (
               <p role="alert" className="mb-3 text-base font-medium text-erro">
                 {textoDoErro}
@@ -374,13 +395,25 @@ function useAgoraDoServidor(lidoEmInicial: number): number | null {
   return agora;
 }
 
-/** Vibração longa quando o cronômetro chega a 0:00 com a tela aberta (uma vez). */
+/** Vibração longa e bipe quando o cronômetro chega a 0:00 com a tela aberta (uma vez). */
 function useVibrarNoFim(acabou: boolean) {
   const antes = useRef(acabou);
   useEffect(() => {
-    if (acabou && !antes.current) navigator.vibrate?.([200, 100, 200]);
+    if (acabou && !antes.current) {
+      navigator.vibrate?.([200, 100, 200]);
+      bipar();
+    }
     antes.current = acabou;
   }, [acabou]);
+}
+
+/** Bipe quando o aviso do 3º gol aparece (cada placar novo com 3 gols, uma vez). */
+function useBipeNaSugestao(chave: string | null) {
+  const antes = useRef(chave);
+  useEffect(() => {
+    if (chave && chave !== antes.current) bipar();
+    antes.current = chave;
+  }, [chave]);
 }
 
 /** Wake Lock: a tela não apaga enquanto a partida está aberta. O navegador solta ao trocar de aba; pede de novo na volta. */

@@ -6,18 +6,18 @@
 // ainda é o último lance. O que a tela mostra = os lances da última resposta + as escritas que
 // ainda estão na fila, aplicadas em ordem.
 
-import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { placar as placarDe, tempoRestanteMs, type Lado, type Placar, type TipoLance } from '@/domain/partida';
 import type { LanceDaPartida } from '@/server/partidas';
 import type { EstadoDaPartida } from './estado';
 
 type Falha = { ok: false; erro: string };
-type Resposta = { ok: true; estado: EstadoDaPartida } | Falha;
+/** `estado: null`: gravou, mas a leitura depois falhou; a base se ajusta sozinha e a página confere em até 5 s. */
+type RespostaDesfazer = { ok: true; estado: EstadoDaPartida | null; /** O servidor apagou o lance (false: já não era o último). */ desfeito: boolean };
 
 /** As duas ações da tela, já presas à partida. */
 export type Escritor = {
-  anotar(jogadorId: number, tipo: TipoLance): Promise<{ ok: true; estado: EstadoDaPartida; lanceId: number } | Falha>;
-  desfazer(esperadoId: number): Promise<Resposta>;
+  anotar(jogadorId: number, tipo: TipoLance): Promise<{ ok: true; estado: EstadoDaPartida | null; lanceId: number } | Falha>;
+  desfazer(esperadoId: number): Promise<RespostaDesfazer | Falha>;
 };
 
 /**
@@ -43,7 +43,11 @@ export type Vista = {
   desfazendo: boolean;
 };
 
-const FALHA: Falha = { ok: false, erro: MSG_ALGO_DEU_ERRADO };
+/**
+ * A ação lançou no aparelho (rede caiu, 5xx): o pedido pode ter chegado e gravado. Mandar "tente de
+ * novo" faria a pessoa tocar outra vez e contar em dobro, então a mensagem manda conferir o placar.
+ */
+const SEM_RESPOSTA: Falha = { ok: false, erro: 'Sem resposta do servidor. Confira o placar (atualiza em 5 s) antes de tocar de novo.' };
 
 const idDoAlvo = (alvo: { toque: number } | { lanceId: number }) => ('toque' in alvo ? -alvo.toque : alvo.lanceId);
 
@@ -82,7 +86,10 @@ export function tempoNaTela(estado: EstadoDaPartida, agora: number | null): numb
   return tempoRestanteMs(new Date(estado.iniciadaEm), new Date(agora));
 }
 
-export type Instantaneo = Vista & { estado: EstadoDaPartida; aviso: Aviso | null };
+/** Uma escrita sem resposta há mais que isto vira o aviso "Salvando há mais de 10 s". */
+export const ESCRITA_LENTA_MS = 10_000;
+
+export type Instantaneo = Vista & { estado: EstadoDaPartida; aviso: Aviso | null; /** Alguma escrita na fila há mais de 10 s. */ lento: boolean };
 
 /**
  * A fila do anotador. A tela lê `instantaneo()` (com `useSyncExternalStore`) e chama `tocar`,
@@ -99,6 +106,14 @@ export class Anotacoes {
   private chave = 0;
   private avisos = 0;
   private aviso: Aviso | null = null;
+  private relogios = new Map<number, ReturnType<typeof setTimeout>>();
+  private lentas = new Set<number>();
+  // Lances que respostas sem leitura (estado null) confirmaram ou desfizeram: uma página só entra na
+  // base se concordar com eles (senão uma leitura anterior ao commit derrubaria o número na tela).
+  private confirmados = new Set<number>();
+  private desfeitos = new Set<number>();
+  private recusadas = 0;
+  private ultimaRecusada: number | null = null;
   private cauda: Promise<void> = Promise.resolve();
   private ouvintes = new Set<() => void>();
   private atual: Instantaneo;
@@ -106,6 +121,8 @@ export class Anotacoes {
   constructor(
     estado: EstadoDaPartida,
     private readonly escritor: Escritor,
+    /** Chamado quando uma ação lança sem resposta: a tela pede já uma leitura nova da página. */
+    private readonly aoPerderResposta?: () => void,
   ) {
     this.base = estado;
     this.pagina = estado;
@@ -163,11 +180,18 @@ export class Anotacoes {
   }
 
   private async enviarToque(e: Extract<Escrita, { tipo: 'toque' }>) {
-    const r = await this.escritor.anotar(e.jogadorId, e.lance).catch(() => FALHA);
+    const r = await this.escritor.anotar(e.jogadorId, e.lance).catch(() => SEM_RESPOSTA);
     const desteToque = (x: Escrita) => x.tipo === 'desfazer' && 'toque' in x.alvo && x.alvo.toque === e.chave;
+    if (r === SEM_RESPOSTA) this.aoPerderResposta?.();
     this.escritas = this.escritas.filter((x) => x.chave !== e.chave);
     if (r.ok) {
-      this.base = r.estado;
+      if (r.estado) {
+        this.base = r.estado;
+        this.esquecerPendencias(); // leitura do servidor depois do commit: é a verdade
+      } else {
+        this.confirmados.add(r.lanceId);
+        this.base = { ...this.base, lances: [...this.base.lances, { id: r.lanceId, jogadorId: e.jogadorId, tipo: e.lance }] };
+      }
       // Desfazer pendente deste toque: agora se sabe o id do lance que ele vai tirar.
       this.escritas = this.escritas.map((x) => (desteToque(x) ? { ...x, alvo: { lanceId: r.lanceId } } : x));
     } else {
@@ -183,12 +207,21 @@ export class Anotacoes {
     const e = this.escritas.find((x) => x.chave === chave);
     if (!e || e.tipo !== 'desfazer' || 'toque' in e.alvo) return; // caiu junto com um toque recusado
     const id = e.alvo.lanceId;
-    const r = await this.escritor.desfazer(id).catch(() => FALHA);
+    const r = await this.escritor.desfazer(id).catch(() => SEM_RESPOSTA);
+    if (r === SEM_RESPOSTA) this.aoPerderResposta?.();
     this.escritas = this.escritas.filter((x) => x.chave !== chave);
     if (r.ok) {
-      this.base = r.estado;
+      if (r.estado) {
+        this.base = r.estado;
+        this.esquecerPendencias();
+      } else if (r.desfeito) {
+        // Sem leitura, mas o servidor apagou: tira o lance da base.
+        this.confirmados.delete(id);
+        this.desfeitos.add(id);
+        this.base = { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
+      }
       // Não era mais o último (o outro admin anotou depois): o servidor não mexeu em nada.
-      if (r.estado.lances.some((l) => l.id === id)) {
+      if (this.base.lances.some((l) => l.id === id)) {
         this.avisar('Não deu para desfazer: entrou um lance depois desse. Confira o placar.');
       }
     } else {
@@ -198,9 +231,27 @@ export class Anotacoes {
     this.emitir();
   }
 
+  private esquecerPendencias() {
+    this.confirmados.clear();
+    this.desfeitos.clear();
+    this.recusadas = 0;
+    this.ultimaRecusada = null;
+  }
+
   private aceitarPagina(): boolean {
     if (this.escritas.length || this.pagina.lidoEm <= this.base.lidoEm) return false;
+    const ids = new Set(this.pagina.lances.map((l) => l.id));
+    // Página sem um lance confirmado (ou ainda com um desfeito) é anterior ao commit: espera outra.
+    if ([...this.confirmados].some((id) => !ids.has(id)) || [...this.desfeitos].some((id) => ids.has(id))) {
+      // A trava expira: se duas páginas seguidas (leituras diferentes) discordam, o servidor mudou
+      // por outro caminho e a página vale mais que a memória daqui.
+      if (this.ultimaRecusada !== this.pagina.lidoEm) {
+        this.ultimaRecusada = this.pagina.lidoEm;
+        if (++this.recusadas < 2) return false;
+      } else return false;
+    }
     this.base = this.pagina;
+    this.esquecerPendencias();
     return true;
   }
 
@@ -209,10 +260,33 @@ export class Anotacoes {
   }
 
   private montar(): Instantaneo {
-    return { ...derivar(this.base, this.escritas), estado: this.base, aviso: this.aviso };
+    return { ...derivar(this.base, this.escritas), estado: this.base, aviso: this.aviso, lento: this.lentas.size > 0 };
+  }
+
+  /** Um relógio de 10 s por escrita na fila; escrita que saiu da fila leva o relógio (e o aviso) embora. */
+  private vigiarLentidao() {
+    const naFila = new Set(this.escritas.map((e) => e.chave));
+    for (const [chave, t] of this.relogios) {
+      if (naFila.has(chave)) continue;
+      clearTimeout(t);
+      this.relogios.delete(chave);
+      this.lentas.delete(chave);
+    }
+    for (const chave of naFila) {
+      if (this.relogios.has(chave)) continue;
+      this.relogios.set(
+        chave,
+        setTimeout(() => {
+          if (!this.relogios.has(chave)) return;
+          this.lentas.add(chave);
+          this.emitir();
+        }, ESCRITA_LENTA_MS),
+      );
+    }
   }
 
   private emitir() {
+    this.vigiarLentidao();
     this.atual = this.montar();
     for (const o of this.ouvintes) o();
   }

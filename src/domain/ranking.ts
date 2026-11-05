@@ -69,6 +69,18 @@ export function prefixoDoPeriodo(periodo: Periodo): string {
   return `${ano}-${String(periodo.mes).padStart(2, '0')}`;
 }
 
+/**
+ * Intervalo de datas de pelada do período, `de` incluso e `ate` excluso ('YYYY-MM-DD'), para o banco
+ * comparar datas como datas (nada de texto); null para o geral.
+ */
+export function intervaloDoPeriodo(periodo: Periodo): { de: string; ate: string } | null {
+  if (periodo.tipo === 'geral') return null;
+  const dia = (ano: number, mes: number) => `${String(ano).padStart(4, '0')}-${String(mes).padStart(2, '0')}-01`;
+  if (periodo.tipo === 'ano') return { de: dia(periodo.ano, 1), ate: dia(periodo.ano + 1, 1) };
+  const dezembro = periodo.mes === 12;
+  return { de: dia(periodo.ano, periodo.mes), ate: dia(dezembro ? periodo.ano + 1 : periodo.ano, dezembro ? 1 : periodo.mes + 1) };
+}
+
 /** Só as partidas cuja quarta (data da pelada, não `encerradaEm`) cai no período. */
 export function filtrarPeriodo(partidas: PartidaEncerrada[], periodo: Periodo): PartidaEncerrada[] {
   const prefixo = prefixoDoPeriodo(periodo);

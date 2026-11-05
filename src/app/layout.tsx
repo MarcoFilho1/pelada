@@ -11,6 +11,9 @@ const barlow = Barlow_Condensed({
   weight: ['600'],
 });
 
+// Tudo lê o banco e a sessão a cada pedido: nada é pré-renderizado no build (que não tem banco).
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Pelada',
   description: 'Lista, times e ranking da pelada de quarta.',
