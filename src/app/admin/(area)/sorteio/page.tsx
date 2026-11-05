@@ -56,7 +56,7 @@ export default async function SorteioPage() {
       marcados={marcados}
       sugeridos={sugeridos}
       times={times}
-      temPartida={resumo.jogadas > 0}
+      jogadas={resumo.jogadas}
       emAndamento={emAndamento}
     />
   );

@@ -3,10 +3,17 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
-import { CORES, diferenca, diferencaMedia, sortearTimes, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
+import { CORES, diferenca, diferencaMedia, sortearComCompletes, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
-import { criarJogadores, listarJogadores } from '@/server/jogadores';
-import { moverJogador, salvarTimesDefinitivos } from '@/server/times';
+import { criarJogadores, listarJogadores, notaValida } from '@/server/jogadores';
+import {
+  adicionarComplete,
+  moverJogador,
+  mudarNotaComplete,
+  preencherComplete,
+  removerComplete,
+  salvarTimesDefinitivos,
+} from '@/server/times';
 import { lerSessaoAdmin } from '@/server/sessao';
 
 export type Resposta = { ok: true } | { ok: false; erro: string };
@@ -15,6 +22,9 @@ export type Proposta = { times: TimeSorteado[]; diferenca: number; diferencaMedi
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 /** Bem mais que uma noite cheia; só barra pedido absurdo. */
 const MAX_PARTICIPANTES = 64;
+/** 4 times de 4: o sorteio completa até aqui com COMPLETE e não cabe mais que isso. */
+const POR_TIME = 4;
+const MAX_NA_QUADRA = CORES.length * POR_TIME;
 
 async function exigirAdmin() {
   if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
@@ -22,12 +32,18 @@ async function exigirAdmin() {
 
 const listaDeIds = (v: unknown): v is number[] => Array.isArray(v) && v.length <= MAX_PARTICIPANTES && v.every(idValido);
 
-/** Sorteia uma proposta (não grava nada): até 4 times, equilibrados pela nota atual de cada um. */
+/**
+ * Sorteia uma proposta (não grava nada): até 4 times, equilibrados pela nota atual de cada um. Time
+ * curto ganha COMPLETE até fechar 4, com a nota (2,5, 3,0 ou 3,5) que mais equilibra.
+ */
 export async function sortear(ids: number[]): Promise<({ ok: true } & Proposta) | { ok: false; erro: string }> {
   await exigirAdmin();
   if (!listaDeIds(ids)) return PEDIDO_INVALIDO;
   const unicos = [...new Set(ids)];
   if (unicos.length < 2) return { ok: false, erro: 'Marque pelo menos 2 jogadores.' };
+  if (unicos.length > MAX_NA_QUADRA) {
+    return { ok: false, erro: `Cabem ${MAX_NA_QUADRA} (4 times de 4). Desmarque ${unicos.length - MAX_NA_QUADRA}.` };
+  }
   try {
     const ativos = new Map((await listarJogadores(getDb(), { incluirInativos: false })).map((j) => [j.id, j]));
     const participantes: JogadorNota[] = [];
@@ -36,7 +52,7 @@ export async function sortear(ids: number[]): Promise<({ ok: true } & Proposta) 
       if (!j) return { ok: false, erro: 'Tem jogador desativado ou que não existe. Recarregue a página.' };
       participantes.push({ id: j.id, nome: j.nome, nota: j.nota });
     }
-    const times = sortearTimes(participantes, { times: Math.min(CORES.length, participantes.length) });
+    const times = sortearComCompletes(participantes, { times: Math.min(CORES.length, participantes.length), porTime: POR_TIME });
     return { ok: true, times, diferenca: diferenca(times), diferencaMedia: diferencaMedia(times) };
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
@@ -53,13 +69,57 @@ async function tentar(fn: () => Promise<void>): Promise<Resposta> {
   return { ok: true };
 }
 
-/** Grava os times da proposta (na ordem das cores) como os times da pelada. */
-export async function marcarDefinitivo(peladaId: number, times: number[][]): Promise<Resposta> {
+const notaOk = (v: unknown): v is number => typeof v === 'number' && notaValida(v);
+const listaDeNotas = (v: unknown): v is number[] => Array.isArray(v) && v.length <= POR_TIME && v.every(notaOk);
+
+/**
+ * Grava os times da proposta (na ordem das cores) como os times da pelada; `completes[i]` são as
+ * notas dos COMPLETE do time `i`. Com partidas já jogadas, os times antigos ficam arquivados.
+ */
+export async function marcarDefinitivo(peladaId: number, times: number[][], completes: number[][]): Promise<Resposta> {
   await exigirAdmin();
-  if (!idValido(peladaId) || !Array.isArray(times) || times.length > CORES.length || !times.every(listaDeIds)) {
+  if (
+    !idValido(peladaId) ||
+    !Array.isArray(times) ||
+    times.length > CORES.length ||
+    !times.every(listaDeIds) ||
+    !Array.isArray(completes) ||
+    completes.length > times.length ||
+    !completes.every(listaDeNotas)
+  ) {
     return PEDIDO_INVALIDO;
   }
-  return tentar(() => salvarTimesDefinitivos(getDb(), peladaId, times));
+  return tentar(() => salvarTimesDefinitivos(getDb(), peladaId, times, completes));
+}
+
+/** Põe um COMPLETE num time atual com vaga (menos de 4 entre jogadores e COMPLETE). */
+export async function porComplete(timeId: number, nota: number): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(timeId) || !notaOk(nota)) return PEDIDO_INVALIDO;
+  return tentar(async () => {
+    await adicionarComplete(getDb(), timeId, nota);
+  });
+}
+
+/** Tira o COMPLETE: o time joga com um a menos de propósito. */
+export async function tirarComplete(completeId: number): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(completeId)) return PEDIDO_INVALIDO;
+  return tentar(() => removerComplete(getDb(), completeId));
+}
+
+/** Nota do COMPLETE (0 a 5, de 0,5 em 0,5): só pesa no equilíbrio. */
+export async function mudarNotaDoComplete(completeId: number, nota: number): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(completeId) || !notaOk(nota)) return PEDIDO_INVALIDO;
+  return tentar(() => mudarNotaComplete(getDb(), completeId, nota));
+}
+
+/** Alguém sem time entra no lugar do COMPLETE e fica no time pelo resto da noite. */
+export async function preencher(completeId: number, jogadorId: number): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(completeId) || !idValido(jogadorId)) return PEDIDO_INVALIDO;
+  return tentar(() => preencherComplete(getDb(), completeId, jogadorId));
 }
 
 /** Entre partidas: muda de time (`de` → `para`), tira (`para` null) ou põe (`de` null). */
