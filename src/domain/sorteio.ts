@@ -1,4 +1,11 @@
 export type JogadorNota = { id: number; nome: string; nota: number }
+
+/** Cores dos coletes, na ordem dos times. */
+export const CORES = ['azul', 'laranja', 'verde', 'preto'] as const
+export type Cor = (typeof CORES)[number]
+
+/** Nota ou soma de notas para a tela: 3.5 → '3,5'. */
+export const formatarNota = (n: number) => n.toFixed(1).replace('.', ',')
 export type TimeSorteado = { jogadores: JogadorNota[]; soma: number }
 
 type Opcoes = { times?: number; tentativas?: number; rng?: () => number }

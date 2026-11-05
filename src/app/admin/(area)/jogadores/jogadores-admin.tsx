@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Mais, Menos, SetaDireita } from '@/components/icones';
 import { normalizarNome, parseNomesColados, separarNomes } from '@/domain/nome';
+import { formatarNota } from '@/domain/sorteio';
 import type { JogadorListado } from '@/server/jogadores';
 import { colarNomes, mudarAtivo, mudarNota, renomear, zerarPinDoJogador } from './actions';
 import { SalvadorDeNotas } from './salvar-notas';
@@ -14,7 +15,6 @@ const PILULA =
 const TEXTO =
   'flex h-12 items-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta disabled:text-meta';
 
-const formatarNota = (n: number) => n.toFixed(1).replace('.', ',');
 
 type Confirmando = { id: number; tipo: 'zerar' | 'desativar' } | null;
 
