@@ -1,4 +1,6 @@
-import { aberturaLista, fimJogo, prazoMensalista, VAGAS } from './tempo';
+import { aberturaLista, fimJogo, inicioJogo, prazoMensalista, VAGAS } from './tempo';
+
+export type EstadoManual = 'aberta' | 'fechada' | 'cancelada' | null;
 
 export type Presenca = {
   id: number;
@@ -28,7 +30,7 @@ function item(p: Presenca): ItemLista {
 export function calcularLista(input: {
   presencas: Presenca[];
   dataQuarta: string;
-  estadoManual: 'aberta' | 'fechada' | 'cancelada' | null;
+  estadoManual: EstadoManual;
   now: Date;
   vagas?: number;
 }): EstadoLista {
@@ -59,4 +61,23 @@ export function calcularLista(input: {
 /** Só quem está na lista principal e ainda não confirmou. */
 export function podeConfirmar(estado: EstadoLista, jogadorId: number): boolean {
   return estado.principal.some((i) => i.jogadorId === jogadorId && !i.confirmado);
+}
+
+/** Por que o jogador não pode mexer na própria presença agora (`null` = pode). */
+export type Trava = 'cancelada' | 'fechada' | 'comecou';
+
+/**
+ * O jogador mexe na lista (confirmar, sair, entrar na fila) só com ela aberta e até a hora do
+ * jogo. Se o admin abriu à mão, vale mesmo depois do horário. O admin nunca é travado.
+ */
+export function travaDoJogador(
+  estado: EstadoLista,
+  dataQuarta: string,
+  estadoManual: EstadoManual,
+  now: Date,
+): Trava | null {
+  if (estado.cancelada) return 'cancelada';
+  if (!estado.aberta) return 'fechada';
+  if (estadoManual !== 'aberta' && now >= inicioJogo(dataQuarta)) return 'comecou';
+  return null;
 }
