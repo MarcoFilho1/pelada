@@ -77,7 +77,7 @@ describe('sessão do jogador conferida no banco', () => {
 describe('sessão admin conferida no banco', () => {
   it('vale para admin existente e não para id desconhecido', async () => {
     const [adm] = await db.insert(admins).values({ usuario: 'marco', senhaHash: 'x:y' }).returning();
-    expect(await validarSessaoAdmin(db, { tipo: 'admin', adminId: adm.id })).toEqual({ adminId: adm.id });
-    expect(await validarSessaoAdmin(db, { tipo: 'admin', adminId: 9999 })).toBeNull();
+    expect(await validarSessaoAdmin(db, { tipo: 'admin', adminId: adm.id, versao: 0 })).toEqual({ adminId: adm.id });
+    expect(await validarSessaoAdmin(db, { tipo: 'admin', adminId: 9999, versao: 0 })).toBeNull();
   });
 });

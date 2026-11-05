@@ -11,10 +11,13 @@ type Jogador = { id: number; nome: string };
 
 const ESPERA_BUSCA_MS = 150;
 
-const MENSAGEM: Record<ErroEntrar, string> = {
-  pin_errado: 'PIN errado. Tente de novo.',
-  bloqueado: 'Muitos PINs errados. O perfil fica travado por 15 minutos.',
-};
+const HORA = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Recife' });
+
+function mensagem(erro: ErroEntrar): string {
+  return erro.motivo === 'bloqueado'
+    ? `Muitas tentativas. Tente de novo às ${HORA.format(new Date(erro.bloqueadoAte))}.`
+    : 'PIN errado. Tente de novo.';
+}
 
 export function EntrarJogador() {
   const [termo, setTermo] = useState('');
@@ -63,7 +66,7 @@ export function EntrarJogador() {
   }
 
   function digitarPin(v: string) {
-    if (erro === 'pin_errado') setErro(null);
+    if (erro?.motivo === 'pin_errado') setErro(null);
     setPin(v);
     if (v.length === 4 && escolhido) {
       startConferir(async () => {
@@ -78,7 +81,7 @@ export function EntrarJogador() {
   }
 
   if (escolhido) {
-    const bloqueado = erro === 'bloqueado';
+    const bloqueado = erro?.motivo === 'bloqueado';
     return (
       <main className="flex flex-1 flex-col">
         <button
@@ -109,7 +112,7 @@ export function EntrarJogador() {
         <p id="pin-ajuda" role="status" aria-live="polite" className="mt-6 min-h-12 text-center text-base">
           {erro ? (
             <>
-              <span className="block font-medium text-erro">{MENSAGEM[erro]}</span>
+              <span className="block font-medium text-erro">{mensagem(erro)}</span>
               <span className="mt-1 block text-meta">Esqueceu o PIN? Peça ao admin para zerar.</span>
             </>
           ) : conferindo ? (

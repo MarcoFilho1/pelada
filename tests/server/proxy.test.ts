@@ -18,7 +18,7 @@ async function pedir(caminho: string, cookies: Record<string, Token | string> = 
 }
 
 const jogador = (precisaTrocar = false): Token => ({ tipo: 'jogador', jogadorId: 1, precisaTrocar, versao: 0 });
-const admin: Token = { tipo: 'admin', adminId: 1 };
+const admin: Token = { tipo: 'admin', adminId: 1, versao: 0 };
 
 describe('proxy', () => {
   it('deixa abertas só as telas de entrar', async () => {

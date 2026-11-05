@@ -10,7 +10,8 @@ export const COOKIE_ADMIN = 'pelada_admin';
  * `versao` precisa bater com `jogadores.sessao_versao` (ver `validarSessaoJogador`).
  */
 export type TokenJogador = { tipo: 'jogador'; jogadorId: number; precisaTrocar: boolean; versao: number };
-export type TokenAdmin = { tipo: 'admin'; adminId: number };
+/** `versao` precisa bater com `admins.sessao_versao` (ver `validarSessaoAdmin`). */
+export type TokenAdmin = { tipo: 'admin'; adminId: number; versao: number };
 export type Token = TokenJogador | TokenAdmin;
 
 const ALG = 'HS256';
@@ -60,8 +61,8 @@ export async function verificarToken(token: string | undefined): Promise<Token |
   ) {
     return { tipo: 'jogador', jogadorId: payload.jogadorId, precisaTrocar: payload.precisaTrocar, versao: payload.versao };
   }
-  if (payload.tipo === 'admin' && ehIdValido(payload.adminId)) {
-    return { tipo: 'admin', adminId: payload.adminId };
+  if (payload.tipo === 'admin' && ehIdValido(payload.adminId) && ehVersaoValida(payload.versao)) {
+    return { tipo: 'admin', adminId: payload.adminId, versao: payload.versao };
   }
   return null;
 }

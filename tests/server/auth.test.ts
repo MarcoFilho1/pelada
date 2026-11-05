@@ -49,13 +49,18 @@ describe('entrarJogador', () => {
     for (let i = 0; i < 4; i++) {
       expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'pin_errado' });
     }
-    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado' });
-    expect(await entrarJogador(db, caio.id, '1234', minutos(1))).toEqual({ ok: false, motivo: 'bloqueado' });
+    const ate = minutos(15);
+    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
+    expect(await entrarJogador(db, caio.id, '1234', minutos(1))).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
   });
 
   it('bloqueado não confere o PIN nem conta erro', async () => {
     const caio = await criarJogador('Caio', { bloqueadoAte: minutos(10), pinErros: 0 });
-    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({ ok: false, motivo: 'bloqueado' });
+    expect(await entrarJogador(db, caio.id, '0000', now)).toEqual({
+      ok: false,
+      motivo: 'bloqueado',
+      bloqueadoAte: minutos(10),
+    });
     expect((await lerJogador(caio.id)).pinErros).toBe(0);
     expect((await lerJogador(caio.id)).bloqueadoAte).toEqual(minutos(10));
   });
@@ -108,6 +113,17 @@ describe('buscarJogadoresPorNome', () => {
     ]);
   });
 
+  it('ignora acentos e maiúsculas nos dois sentidos', async () => {
+    await criarJogador('João');
+    await criarJogador('Lucas');
+    await criarJogador('Ana João');
+    expect((await buscarJogadoresPorNome(db, 'joao')).map((j) => j.nome)).toEqual(['João', 'Ana João']);
+    expect((await buscarJogadoresPorNome(db, 'JOAO')).map((j) => j.nome)).toEqual(['João', 'Ana João']);
+    await criarJogador('Antônio');
+    expect((await buscarJogadoresPorNome(db, 'antonio')).map((j) => j.nome)).toEqual(['Antônio']);
+    expect((await buscarJogadoresPorNome(db, 'ANTÔ')).map((j) => j.nome)).toEqual(['Antônio']);
+  });
+
   it('devolve no máximo 8 e nada para termo vazio', async () => {
     for (let i = 1; i <= 10; i++) await criarJogador(`Jogador ${i}`);
     expect(await buscarJogadoresPorNome(db, 'jog')).toHaveLength(8);
@@ -128,7 +144,7 @@ describe('entrarAdmin', () => {
       .values({ usuario: 'marco', senhaHash: await hashSegredo('segredo-forte') })
       .returning();
     expect(await entrarAdmin(db, 'marco', 'segredo-forte')).toEqual({ ok: true, adminId: adm.id });
-    expect(await entrarAdmin(db, 'marco', 'errada')).toEqual({ ok: false });
-    expect(await entrarAdmin(db, 'outro', 'segredo-forte')).toEqual({ ok: false });
+    expect(await entrarAdmin(db, 'marco', 'errada')).toEqual({ ok: false, motivo: 'credenciais' });
+    expect(await entrarAdmin(db, 'outro', 'segredo-forte')).toEqual({ ok: false, motivo: 'credenciais' });
   });
 });

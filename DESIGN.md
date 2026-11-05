@@ -199,6 +199,55 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - Barra de 56px no fundo: marca à esquerda, no máximo um link de texto à direita. Sem ícones em caixa, sem
   pílulas coloridas.
 
+### Navegação do admin
+- Linha de texto logo abaixo da barra (Painel · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
+  48px de altura com 10px de folga lateral. Seção atual: texto branco sobre placa #111 (raio 10px) e
+  `aria-current="page"`; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. Se não couber,
+  rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar não tem.
+
+### Linha de jogador recolhível (admin)
+- Placa #111, raio 10px, em lista com 8px de intervalo. Fechada: 56px, nome em Inter 500 18px (truncado), meta
+  em Giz 16px abaixo ("Inativo", "PIN ainda é 1234"), nota em Barlow 28px à direita e seta que gira 90° ao
+  abrir. Só uma linha aberta por vez; a aberta mostra o seletor de nota e as ações.
+
+### Seletor de nota (stepper)
+- Menos, valor, mais: botões 56×56 em placa alta #2a2a2a (raio 10px), valor em Barlow 44px sobre #000, 96px de
+  largura. Passos de 0,5 de 0 a 5; o botão do limite fica desabilitado em Giz. Nada de campo de texto. Salva
+  sozinho 500 ms depois do último toque (e na hora ao sair da tela); o valor local vale até o servidor devolver
+  o mesmo número.
+
+### Nome editável (admin)
+- Na linha aberta, depois do seletor de nota: rótulo "Nome" em #b4b4b4, campo em #000 (raio 10px, 56px, 18px,
+  anel branco no foco). O botão "Salvar nome" (pílula branca) só aparece quando o texto mudou; Enter também
+  salva. Nome repetido: anel vermelho e mensagem com `role="alert"` logo abaixo do campo, sem aviso global.
+
+### Painel de colar nomes
+- Placa #111 com título, instrução em #b4b4b4, área de texto em #000 (raio 10px, 18px, anel branco no foco) e,
+  abaixo, a prévia: "Vão entrar N" numa placa alta com um nome por linha e, em Giz, "Ficam de fora (M)" com os
+  nomes ignorados. O botão primário diz a conta ("Criar 5 jogadores") e fica desabilitado em zero.
+
+### Confirmação em linha
+- Ação destrutiva (zerar PIN, desativar) abre, no lugar das ações, uma placa alta com a frase da consequência,
+  pílula branca com o verbo ("Zerar PIN") e link "Cancelar". Sem modal. O resultado aparece como mensagem de
+  status em lima (`role="status"`) ou vermelho em erro, acima da lista.
+
+### Linha de marcar (mensalistas)
+- Botão-linha (`role="checkbox"`) de 56px em placa #111, raio 10px, nome em Inter 500 18px à esquerda e, à direita,
+  uma casinha de 32px: vazia = quadrado #000; marcada = traço de check em lima sobre #000 e a linha sobe para
+  placa alta #2a2a2a. Lista com 8px de intervalo. Com 16 marcados as outras linhas ficam em Giz,
+  `aria-disabled`, sem reagir ao toque.
+
+### Contador e seletor de mês
+- "x/16" em Barlow 44px tabular, com a instrução em #b4b4b4 ao lado ("Vagas cheias. Tire alguém para pôr outro.").
+  Seletor de mês: seta 56×56 em placa alta, nome do mês por extenso no meio (Inter 500 18px). Com mudança não
+  salva as setas apagam (placa #111, Giz) para não perder a marcação; a barra de baixo (fixa, fundo #000) traz
+  "Desfazer" em texto e a pílula "Salvar mensalistas".
+
+### Formulário em seções (admins)
+- Seções de formulário separadas por 40–48px de espaço, cada uma com h2 em Barlow 24px. Campo com dica em Giz
+  (16px) ligada por `aria-describedby`; o anel vermelho vai só no campo que errou; mensagem de status/erro entre a
+  dica e a pílula.
+
 ### Placas do PIN (componente-assinatura)
 - Quatro placas de 64×76px, raio 10px, 12px entre elas, centralizadas. Um único `<input inputMode="numeric">`
   transparente fica por cima: o toque em qualquer placa abre o teclado numérico, e o leitor de tela vê um
