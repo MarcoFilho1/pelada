@@ -151,6 +151,8 @@ export const partidaJogadores = pgTable(
       .notNull()
       .references(() => jogadores.id),
     lado: ladoEnum('lado').notNull(),
+    // Task 18: jogador que entrou para completar o time de outro lado nesta partida.
+    completando: boolean('completando').notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.partidaId, t.jogadorId] })],
 );

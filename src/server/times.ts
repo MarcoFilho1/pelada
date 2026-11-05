@@ -92,6 +92,8 @@ export async function salvarTimesDefinitivos(
   if (elencos.length < 1 || elencos.length > CORES.length) throw new ErroTimes('quantidade_de_times');
   if (elencos.some((e) => e.length === 0)) throw new ErroTimes('time_vazio');
   if (completes.flat().some((n) => !notaValida(n))) throw new ErroTimes('nota_invalida');
+  if (completes.length > elencos.length) throw new ErroTimes('pedido_invalido');
+  if (elencos.some((e, i) => e.length + (completes[i]?.length ?? 0) > VAGAS_POR_TIME)) throw new ErroTimes('time_cheio');
   const ids = elencos.flat();
   if (new Set(ids).size !== ids.length) throw new ErroTimes('jogador_repetido');
 

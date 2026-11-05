@@ -118,7 +118,7 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
     const daPelada = await tx
       .select({ id: times.id })
       .from(times)
-      .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId])));
+      .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId]), isNull(times.arquivadoEm)));
     if (daPelada.length !== 2) throw new ErroPartida('time_inexistente');
 
     const [rolando] = await tx

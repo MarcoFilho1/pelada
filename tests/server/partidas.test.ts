@@ -683,4 +683,16 @@ describe('sorteio novo depois de partidas (Parte 8)', () => {
       .where(inArray(timeJogadores.timeId, [c.azul, c.laranja, c.verde, c.preto]));
     expect(depoisMover).toEqual(antes);
   });
+
+  it('iniciarPartida recusa time arquivado e a foto do elenco nasce com completando = false', async () => {
+    const c = await cenario();
+    const partidaId = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const fotos = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, partidaId));
+    expect(fotos.length).toBeGreaterThan(0);
+    expect(fotos.every((f) => f.completando === false)).toBe(true);
+    await encerrarPartida(db, partidaId, depois(MIN));
+
+    await salvarTimesDefinitivos(db, c.peladaId, [[c.a1], [c.l1]], [], depois(2 * MIN));
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, depois(3 * MIN)))).toBe('time_inexistente');
+  });
 });

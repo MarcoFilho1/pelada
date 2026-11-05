@@ -312,6 +312,13 @@ describe('salvarTimesDefinitivos e timesDaPelada', () => {
     expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0]]], [[5.5]]).catch((e) => e.motivo)).toBe('nota_invalida');
   });
 
+  it('recusa time com mais de 4 entre jogadores e COMPLETE, e COMPLETE de time que não existe', async () => {
+    const peladaId = await novaPelada('2026-11-11');
+    const ids = await criar(['A', 'B', 'C', 'D']);
+    expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0], ids[1], ids[2]]], [[3, 3]]).catch((e) => e.motivo)).toBe('time_cheio');
+    expect(await salvarTimesDefinitivos(db, peladaId, [[ids[0]]], [[], [3]]).catch((e) => e.motivo)).toBe('pedido_invalido');
+  });
+
   it('sorteio novo sem partida apaga também os COMPLETE antigos', async () => {
     const peladaId = await novaPelada('2026-11-11');
     const ids = await criar(['A', 'B']);

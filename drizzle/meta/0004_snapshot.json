@@ -1,5 +1,5 @@
 {
-  "id": "3dba2695-ee1a-4369-91b4-9965f75dd5af",
+  "id": "125a88e7-7662-45d4-88e9-e891b2f744e1",
   "prevId": "a88b738d-0d01-4a3c-991c-9f3432f01989",
   "version": "7",
   "dialect": "postgresql",
@@ -306,6 +306,13 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
+        },
+        "completando": {
+          "name": "completando",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {},
