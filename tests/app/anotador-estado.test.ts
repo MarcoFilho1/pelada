@@ -127,6 +127,16 @@ describe('fila de escritas (T12-1)', () => {
     expect(a.instantaneo().aviso).toMatchObject({ tipo: 'erro' });
   });
 
+  it('Desfazer de um lance que o outro admin já desfez: nada some a mais e não avisa', async () => {
+    await registrarLance(db, partidaId, pepe, 'gol');
+    const a = new Anotacoes(await estado(), escritorReal()); // a tela mostra o gol do Pepe
+    await desfazerUltimo(db, partidaId); // o outro admin desfaz antes
+    a.desfazer();
+    await a.ocioso();
+    expect(a.instantaneo().aviso).toBeNull();
+    expect(gols(a, pepe)).toBe(0);
+  });
+
   it('toque gravou mas a leitura depois falhou (estado null): conta como sucesso, sem reverter nem aviso', async () => {
     const real = escritorReal();
     const a = new Anotacoes(await estado(), {

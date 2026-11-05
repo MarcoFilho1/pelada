@@ -214,7 +214,7 @@ export class Anotacoes {
         this.base = { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
       }
       // Não era mais o último (o outro admin anotou depois): o servidor não mexeu em nada.
-      if (this.base.lances.some((l) => l.id === id) || !r.desfeito) {
+      if (this.base.lances.some((l) => l.id === id)) {
         this.avisar('Não deu para desfazer: entrou um lance depois desse. Confira o placar.');
       }
     } else {
