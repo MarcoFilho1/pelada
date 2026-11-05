@@ -6,6 +6,7 @@ import { semearAdmin } from '@/db/seed';
 import { TAM_MIN_SENHA_ADMIN } from '@/domain/admin';
 import { criarAdmin, listarAdmins, trocarSenhaAdmin } from '@/server/admins';
 import { entrarAdmin, validarSessaoAdmin, versaoSessaoAdmin } from '@/server/auth';
+import { ErroDeValidacao } from '@/server/erros';
 import { createTestDb } from '../helpers/db';
 
 const now = new Date('2026-11-04T12:00:00-03:00');
@@ -49,6 +50,7 @@ describe('criarAdmin e listarAdmins', () => {
     await expect(criarAdmin(db, '   ', SENHA)).rejects.toThrow();
     await criarAdmin(db, 'ana', SENHA);
     await expect(criarAdmin(db, 'ana', SENHA)).rejects.toThrow(/já existe/i);
+    await expect(criarAdmin(db, 'ana', SENHA)).rejects.toBeInstanceOf(ErroDeValidacao);
   });
 });
 

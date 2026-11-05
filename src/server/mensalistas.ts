@@ -2,13 +2,14 @@ import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, mensalistasMes } from '@/db/schema';
 import { MAX_MENSALISTAS } from '@/domain/tempo';
+import { ErroDeValidacao } from './erros';
 
 export function mesValido(mes: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
 }
 
 function exigirMes(mes: string) {
-  if (!mesValido(mes)) throw new Error(`Mês inválido: ${mes}. Use AAAA-MM.`);
+  if (!mesValido(mes)) throw new ErroDeValidacao(`Mês inválido: ${mes}. Use AAAA-MM.`);
 }
 
 type Previa = { ids: number[]; copiado: boolean; origem: string | null };
@@ -91,7 +92,7 @@ export async function definirMensalistas(db: DB, mes: string, jogadorIds: number
         .select({ id: jogadores.id })
         .from(jogadores)
         .where(and(inArray(jogadores.id, ids), eq(jogadores.ativo, true)));
-      if (ativos.length !== ids.length) throw new Error('Jogador desconhecido ou inativo na lista.');
+      if (ativos.length !== ids.length) throw new ErroDeValidacao('Jogador desconhecido ou inativo na lista.');
     }
     await tx.delete(mensalistasMes).where(eq(mensalistasMes.mes, mes));
     if (ids.length > 0) await tx.insert(mensalistasMes).values(ids.map((jogadorId) => ({ mes, jogadorId })));

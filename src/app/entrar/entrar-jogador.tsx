@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { SetaDireita, SetaEsquerda } from '@/components/icones';
 import { PlacasPin } from '@/components/placas-pin';
 import { PIN_PADRAO } from '@/domain/pin';
+import { MSG_ALGO_DEU_ERRADO } from '@/server/erros';
 import { entrar, sugerirJogadores, type ErroEntrar } from './actions';
 
 type Jogador = { id: number; nome: string };
@@ -14,6 +15,7 @@ const ESPERA_BUSCA_MS = 150;
 const HORA = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Recife' });
 
 function mensagem(erro: ErroEntrar): string {
+  if (erro.motivo === 'falha') return MSG_ALGO_DEU_ERRADO;
   return erro.motivo === 'bloqueado'
     ? `Muitas tentativas. Tente de novo às ${HORA.format(new Date(erro.bloqueadoAte))}.`
     : 'PIN errado. Tente de novo.';
@@ -66,7 +68,7 @@ export function EntrarJogador() {
   }
 
   function digitarPin(v: string) {
-    if (erro?.motivo === 'pin_errado') setErro(null);
+    if (erro && erro.motivo !== 'bloqueado') setErro(null);
     setPin(v);
     if (v.length === 4 && escolhido) {
       startConferir(async () => {
@@ -113,7 +115,7 @@ export function EntrarJogador() {
           {erro ? (
             <>
               <span className="block font-medium text-erro">{mensagem(erro)}</span>
-              <span className="mt-1 block text-meta">Esqueceu o PIN? Peça ao admin para zerar.</span>
+              {erro.motivo !== 'falha' && <span className="mt-1 block text-meta">Esqueceu o PIN? Peça ao admin para zerar.</span>}
             </>
           ) : conferindo ? (
             <span className="text-apagado">Conferindo…</span>
