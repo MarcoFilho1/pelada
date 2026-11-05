@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { SetaEsquerda } from '@/components/icones';
 import { PlacasPin } from '@/components/placas-pin';
 import { PIN_PADRAO } from '@/domain/pin';
+import { MSG_ALGO_DEU_ERRADO } from '@/server/erros';
 import { sairDoPerfil, salvarPin } from './actions';
 
 type Etapa = 'novo' | 'confirmar';
@@ -12,6 +13,7 @@ const ERROS = {
   padrao: `${PIN_PADRAO} é o PIN inicial de todo mundo. Escolha outro.`,
   diferente: 'Os dois PINs não batem. Crie de novo.',
   servidor: 'Não deu para salvar esse PIN. Crie de novo.',
+  falha: MSG_ALGO_DEU_ERRADO,
 } as const;
 
 export function TrocarPin({ nome }: { nome: string }) {
@@ -44,7 +46,7 @@ export function TrocarPin({ nome }: { nome: string }) {
     if (v !== primeiro) return recomecar('diferente');
     startSalvar(async () => {
       const r = await salvarPin(v);
-      if (r?.erro) recomecar('servidor');
+      if (r?.erro) recomecar(r.erro === 'falha' ? 'falha' : 'servidor');
     });
   }
 

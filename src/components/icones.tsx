@@ -41,3 +41,27 @@ export function Marca({ className = 'size-6' }: Props) {
     </svg>
   );
 }
+
+/** Pendente (⏳ no texto do WhatsApp): ampulheta de um traço. */
+export function Ampulheta({ className = 'size-5' }: Props) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M5 3.5h10M5 16.5h10M6.5 3.5c0 3.2 2.5 4.6 2.5 6.5s-2.5 3.3-2.5 6.5M13.5 3.5c0 3.2-2.5 4.6-2.5 6.5s2.5 3.3 2.5 6.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function Copiar({ className = 'size-5' }: Props) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <rect x="7" y="7" width="9.5" height="9.5" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M13 4.5A1.5 1.5 0 0 0 11.5 3h-6A2.5 2.5 0 0 0 3 5.5v6A1.5 1.5 0 0 0 4.5 13" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}

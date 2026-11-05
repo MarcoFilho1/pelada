@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
 import { entrarJogador, trocarPin, validarSessaoJogador } from '@/server/auth';
+import { ErroDeValidacao } from '@/server/erros';
 import {
   atualizarJogador,
   criarJogadores,
@@ -67,7 +68,8 @@ describe('criarJogadores', () => {
 describe('atualizarJogador', () => {
   it('nota só de 0 a 5 em passos de 0,5', async () => {
     const [{ id }] = await db.insert(jogadores).values({ nome: 'Caio' }).returning();
-    await expect(atualizarJogador(db, id, { nota: 3.3 })).rejects.toThrow();
+    // erro de validação: a mensagem pode ir para a tela do admin
+    await expect(atualizarJogador(db, id, { nota: 3.3 })).rejects.toBeInstanceOf(ErroDeValidacao);
     await expect(atualizarJogador(db, id, { nota: 5.5 })).rejects.toThrow();
     await expect(atualizarJogador(db, id, { nota: -0.5 })).rejects.toThrow();
     await expect(atualizarJogador(db, id, { nota: Number.NaN })).rejects.toThrow();

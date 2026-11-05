@@ -7,15 +7,20 @@ import { trocarPin } from '@/server/auth';
 import { criarSessaoJogador, lerSessaoJogador, sair } from '@/server/sessao';
 
 /** Grava o PIN novo do jogador logado (sessão conferida no banco) e reemite o cookie. */
-export async function salvarPin(novoPin: string): Promise<{ erro: 'pin_invalido' }> {
+export async function salvarPin(novoPin: string): Promise<{ erro: 'pin_invalido' | 'falha' }> {
   const db = getDb();
   const sessao = await lerSessaoJogador(db);
   if (!sessao) redirect('/entrar');
   if (typeof novoPin !== 'string' || !pinNovoValido(novoPin)) return { erro: 'pin_invalido' };
-  await trocarPin(db, sessao.jogadorId, novoPin);
-  // trocarPin subiu a versão de sessão (derruba os outros aparelhos); este recebe um
-  // cookie novo com a versão atual e continua logado, já sem precisar trocar
-  await criarSessaoJogador(db, sessao.jogadorId);
+  try {
+    await trocarPin(db, sessao.jogadorId, novoPin);
+    // trocarPin subiu a versão de sessão (derruba os outros aparelhos); este recebe um
+    // cookie novo com a versão atual e continua logado, já sem precisar trocar
+    await criarSessaoJogador(db, sessao.jogadorId);
+  } catch (e) {
+    console.error(e);
+    return { erro: 'falha' };
+  }
   redirect('/lista');
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { parseNomesColados } from '@/domain/nome';
+import { idValido, mensagemParaUsuario } from '@/server/erros';
 import { atualizarJogador, criarJogadores, NomeEmUsoError, zerarPin } from '@/server/jogadores';
 import { lerSessaoAdmin } from '@/server/sessao';
 
@@ -21,7 +22,7 @@ async function tentar(fn: () => Promise<void>): Promise<Resposta> {
     revalidatePath('/admin/jogadores');
     return { ok: true };
   } catch (e) {
-    return { ok: false, erro: e instanceof Error ? e.message : 'Não deu certo. Tente de novo.' };
+    return { ok: false, erro: mensagemParaUsuario(e) };
   }
 }
 
@@ -32,32 +33,32 @@ export async function colarNomes(texto: string): Promise<Resposta & { criados?: 
     const r = await criarJogadores(getDb(), parseNomesColados(texto.slice(0, TAM_MAX_TEXTO)));
     revalidatePath('/admin/jogadores');
     return { ok: true, criados: r.criados.length, ignorados: r.ignorados.length };
-  } catch {
-    return { ok: false, erro: 'Não deu para criar. Tente de novo.' };
+  } catch (e) {
+    return { ok: false, erro: mensagemParaUsuario(e) };
   }
 }
 
 export async function mudarNota(id: number, nota: number): Promise<Resposta> {
   await exigirAdmin();
-  if (!Number.isInteger(id) || typeof nota !== 'number') return { ok: false, erro: 'Pedido inválido.' };
+  if (!idValido(id) || typeof nota !== 'number') return { ok: false, erro: 'Pedido inválido.' };
   return tentar(() => atualizarJogador(getDb(), id, { nota }));
 }
 
 export async function mudarAtivo(id: number, ativo: boolean): Promise<Resposta> {
   await exigirAdmin();
-  if (!Number.isInteger(id) || typeof ativo !== 'boolean') return { ok: false, erro: 'Pedido inválido.' };
+  if (!idValido(id) || typeof ativo !== 'boolean') return { ok: false, erro: 'Pedido inválido.' };
   return tentar(() => atualizarJogador(getDb(), id, { ativo }));
 }
 
 export async function zerarPinDoJogador(id: number): Promise<Resposta> {
   await exigirAdmin();
-  if (!Number.isInteger(id)) return { ok: false, erro: 'Pedido inválido.' };
+  if (!idValido(id)) return { ok: false, erro: 'Pedido inválido.' };
   return tentar(() => zerarPin(getDb(), id));
 }
 
 export async function renomear(id: number, nome: string): Promise<Resposta> {
   await exigirAdmin();
-  if (!Number.isInteger(id) || typeof nome !== 'string') return { ok: false, erro: 'Pedido inválido.' };
+  if (!idValido(id) || typeof nome !== 'string') return { ok: false, erro: 'Pedido inválido.' };
   try {
     await atualizarJogador(getDb(), id, { nome });
     revalidatePath('/admin/jogadores');
@@ -66,6 +67,6 @@ export async function renomear(id: number, nome: string): Promise<Resposta> {
     if (e instanceof NomeEmUsoError) {
       return { ok: false, erro: 'Já existe um jogador com esse nome. Joao e João contam como o mesmo.' };
     }
-    return { ok: false, erro: e instanceof Error ? e.message : 'Não deu para salvar o nome.' };
+    return { ok: false, erro: mensagemParaUsuario(e) };
   }
 }

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
+import { MAX_MENSALISTAS as MAX } from '@/domain/tempo';
 import { Marca, SetaDireita, SetaEsquerda } from '@/components/icones';
 import { salvarMensalistas } from './actions';
 
-const MAX = 16;
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function deslocar(mes: string, delta: number): string {
@@ -95,6 +95,14 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         <span className="text-base text-apagado">
           {cheio ? 'Vagas cheias. Tire alguém para pôr outro.' : total === 0 ? 'Marque pelo menos 1 mensalista.' : 'Toque no nome para marcar.'}
         </span>
+      </p>
+
+      <p className="mt-2 text-base text-apagado">
+        Mudanças valem a partir da próxima pelada. Para esta semana, ajuste em{' '}
+        <Link href="/admin/pelada" className="-my-3 inline-block py-3 font-medium text-tinta underline underline-offset-4">
+          Pelada
+        </Link>
+        .
       </p>
 
       {pendenteDeGravar && (

@@ -3,6 +3,7 @@ import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
 import { normalizarNome, parseNomesColados, separarNomes, TAM_MAX_NOME } from '@/domain/nome';
+import { ErroDeValidacao } from './erros';
 
 export { parseNomesColados };
 
@@ -32,7 +33,7 @@ export function notaValida(nota: number): boolean {
 }
 
 /** Outro jogador já tem esse nome (Joao e João contam como o mesmo). */
-export class NomeEmUsoError extends Error {
+export class NomeEmUsoError extends ErroDeValidacao {
   constructor(nome: string) {
     super(`Já existe um jogador chamado ${nome}.`);
     this.name = 'NomeEmUsoError';
@@ -47,7 +48,7 @@ export async function atualizarJogador(
   const set: PgUpdateSetSource<typeof jogadores> = {};
 
   if (mudancas.nota !== undefined) {
-    if (!notaValida(mudancas.nota)) throw new Error(`Nota inválida: ${mudancas.nota}. Use de 0 a 5, de 0,5 em 0,5.`);
+    if (!notaValida(mudancas.nota)) throw new ErroDeValidacao(`Nota inválida: ${mudancas.nota}. Use de 0 a 5, de 0,5 em 0,5.`);
     set.nota = mudancas.nota.toFixed(1);
   }
   if (mudancas.ativo !== undefined) set.ativo = mudancas.ativo;
@@ -55,8 +56,8 @@ export async function atualizarJogador(
   if (mudancas.ativo === false) set.sessaoVersao = sql`${jogadores.sessaoVersao} + 1`;
   if (mudancas.nome !== undefined) {
     const nome = mudancas.nome.trim().replace(/\s+/g, ' ');
-    if (!nome) throw new Error('O nome não pode ficar vazio.');
-    if (nome.length > TAM_MAX_NOME) throw new Error(`O nome passa de ${TAM_MAX_NOME} letras.`);
+    if (!nome) throw new ErroDeValidacao('O nome não pode ficar vazio.');
+    if (nome.length > TAM_MAX_NOME) throw new ErroDeValidacao(`O nome passa de ${TAM_MAX_NOME} letras.`);
     const todos = await db.select({ id: jogadores.id, nome: jogadores.nome }).from(jogadores);
     const chave = normalizarNome(nome);
     if (todos.some((j) => j.id !== id && normalizarNome(j.nome) === chave)) {
@@ -67,10 +68,10 @@ export async function atualizarJogador(
 
   if (Object.keys(set).length > 0) {
     const atualizados = await db.update(jogadores).set(set).where(eq(jogadores.id, id)).returning({ id: jogadores.id });
-    if (atualizados.length === 0) throw new Error(`Jogador ${id} não encontrado`);
+    if (atualizados.length === 0) throw new ErroDeValidacao('Jogador não encontrado. Recarregue a página.');
   } else {
     const [existe] = await db.select({ id: jogadores.id }).from(jogadores).where(eq(jogadores.id, id));
-    if (!existe) throw new Error(`Jogador ${id} não encontrado`);
+    if (!existe) throw new ErroDeValidacao('Jogador não encontrado. Recarregue a página.');
   }
 }
 
@@ -87,7 +88,7 @@ export async function zerarPin(db: DB, id: number): Promise<void> {
     })
     .where(eq(jogadores.id, id))
     .returning({ id: jogadores.id });
-  if (atualizados.length === 0) throw new Error(`Jogador ${id} não encontrado`);
+  if (atualizados.length === 0) throw new ErroDeValidacao('Jogador não encontrado. Recarregue a página.');
 }
 
 export type JogadorListado = {
