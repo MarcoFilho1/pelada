@@ -127,6 +127,34 @@ describe('fila de escritas (T12-1)', () => {
     expect(a.instantaneo().aviso).toMatchObject({ tipo: 'erro' });
   });
 
+  it('toque gravou mas a leitura depois falhou (estado null): conta como sucesso, sem reverter nem aviso', async () => {
+    const real = escritorReal();
+    const a = new Anotacoes(await estado(), {
+      ...real,
+      anotar: async (j, t) => {
+        const r = await real.anotar(j, t);
+        return r.ok ? { ok: true, estado: null, lanceId: r.lanceId } : r;
+      },
+    });
+    a.tocar(pepe, 'gol');
+    await a.ocioso();
+    expect(gols(a, pepe)).toBe(1);
+    expect(a.instantaneo().aviso).toBeNull();
+    // O Desfazer logo depois usa o id do lance e também aceita estado null.
+    const b = new Anotacoes(a.instantaneo().estado, {
+      ...real,
+      desfazer: async (id) => {
+        const r = await real.desfazer(id);
+        return r.ok ? { ok: true, estado: null } : r;
+      },
+    });
+    expect(b.desfazer()).toBe(true);
+    await b.ocioso();
+    expect(gols(b, pepe)).toBe(0);
+    expect(b.instantaneo().aviso).toBeNull();
+    expect(await lancesNoBanco()).toEqual([]);
+  });
+
   it('servidor recusa o toque: o número volta, os Desfazer daquele toque caem e o erro aparece', async () => {
     const real = escritorReal();
     const a = new Anotacoes(await estado(), {

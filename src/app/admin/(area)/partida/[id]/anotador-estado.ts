@@ -12,11 +12,12 @@ import type { LanceDaPartida } from '@/server/partidas';
 import type { EstadoDaPartida } from './estado';
 
 type Falha = { ok: false; erro: string };
-type Resposta = { ok: true; estado: EstadoDaPartida } | Falha;
+/** `estado: null`: gravou, mas a leitura depois falhou; a base se ajusta sozinha e a página confere em até 5 s. */
+type Resposta = { ok: true; estado: EstadoDaPartida | null } | Falha;
 
 /** As duas ações da tela, já presas à partida. */
 export type Escritor = {
-  anotar(jogadorId: number, tipo: TipoLance): Promise<{ ok: true; estado: EstadoDaPartida; lanceId: number } | Falha>;
+  anotar(jogadorId: number, tipo: TipoLance): Promise<{ ok: true; estado: EstadoDaPartida | null; lanceId: number } | Falha>;
   desfazer(esperadoId: number): Promise<Resposta>;
 };
 
@@ -167,7 +168,7 @@ export class Anotacoes {
     const desteToque = (x: Escrita) => x.tipo === 'desfazer' && 'toque' in x.alvo && x.alvo.toque === e.chave;
     this.escritas = this.escritas.filter((x) => x.chave !== e.chave);
     if (r.ok) {
-      this.base = r.estado;
+      this.base = r.estado ?? { ...this.base, lances: [...this.base.lances, { id: r.lanceId, jogadorId: e.jogadorId, tipo: e.lance }] };
       // Desfazer pendente deste toque: agora se sabe o id do lance que ele vai tirar.
       this.escritas = this.escritas.map((x) => (desteToque(x) ? { ...x, alvo: { lanceId: r.lanceId } } : x));
     } else {
@@ -186,9 +187,10 @@ export class Anotacoes {
     const r = await this.escritor.desfazer(id).catch(() => FALHA);
     this.escritas = this.escritas.filter((x) => x.chave !== chave);
     if (r.ok) {
-      this.base = r.estado;
+      // Sem leitura (null) o desfazer valeu: tira o lance da base.
+      this.base = r.estado ?? { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
       // Não era mais o último (o outro admin anotou depois): o servidor não mexeu em nada.
-      if (r.estado.lances.some((l) => l.id === id)) {
+      if (this.base.lances.some((l) => l.id === id)) {
         this.avisar('Não deu para desfazer: entrou um lance depois desse. Confira o placar.');
       }
     } else {
