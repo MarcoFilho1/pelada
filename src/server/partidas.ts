@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { DB } from '@/db/client';
-import { jogadores, lances, partidaJogadores, partidas, peladas, timeJogadores, times } from '@/db/schema';
+import { jogadores, lances, partidaJogadores, partidas, peladas, timeCompletes, timeJogadores, times } from '@/db/schema';
 import {
   filaDepois,
   placar,
@@ -12,7 +12,7 @@ import {
   type Resultado,
   type TipoLance,
 } from '@/domain/partida';
-import type { Cor } from '@/domain/sorteio';
+import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { dataDe } from '@/domain/tempo';
 import { ErroDeValidacao } from './erros';
 
@@ -32,7 +32,9 @@ export type MotivoPartida =
   | 'ja_encerrada'
   | 'nao_encerrada'
   | 'fora_da_partida'
-  | 'lance_inexistente';
+  | 'lance_inexistente'
+  | 'completes_demais'
+  | 'completa_invalido';
 
 const MENSAGENS: Record<MotivoPartida, string> = {
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
@@ -47,6 +49,8 @@ const MENSAGENS: Record<MotivoPartida, string> = {
   nao_encerrada: 'Só dá para corrigir uma partida já encerrada.',
   fora_da_partida: 'Esse jogador não está nesta partida.',
   lance_inexistente: 'Esse lance não é desta partida ou já foi apagado. Recarregue a página.',
+  completes_demais: 'Tem mais gente completando do que vagas de COMPLETE no time.',
+  completa_invalido: 'Quem completa precisa ser jogador ativo, de fora dos dois times da partida, e não pode repetir.',
 };
 
 export class ErroPartida extends ErroDeValidacao {
@@ -107,8 +111,19 @@ export function violouUmaAberta(e: unknown): boolean {
  * Começa uma partida entre dois times da pelada de hoje e grava a foto do elenco (só os jogadores
  * ativos de cada time, com o lado). A foto não muda se os times forem editados depois.
  * Uma partida de cada vez por pelada.
+ *
+ * `completam` diz quem completa cada lado só nesta partida (entra na foto com `completando`): no
+ * máximo um jogador por COMPLETE do time, ativo, de fora dos dois times que jogam, sem repetir.
+ * Menos ids que COMPLETEs = jogar com um a menos.
  */
-export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, timeBId: number, now: Date): Promise<number> {
+export async function iniciarPartida(
+  db: DB,
+  peladaId: number,
+  timeAId: number,
+  timeBId: number,
+  now: Date,
+  completam: { A: number[]; B: number[] } = { A: [], B: [] },
+): Promise<number> {
   if (timeAId === timeBId) throw new ErroPartida('mesmo_time');
   return db.transaction(async (tx) => {
     const pelada = await travarPelada(tx, peladaId);
@@ -118,7 +133,7 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
     const daPelada = await tx
       .select({ id: times.id })
       .from(times)
-      .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId])));
+      .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId]), isNull(times.arquivadoEm)));
     if (daPelada.length !== 2) throw new ErroPartida('time_inexistente');
 
     const [rolando] = await tx
@@ -137,6 +152,30 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
     const ladoB = elenco.filter((j) => j.timeId === timeBId);
     if (!ladoA.length || !ladoB.length) throw new ErroPartida('time_vazio');
 
+    const completes = await tx
+      .select({ timeId: timeCompletes.timeId })
+      .from(timeCompletes)
+      .where(inArray(timeCompletes.timeId, [timeAId, timeBId]));
+    const vagas = (timeId: number) => completes.filter((c) => c.timeId === timeId).length;
+    if (completam.A.length > vagas(timeAId) || completam.B.length > vagas(timeBId)) throw new ErroPartida('completes_demais');
+    const escolhidos = [...completam.A, ...completam.B];
+    if (escolhidos.length) {
+      const noElenco = new Set(elenco.map((j) => j.jogadorId));
+      const donosDosTimes = await tx
+        .select({ jogadorId: timeJogadores.jogadorId })
+        .from(timeJogadores)
+        .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
+      const dosDoisTimes = new Set([...noElenco, ...donosDosTimes.map((j) => j.jogadorId)]);
+      const ativos = await tx
+        .select({ id: jogadores.id })
+        .from(jogadores)
+        .where(and(inArray(jogadores.id, escolhidos), eq(jogadores.ativo, true)));
+      const repetido = new Set(escolhidos).size !== escolhidos.length;
+      if (repetido || ativos.length !== escolhidos.length || escolhidos.some((id) => dosDoisTimes.has(id))) {
+        throw new ErroPartida('completa_invalido');
+      }
+    }
+
     // A conferência acima já cobre quase tudo (a pelada está travada); o índice único é a rede de segurança.
     const [partida] = await tx
       .insert(partidas)
@@ -148,6 +187,8 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
     await tx.insert(partidaJogadores).values([
       ...ladoA.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'A' as const })),
       ...ladoB.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'B' as const })),
+      ...completam.A.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'A' as const, completando: true })),
+      ...completam.B.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'B' as const, completando: true })),
     ]);
     return partida.id;
   });
@@ -265,7 +306,7 @@ export async function corrigirContagem(
 }
 
 export type LanceDaPartida = { id: number; jogadorId: number; tipo: TipoLance };
-export type JogadorNaPartida = { id: number; nome: string; gols: number; assistencias: number };
+export type JogadorNaPartida = { id: number; nome: string; gols: number; assistencias: number; completando: boolean };
 export type LadoAoVivo = { timeId: number; cor: Cor; jogadores: JogadorNaPartida[] };
 export type PartidaAoVivo = {
   id: number;
@@ -293,7 +334,7 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
   const [cores, elenco, ls] = await Promise.all([
     db.select({ id: times.id, cor: times.cor }).from(times).where(inArray(times.id, [p.timeAId, p.timeBId])),
     db
-      .select({ id: jogadores.id, nome: jogadores.nome, lado: partidaJogadores.lado })
+      .select({ id: jogadores.id, nome: jogadores.nome, lado: partidaJogadores.lado, completando: partidaJogadores.completando })
       .from(partidaJogadores)
       .innerJoin(jogadores, eq(jogadores.id, partidaJogadores.jogadorId))
       .where(eq(partidaJogadores.partidaId, partidaId)),
@@ -312,7 +353,9 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     jogadores: elenco
       .filter((j) => j.lado === l)
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-      .map((j) => ({ id: j.id, nome: j.nome, gols: conta(j.id, 'gol'), assistencias: conta(j.id, 'assistencia') })),
+      .map((j) => ({ id: j.id, nome: j.nome, gols: conta(j.id, 'gol'), assistencias: conta(j.id, 'assistencia'),
+        completando: j.completando,
+      })),
   });
   const pl = placar(ls, new Map(elenco.map((j) => [j.id, j.lado])));
   const relogio = p.encerradaEm ?? now;
@@ -328,6 +371,37 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, p.iniciadaEm, now),
     lances: ls,
     lados: { A: lado('A', p.timeAId), B: lado('B', p.timeBId) },
+  };
+}
+
+/**
+ * Quem pode completar uma partida entre A e B: `deFora` = jogadores dos outros times atuais da
+ * pelada; `semTime` = ativos que não estão em nenhum time atual. Ordem por nome. Só ativos.
+ */
+export async function quemPodeCompletar(
+  db: DB,
+  peladaId: number,
+  timeAId: number,
+  timeBId: number,
+): Promise<{ deFora: JogadorNota[]; semTime: JogadorNota[] }> {
+  const [atuais, ativos] = await Promise.all([
+    db
+      .select({ timeId: timeJogadores.timeId, jogadorId: timeJogadores.jogadorId })
+      .from(timeJogadores)
+      .innerJoin(times, eq(times.id, timeJogadores.timeId))
+      .where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))),
+    db
+      .select({ id: jogadores.id, nome: jogadores.nome, nota: jogadores.nota })
+      .from(jogadores)
+      .where(eq(jogadores.ativo, true))
+      .orderBy(asc(jogadores.nome)),
+  ]);
+  const timeDe = new Map(atuais.map((a) => [a.jogadorId, a.timeId]));
+  const ordenar = (js: JogadorNota[]) => js.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const todos = ativos.map((j) => ({ id: j.id, nome: j.nome, nota: Number(j.nota) }));
+  return {
+    deFora: ordenar(todos.filter((j) => timeDe.has(j.id) && timeDe.get(j.id) !== timeAId && timeDe.get(j.id) !== timeBId)),
+    semTime: ordenar(todos.filter((j) => !timeDe.has(j.id))),
   };
 }
 
@@ -434,15 +508,15 @@ export async function historicoDaPelada(db: DB, peladaId: number): Promise<Parti
  */
 export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
   const [ts, jogadas] = await Promise.all([
-    db.select({ id: times.id }).from(times).where(eq(times.peladaId, peladaId)).orderBy(asc(times.ordem)),
+    db.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))).orderBy(asc(times.ordem)),
     db
       .select({ timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado })
       .from(partidas)
       .where(and(eq(partidas.peladaId, peladaId), isNotNull(partidas.encerradaEm)))
       .orderBy(asc(partidas.id)),
   ]);
-  return jogadas.reduce(
-    (fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado! }),
-    ts.map((t) => t.id),
-  );
+  const atuais = new Set(ts.map((t) => t.id));
+  return jogadas
+    .filter((p) => atuais.has(p.timeA) && atuais.has(p.timeB))
+    .reduce((fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado! }), ts.map((t) => t.id));
 }

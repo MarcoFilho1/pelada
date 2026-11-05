@@ -6,9 +6,14 @@ export type Cor = (typeof CORES)[number]
 
 /** Nota ou soma de notas para a tela: 3.5 → '3,5'. */
 export const formatarNota = (n: number) => n.toFixed(1).replace('.', ',')
-export type TimeSorteado = { jogadores: JogadorNota[]; soma: number }
+/** Notas que o sorteio escolhe sozinho para cada COMPLETE (vaga a ser preenchida por alguém presente). */
+export const NOTAS_COMPLETE = [2.5, 3, 3.5] as const
+
+/** `completes` são as notas das vagas COMPLETE; `soma` inclui jogadores e completes. */
+export type TimeSorteado = { jogadores: JogadorNota[]; completes: number[]; soma: number }
 
 type Opcoes = { times?: number; tentativas?: number; rng?: () => number }
+type OpcoesComplete = Opcoes & { porTime?: number }
 
 const EPS = 1e-9
 const TOLERANCIA_SOMA = 0.5
@@ -17,10 +22,11 @@ const somar = (js: JogadorNota[]) => js.reduce((s, j) => s + j.nota, 0)
 
 function montar(js: JogadorNota[]): TimeSorteado {
   const jogadores = [...js].sort((a, b) => b.nota - a.nota || a.nome.localeCompare(b.nome))
-  return { jogadores, soma: somar(jogadores) }
+  return { jogadores, completes: [], soma: somar(jogadores) }
 }
 
-const media = (t: TimeSorteado) => (t.jogadores.length ? t.soma / t.jogadores.length : 0)
+const tamanho = (t: TimeSorteado) => t.jogadores.length + t.completes.length
+const media = (t: TimeSorteado) => (tamanho(t) ? t.soma / tamanho(t) : 0)
 
 /** Maior soma − menor soma. */
 export function diferenca(times: TimeSorteado[]): number {
@@ -31,7 +37,7 @@ export function diferenca(times: TimeSorteado[]): number {
 
 /** Maior média − menor média (justo quando os times têm tamanhos diferentes). */
 export function diferencaMedia(times: TimeSorteado[]): number {
-  const medias = times.filter((t) => t.jogadores.length > 0).map(media)
+  const medias = times.filter((t) => tamanho(t) > 0).map(media)
   if (!medias.length) return 0
   return Math.max(...medias) - Math.min(...medias)
 }
@@ -41,7 +47,7 @@ export function diferencaMedia(times: TimeSorteado[]): number {
  * diferentes (a soma seria injusta), a diferença das médias, "por jogador".
  */
 export function rotuloDaDiferenca(times: TimeSorteado[]): string {
-  const igual = new Set(times.map((t) => t.jogadores.length)).size <= 1
+  const igual = new Set(times.map(tamanho)).size <= 1
   return igual ? `Diferença: ${formatarNota(diferenca(times))}` : `Diferença: ${formatarNota(diferencaMedia(times))} por jogador`
 }
 
@@ -57,16 +63,26 @@ export function rotuloDaDiferenca(times: TimeSorteado[]): string {
  * qualquer uma dentro da tolerância. O rng sorteia uniformemente no conjunto.
  */
 export function sortearTimes(jogadores: JogadorNota[], opts: Opcoes = {}): TimeSorteado[] {
+  return sortearInterno(jogadores, opts, false)?.times ?? []
+}
+
+/** Núcleo do sorteio. Com `exigirReal`, descarta divisões com time sem jogador de verdade (ids > 0). */
+function sortearInterno(
+  jogadores: JogadorNota[],
+  opts: Opcoes,
+  exigirReal: boolean,
+): { times: TimeSorteado[]; custo: number } | null {
   const { times: pedidos = 4, tentativas = 3000, rng = Math.random } = opts
   const nTimes = Math.max(1, Math.floor(pedidos))
   const n = jogadores.length
   const base = Math.floor(n / nTimes)
   const resto = n % nTimes
   const tamanhos = Array.from({ length: nTimes }, (_, i) => base + (i < resto ? 1 : 0))
-  if (n === 0) return tamanhos.map(() => montar([]))
+  if (n === 0) return { times: tamanhos.map(() => montar([])), custo: 0 }
 
   const tolerancia = TOLERANCIA_SOMA / Math.max(1, tamanhos[0])
-  const corte = [...jogadores].sort((x, y) => y.nota - x.nota)[Math.min(nTimes, n) - 1].nota
+  const reais = exigirReal ? jogadores.filter((j) => j.id > 0) : jogadores
+  const corte = [...reais].sort((x, y) => y.nota - x.nota)[Math.min(nTimes, reais.length) - 1].nota
   const candidatos: { custo: number; amplitude: number; times: JogadorNota[][] }[] = []
   let melhor = Infinity
 
@@ -82,6 +98,7 @@ export function sortearTimes(jogadores: JogadorNota[], opts: Opcoes = {}): TimeS
       grupos.push(emb.slice(pos, pos + t))
       pos += t
     }
+    if (exigirReal && grupos.some((g) => !g.some((x) => x.id > 0))) continue
     const medias = grupos.filter((g) => g.length).map((g) => somar(g) / g.length)
     const custo = Math.max(...medias) - Math.min(...medias)
     if (custo > melhor + tolerancia + EPS) continue
@@ -91,9 +108,51 @@ export function sortearTimes(jogadores: JogadorNota[], opts: Opcoes = {}): TimeS
     candidatos.push({ custo, amplitude, times: grupos })
   }
 
+  if (!candidatos.length) return null
   const dentro = candidatos.filter((c) => c.custo <= melhor + tolerancia + EPS)
   const boas = dentro.filter((c) => c.amplitude <= 1)
   const finais = boas.length ? boas : dentro
   const escolhido = finais[Math.min(finais.length - 1, Math.floor(rng() * finais.length))]
-  return escolhido.times.map(montar)
+  return { times: escolhido.times.map(montar), custo: melhor }
+}
+
+/** Todos os multiconjuntos de `k` notas de COMPLETE (combinações com repetição). */
+function combinacoesDeNotas(k: number, de = 0): number[][] {
+  if (k === 0) return [[]]
+  const out: number[][] = []
+  for (let i = de; i < NOTAS_COMPLETE.length; i++) {
+    for (const resto of combinacoesDeNotas(k - 1, i)) out.push([NOTAS_COMPLETE[i], ...resto])
+  }
+  return out
+}
+
+/**
+ * Sorteia completando times curtos com COMPLETE até `porTime` por time. A nota de cada COMPLETE sai
+ * de {2,5; 3; 3,5}: testa cada combinação de notas e fica com a de menor custo (diferença de médias);
+ * no empate, a mais perto de 3,0; depois o rng. Todo time tem ao menos um jogador de verdade.
+ */
+export function sortearComCompletes(jogadores: JogadorNota[], opts: OpcoesComplete = {}): TimeSorteado[] {
+  const { times: pedidos = 4, porTime = 4, tentativas = 3000, rng = Math.random } = opts
+  const n = jogadores.length
+  const nTimes = Math.min(Math.max(1, Math.floor(pedidos)), n)
+  const k = Math.max(0, nTimes * porTime - n)
+  if (n === 0 || k === 0) return sortearTimes(jogadores, { times: nTimes || pedidos, tentativas, rng })
+
+  const porCombinacao = Math.max(200, Math.floor(tentativas / combinacoesDeNotas(k).length))
+  const melhores: { custo: number; desvio: number; notas: number[]; times: TimeSorteado[] }[] = []
+  for (const notas of combinacoesDeNotas(k)) {
+    const ficticios = notas.map((nota, i) => ({ id: -(i + 1), nome: `COMPLETE ${i + 1}`, nota }))
+    const r = sortearInterno([...jogadores, ...ficticios], { times: nTimes, tentativas: porCombinacao, rng }, true)
+    if (!r) continue
+    melhores.push({ custo: r.custo, desvio: notas.reduce((s, x) => s + Math.abs(x - 3), 0), notas, times: r.times })
+  }
+  const minCusto = Math.min(...melhores.map((m) => m.custo))
+  const empate1 = melhores.filter((m) => m.custo <= minCusto + EPS)
+  const minDesvio = Math.min(...empate1.map((m) => m.desvio))
+  const finais = empate1.filter((m) => m.desvio <= minDesvio + EPS)
+  const escolhido = finais[Math.min(finais.length - 1, Math.floor(rng() * finais.length))]
+  return escolhido.times.map((t) => {
+    const completes = t.jogadores.filter((j) => j.id < 0).map((j) => j.nota)
+    return { jogadores: t.jogadores.filter((j) => j.id > 0), completes, soma: t.soma }
+  })
 }

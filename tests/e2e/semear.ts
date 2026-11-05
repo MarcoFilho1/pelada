@@ -1,4 +1,5 @@
-// Banco novo do e2e: migrações, o admin, 8 jogadores com times, 3 novatos de PIN padrão, as peladas
+// Banco novo do e2e: migrações, o admin, 8 jogadores com times, 7 sem time (sorteio com COMPLETE),
+// 3 novatos de PIN padrão, as peladas
 // de hoje/amanhã e da lista da semana, e um histórico de duas partidas para o ranking.
 import { rmSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
@@ -21,7 +22,7 @@ async function main() {
   const criados = await db
     .insert(schema.jogadores)
     .values([
-      ...[...E2E.azul, ...E2E.laranja].map((nome) => ({ nome, pinPrecisaTrocar: false })),
+      ...[...E2E.azul, ...E2E.laranja, ...E2E.sorteio, E2E.semTime].map((nome) => ({ nome, pinPrecisaTrocar: false })),
       ...Object.values(E2E.novatos).map((nome) => ({ nome })),
     ])
     .returning({ id: schema.jogadores.id, nome: schema.jogadores.nome });

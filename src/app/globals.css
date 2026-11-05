@@ -6,8 +6,32 @@
  * Lima só para estado (placa pendurada, coisa confirmada); vermelho só para erro.
  * Superfícies sem borda e sem sombra: a elevação é só a luminosidade.
  */
-/* Tela baixa (a parte visível do navegador num celular comum: 360×640, 390×664): o anotador aperta o topo e os cartões. */
-@custom-variant baixa (@media (max-height: 760px));
+/*
+ * Tela baixa (a parte visível do navegador num celular comum: 360×640, 390×664): o anotador aperta o
+ * topo e os cartões. Cada marca "completando" na coluna mais cheia (`data-completando` no anotador) é
+ * uma linha de 20px a mais no cartão: o limite sobe 20px por marca (medido: com 1 marca, 4 contra 4
+ * rolava até 776px; com 2, até 796px), para 4 contra 4 caber sem rolar em qualquer altura.
+ */
+@custom-variant baixa {
+  @media (max-height: 760px) {
+    @slot;
+  }
+  [data-completando='1'] & {
+    @media (max-height: 780px) {
+      @slot;
+    }
+  }
+  [data-completando='2'] & {
+    @media (max-height: 800px) {
+      @slot;
+    }
+  }
+  [data-completando='3'] & {
+    @media (max-height: 820px) {
+      @slot;
+    }
+  }
+}
 
 @theme {
   --color-chao: #000000; /* fundo */

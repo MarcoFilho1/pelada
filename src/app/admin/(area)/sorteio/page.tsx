@@ -7,7 +7,7 @@ import { partidaEmAndamento } from '@/server/partidas';
 import { peladaDoDia } from '@/server/pelada';
 import { estadoDaPelada } from '@/server/presencas';
 import { lerSessaoAdmin } from '@/server/sessao';
-import { participantesPadrao, temPartida, timesDaPelada } from '@/server/times';
+import { participantesPadrao, partidasJogadas, timesDaPelada } from '@/server/times';
 import { SorteioAdmin } from './sorteio-admin';
 
 export const metadata: Metadata = { title: 'Sorteio · Pelada' };
@@ -29,9 +29,9 @@ export default async function SorteioPage() {
     );
   }
 
-  const [times, jaTemPartida, emAndamento, ativos, padrao, estado] = await Promise.all([
+  const [times, resumo, emAndamento, ativos, padrao, estado] = await Promise.all([
     timesDaPelada(db, pelada.id),
-    temPartida(db, pelada.id),
+    partidasJogadas(db, pelada.id),
     partidaEmAndamento(db, pelada.id),
     listarJogadores(db, { incluirInativos: false }),
     participantesPadrao(db, pelada.id, now),
@@ -56,7 +56,7 @@ export default async function SorteioPage() {
       marcados={marcados}
       sugeridos={sugeridos}
       times={times}
-      temPartida={jaTemPartida}
+      jogadas={resumo.jogadas}
       emAndamento={emAndamento}
     />
   );

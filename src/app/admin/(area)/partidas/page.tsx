@@ -42,7 +42,7 @@ export default async function PartidasPage() {
       data={diaMes(pelada.data)}
       hoje={pelada.data === dataDe(now)}
       cancelada={pelada.estadoManual === 'cancelada'}
-      times={times.map((t) => ({ id: t.id, cor: t.cor, jogadores: t.jogadores.map((j) => j.nome) }))}
+      times={times.map((t) => ({ id: t.id, cor: t.cor, jogadores: t.jogadores, completes: t.completes }))}
       fila={fila}
       emAndamento={
         aoVivo && { id: aoVivo.id, corA: aoVivo.lados.A.cor, corB: aoVivo.lados.B.cor, placar: aoVivo.placar }

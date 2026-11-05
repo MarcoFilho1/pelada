@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Mais, Menos, SetaDireita } from '@/components/icones';
+import { SetaDireita } from '@/components/icones';
+import { SeletorDeNota } from '@/components/seletor-de-nota';
 import { normalizarNome, parseNomesColados, separarNomes } from '@/domain/nome';
 import { formatarNota } from '@/domain/sorteio';
 import type { JogadorListado } from '@/server/jogadores';
@@ -302,33 +303,7 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
 
               {expandido && (
                 <div id={`jogador-${j.id}`} className="px-4 pb-3">
-                  <div role="group" aria-label={`Nota de ${j.nome}`} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      aria-label="Diminuir nota em 0,5"
-                      onClick={() => ajustarNota(j, -0.5)}
-                      disabled={nota(j) <= 0}
-                      className="grid size-14 place-items-center rounded-placa bg-placa-alta transition-colors hover:bg-chao active:bg-chao disabled:text-meta"
-                    >
-                      <Menos />
-                    </button>
-                    <output
-                      aria-live="polite"
-                      className="grid h-14 w-24 place-items-center rounded-placa bg-chao font-placa text-numero font-semibold tabular-nums"
-                    >
-                      {formatarNota(nota(j))}
-                    </output>
-                    <button
-                      type="button"
-                      aria-label="Aumentar nota em 0,5"
-                      onClick={() => ajustarNota(j, 0.5)}
-                      disabled={nota(j) >= 5}
-                      className="grid size-14 place-items-center rounded-placa bg-placa-alta transition-colors hover:bg-chao active:bg-chao disabled:text-meta"
-                    >
-                      <Mais />
-                    </button>
-                    <span className="ml-1 text-base text-meta">de 0 a 5</span>
-                  </div>
+                  <SeletorDeNota valor={nota(j)} rotulo={`Nota de ${j.nome}`} onPasso={(passo) => ajustarNota(j, passo)} />
 
                   {(() => {
                     const r = rascunho?.id === j.id ? rascunho : null;

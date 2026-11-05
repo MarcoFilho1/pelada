@@ -1,35 +1,46 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
-import { jogadores, partidas, peladas, timeJogadores, times } from '@/db/schema';
+import { jogadores, partidas, peladas, timeCompletes, timeJogadores, times } from '@/db/schema';
 import { CORES, type Cor, type JogadorNota } from '@/domain/sorteio';
 import { ErroDeValidacao } from './erros';
-import { listarJogadores } from './jogadores';
+import { listarJogadores, notaValida } from './jogadores';
 import { estadoDaPelada } from './presencas';
 
 type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 
-export type TimeDaPelada = { id: number; cor: Cor; ordem: number; jogadores: JogadorNota[] };
+export type CompleteDoTime = { id: number; nota: number };
+export type TimeDaPelada = { id: number; cor: Cor; ordem: number; jogadores: JogadorNota[]; completes: CompleteDoTime[] };
+
+const VAGAS_POR_TIME = 4;
 
 export type MotivoTimes =
-  | 'ja_tem_partida'
+  | 'partida_em_andamento'
+  | 'nota_invalida'
+  | 'ja_tem_time'
+  | 'time_cheio'
   | 'pelada_inexistente'
   | 'quantidade_de_times'
   | 'time_vazio'
   | 'jogador_repetido'
   | 'jogador_inativo'
   | 'time_inexistente'
+  | 'complete_inexistente'
   | 'fora_do_time'
   | 'peladas_diferentes'
   | 'pedido_invalido';
 
 const MENSAGENS: Record<MotivoTimes, string> = {
-  ja_tem_partida: 'Já tem partida jogada; edite os times em vez de sortear de novo.',
+  partida_em_andamento: 'Tem partida em andamento; encerre antes de sortear de novo.',
+  nota_invalida: 'Nota inválida. Use de 0 a 5, de 0,5 em 0,5.',
+  ja_tem_time: 'Esse jogador já está em um time. Recarregue a página.',
+  time_cheio: 'Esse time já está completo (4 vagas).',
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
   quantidade_de_times: `Monte de 1 a ${CORES.length} times.`,
   time_vazio: 'Todo time precisa de pelo menos um jogador.',
   jogador_repetido: 'O mesmo jogador está em dois times.',
   jogador_inativo: 'Tem jogador desativado ou que não existe. Recarregue a página.',
   time_inexistente: 'Esse time não existe mais. Recarregue a página.',
+  complete_inexistente: 'Essa vaga de COMPLETE não existe mais. Recarregue a página.',
   fora_do_time: 'Esse jogador já não está nesse time. Recarregue a página.',
   peladas_diferentes: 'Os dois times são de peladas diferentes.',
   pedido_invalido: 'Pedido inválido.',
@@ -69,27 +80,43 @@ async function todosAtivos(tx: Tx, ids: number[]): Promise<boolean> {
 }
 
 /**
- * Marca os times como definitivos, substituindo os que a pelada já tinha. Cores na ordem azul,
- * laranja, verde, preto. Depois da primeira partida não dá mais (as partidas apontam para os
- * times); aí os times se editam com `moverJogador`.
+ * Marca os times como definitivos. Cores na ordem azul, laranja, verde, preto; `completes[i]` são
+ * as notas dos COMPLETE do time `i`. Sem partida na pelada, os times antigos são apagados. Com
+ * partida, são arquivados (as partidas apontam para eles) e os novos passam a ser os atuais.
  */
-export async function salvarTimesDefinitivos(db: DB, peladaId: number, elencos: number[][]): Promise<void> {
+export async function salvarTimesDefinitivos(
+  db: DB,
+  peladaId: number,
+  elencos: number[][],
+  completes: number[][] = [],
+  now = new Date(),
+): Promise<void> {
   if (elencos.length < 1 || elencos.length > CORES.length) throw new ErroTimes('quantidade_de_times');
   if (elencos.some((e) => e.length === 0)) throw new ErroTimes('time_vazio');
+  if (completes.flat().some((n) => !notaValida(n))) throw new ErroTimes('nota_invalida');
+  if (completes.length > elencos.length) throw new ErroTimes('pedido_invalido');
+  // O limite de 4 vale só para time com COMPLETE (ele completa até 4); time só de jogadores, como 5,4,4,4 com 17, não tem.
+  const comComplete = (i: number) => completes[i]?.length ?? 0;
+  if (elencos.some((e, i) => comComplete(i) > 0 && e.length + comComplete(i) > VAGAS_POR_TIME)) throw new ErroTimes('time_cheio');
   const ids = elencos.flat();
   if (new Set(ids).size !== ids.length) throw new ErroTimes('jogador_repetido');
 
   await db.transaction(async (tx) => {
     await travarPelada(tx, peladaId);
-    const [partida] = await tx.select({ id: partidas.id }).from(partidas).where(eq(partidas.peladaId, peladaId)).limit(1);
-    if (partida) throw new ErroTimes('ja_tem_partida');
+    const daPelada = await tx.select({ id: partidas.id, encerradaEm: partidas.encerradaEm }).from(partidas).where(eq(partidas.peladaId, peladaId));
+    if (daPelada.some((p) => p.encerradaEm === null)) throw new ErroTimes('partida_em_andamento');
     if (!(await todosAtivos(tx, ids))) throw new ErroTimes('jogador_inativo');
 
-    const antigos = await tx.select({ id: times.id }).from(times).where(eq(times.peladaId, peladaId));
+    const antigos = await tx.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)));
     if (antigos.length) {
       const idsAntigos = antigos.map((t) => t.id);
-      await tx.delete(timeJogadores).where(inArray(timeJogadores.timeId, idsAntigos));
-      await tx.delete(times).where(inArray(times.id, idsAntigos));
+      if (daPelada.length) {
+        await tx.update(times).set({ arquivadoEm: now }).where(inArray(times.id, idsAntigos));
+      } else {
+        await tx.delete(timeCompletes).where(inArray(timeCompletes.timeId, idsAntigos));
+        await tx.delete(timeJogadores).where(inArray(timeJogadores.timeId, idsAntigos));
+        await tx.delete(times).where(inArray(times.id, idsAntigos));
+      }
     }
 
     const novos = await tx
@@ -100,6 +127,10 @@ export async function salvarTimesDefinitivos(db: DB, peladaId: number, elencos: 
     await tx
       .insert(timeJogadores)
       .values(elencos.flatMap((e, i) => e.map((jogadorId) => ({ timeId: idPorOrdem.get(i + 1)!, jogadorId }))));
+    const linhasComplete = elencos.flatMap((_, i) =>
+      (completes[i] ?? []).map((nota) => ({ timeId: idPorOrdem.get(i + 1)!, nota: nota.toFixed(1) })),
+    );
+    if (linhasComplete.length) await tx.insert(timeCompletes).values(linhasComplete);
   });
 }
 
@@ -108,9 +139,15 @@ export async function timesDaPelada(db: DB, peladaId: number): Promise<TimeDaPel
   const ts = await db
     .select({ id: times.id, cor: times.cor, ordem: times.ordem })
     .from(times)
-    .where(eq(times.peladaId, peladaId))
+    .where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)))
     .orderBy(times.ordem);
   if (!ts.length) return [];
+  const idsTimes = ts.map((t) => t.id);
+  const cs = await db
+    .select({ id: timeCompletes.id, timeId: timeCompletes.timeId, nota: timeCompletes.nota })
+    .from(timeCompletes)
+    .where(inArray(timeCompletes.timeId, idsTimes))
+    .orderBy(timeCompletes.id);
   const linhas = await db
     .select({ timeId: timeJogadores.timeId, id: jogadores.id, nome: jogadores.nome, nota: jogadores.nota })
     .from(timeJogadores)
@@ -127,19 +164,21 @@ export async function timesDaPelada(db: DB, peladaId: number): Promise<TimeDaPel
       .filter((l) => l.timeId === t.id)
       .map((l) => ({ id: l.id, nome: l.nome, nota: Number(l.nota) }))
       .sort(porNota),
+    completes: cs.filter((c) => c.timeId === t.id).map((c) => ({ id: c.id, nota: Number(c.nota) })),
   }));
 }
 
-/** Já teve partida nesta pelada (aí o sorteio não pode ser refeito). */
-export async function temPartida(db: DB, peladaId: number): Promise<boolean> {
-  const [p] = await db.select({ id: partidas.id }).from(partidas).where(eq(partidas.peladaId, peladaId)).limit(1);
-  return !!p;
+/** Quantas partidas já foram encerradas na pelada e se há uma em andamento (sorteio novo só sem partida aberta). */
+export async function partidasJogadas(db: DB, peladaId: number): Promise<{ jogadas: number; emAndamento: boolean }> {
+  const ps = await db.select({ encerradaEm: partidas.encerradaEm }).from(partidas).where(eq(partidas.peladaId, peladaId));
+  return { jogadas: ps.filter((p) => p.encerradaEm !== null).length, emAndamento: ps.some((p) => p.encerradaEm === null) };
 }
 
 /**
  * Entre partidas: troca o jogador de time (`de` → `para`), tira (`para` = null) ou põe quem
  * estava fora (`de` = null). Um jogador fica em um time só por pelada: pôr num time tira do
  * time antigo na mesma transação. Jogador desativado não entra em time, mas pode sair.
+ * Num time com COMPLETE, quem entra ocupa a vaga do mais antigo (ele some). Sair não cria COMPLETE.
  */
 export async function moverJogador(db: DB, jogadorId: number, deTimeId: number | null, paraTimeId: number | null): Promise<void> {
   if (deTimeId === null && paraTimeId === null) throw new ErroTimes('pedido_invalido');
@@ -148,7 +187,10 @@ export async function moverJogador(db: DB, jogadorId: number, deTimeId: number |
 
   await db.transaction(async (tx) => {
     const peladaDe = async () => {
-      const achados = await tx.select({ id: times.id, peladaId: times.peladaId }).from(times).where(inArray(times.id, pedidos));
+      const achados = await tx
+        .select({ id: times.id, peladaId: times.peladaId })
+        .from(times)
+        .where(and(inArray(times.id, pedidos), isNull(times.arquivadoEm)));
       if (achados.length !== pedidos.length) throw new ErroTimes('time_inexistente');
       if (new Set(achados.map((t) => t.peladaId)).size > 1) throw new ErroTimes('peladas_diferentes');
       return achados[0].peladaId;
@@ -167,8 +209,88 @@ export async function moverJogador(db: DB, jogadorId: number, deTimeId: number |
     if (paraTimeId !== null && !(await todosAtivos(tx, [jogadorId]))) throw new ErroTimes('jogador_inativo');
 
     // Sai de qualquer time desta pelada (o de origem e um eventual outro) e entra no destino.
-    const daPelada = (await tx.select({ id: times.id }).from(times).where(eq(times.peladaId, peladaId))).map((t) => t.id);
+    const daPelada = (
+      await tx.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)))
+    ).map((t) => t.id);
     await tx.delete(timeJogadores).where(and(eq(timeJogadores.jogadorId, jogadorId), inArray(timeJogadores.timeId, daPelada)));
-    if (paraTimeId !== null) await tx.insert(timeJogadores).values({ timeId: paraTimeId, jogadorId });
+    if (paraTimeId !== null) {
+      await tx.insert(timeJogadores).values({ timeId: paraTimeId, jogadorId });
+      const [vaga] = await tx
+        .select({ id: timeCompletes.id })
+        .from(timeCompletes)
+        .where(eq(timeCompletes.timeId, paraTimeId))
+        .orderBy(timeCompletes.id)
+        .limit(1);
+      if (vaga) await tx.delete(timeCompletes).where(eq(timeCompletes.id, vaga.id));
+    }
+  });
+}
+
+/** Trava a pelada do time e confere que ele existe e é atual (não arquivado). Devolve a pelada. */
+async function travarTimeAtual(tx: Tx, timeId: number): Promise<number> {
+  const achar = async () => {
+    const [t] = await tx.select({ peladaId: times.peladaId, arquivadoEm: times.arquivadoEm }).from(times).where(eq(times.id, timeId));
+    if (!t || t.arquivadoEm !== null) throw new ErroTimes('time_inexistente');
+    return t.peladaId;
+  };
+  const peladaId = await achar();
+  await travarPelada(tx, peladaId);
+  await achar(); // um sorteio novo enquanto esperava a trava pode ter arquivado o time
+  return peladaId;
+}
+
+async function completeAtual(tx: Tx, completeId: number): Promise<{ id: number; timeId: number }> {
+  const [c] = await tx.select({ id: timeCompletes.id, timeId: timeCompletes.timeId }).from(timeCompletes).where(eq(timeCompletes.id, completeId));
+  if (!c) throw new ErroTimes('complete_inexistente');
+  return c;
+}
+
+/** Acrescenta um COMPLETE ao time (até 4 entre jogadores e COMPLETE). Devolve o id. */
+export async function adicionarComplete(db: DB, timeId: number, nota: number): Promise<number> {
+  if (!notaValida(nota)) throw new ErroTimes('nota_invalida');
+  return db.transaction(async (tx) => {
+    await travarTimeAtual(tx, timeId);
+    const [{ n: jogs }] = await tx.select({ n: sql<number>`count(*)::int` }).from(timeJogadores).where(eq(timeJogadores.timeId, timeId));
+    const [{ n: comps }] = await tx.select({ n: sql<number>`count(*)::int` }).from(timeCompletes).where(eq(timeCompletes.timeId, timeId));
+    if (jogs + comps >= VAGAS_POR_TIME) throw new ErroTimes('time_cheio');
+    const [novo] = await tx.insert(timeCompletes).values({ timeId, nota: nota.toFixed(1) }).returning({ id: timeCompletes.id });
+    return novo.id;
+  });
+}
+
+export async function removerComplete(db: DB, completeId: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    const c = await completeAtual(tx, completeId);
+    await travarTimeAtual(tx, c.timeId);
+    await completeAtual(tx, completeId);
+    await tx.delete(timeCompletes).where(eq(timeCompletes.id, completeId));
+  });
+}
+
+export async function mudarNotaComplete(db: DB, completeId: number, nota: number): Promise<void> {
+  if (!notaValida(nota)) throw new ErroTimes('nota_invalida');
+  await db.transaction(async (tx) => {
+    const c = await completeAtual(tx, completeId);
+    await travarTimeAtual(tx, c.timeId);
+    await completeAtual(tx, completeId);
+    await tx.update(timeCompletes).set({ nota: nota.toFixed(1) }).where(eq(timeCompletes.id, completeId));
+  });
+}
+
+/** Troca o COMPLETE por um jogador de verdade, na mesma transação. Recusa inativo ou quem já está num time atual. */
+export async function preencherComplete(db: DB, completeId: number, jogadorId: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    const c = await completeAtual(tx, completeId);
+    const peladaId = await travarTimeAtual(tx, c.timeId);
+    await completeAtual(tx, completeId);
+    if (!(await todosAtivos(tx, [jogadorId]))) throw new ErroTimes('jogador_inativo');
+    const [ja] = await tx
+      .select({ id: timeJogadores.jogadorId })
+      .from(timeJogadores)
+      .innerJoin(times, eq(times.id, timeJogadores.timeId))
+      .where(and(eq(timeJogadores.jogadorId, jogadorId), eq(times.peladaId, peladaId), isNull(times.arquivadoEm)));
+    if (ja) throw new ErroTimes('ja_tem_time');
+    await tx.delete(timeCompletes).where(eq(timeCompletes.id, completeId));
+    await tx.insert(timeJogadores).values({ timeId: c.timeId, jogadorId });
   });
 }

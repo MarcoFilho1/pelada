@@ -1,16 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useTransition, type ReactNode } from 'react';
+import { useMemo, useState, useTransition, type ReactNode } from 'react';
 import { Colete, NOME_DA_COR } from '@/components/colete';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import type { Placar, Resultado } from '@/domain/partida';
-import type { Cor } from '@/domain/sorteio';
+import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
-import { iniciar } from './acoes';
+import { iniciar, quemCompleta } from './acoes';
+import { ConferirQuemCompleta, QuemCompleta } from './escolher-quem-completa';
+import { completamDe, escolhidosFora, proximaVaga, vagasDaPartida, type Completam, type Resposta, type Vaga } from './quem-completa';
 
-type Time = { id: number; cor: Cor; jogadores: string[] };
+type Time = { id: number; cor: Cor; jogadores: JogadorNota[]; completes: { id: number; nota: number }[] };
 type Jogada = { id: number; corA: Cor; corB: Cor; placar: Placar; resultado: Resultado };
 
 type Props = {
@@ -110,6 +112,24 @@ function EmAndamento({ partida }: { partida: NonNullable<Props['emAndamento']> }
   );
 }
 
+/**
+ * O passo de quem completa, depois de tocar em Iniciar com COMPLETE num dos dois times. As vagas e os
+ * candidatos ficam como estavam no toque: a página se atualiza a cada 5 s, mas o servidor confere tudo
+ * ao iniciar.
+ */
+type Completando = {
+  a: Time;
+  b: Time;
+  vagas: Vaga[];
+  respostas: (Resposta | undefined)[];
+  /** A vaga em escolha, ou a conferência. */
+  atual: number | 'conferir';
+  /** A vaga foi aberta pelo "Trocar" da conferência: "Voltar" volta para lá, com as respostas. */
+  daConferencia: boolean;
+  deFora: JogadorNota[];
+  semTime: JogadorNota[];
+};
+
 function ProximaPartida(p: Props) {
   const ordem = new Map(p.fila.map((id, i) => [id, i]));
   const times = [...p.times].sort((a, b) => (ordem.get(a.id) ?? 99) - (ordem.get(b.id) ?? 99));
@@ -117,8 +137,11 @@ function ProximaPartida(p: Props) {
   const [escolhidos, setEscolhidos] = useState<number[]>(sugeridos);
   const [erro, setErro] = useState<string | null>(null);
   const [iniciando, startIniciar] = useTransition();
+  const [carregando, startCarregar] = useTransition();
+  const [completando, setCompletando] = useState<Completando | null>(null);
   const [a, b] = times.filter((t) => escolhidos.includes(t.id)); // na ordem da fila
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
+  const comComplete = [a, b].filter((t) => t?.completes.length);
 
   function alternar(id: number) {
     setErro(null);
@@ -129,12 +152,44 @@ function ProximaPartida(p: Props) {
     });
   }
 
-  function comecar() {
-    if (!a || !b) return;
+  function comecar(timeA: Time, timeB: Time, completam?: Completam) {
+    setErro(null);
     startIniciar(async () => {
-      const r = await iniciar(p.peladaId, a.id, b.id).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
+      const r = await iniciar(p.peladaId, timeA.id, timeB.id, completam).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (r && !r.ok) setErro(r.erro);
     });
+  }
+
+  function tocarIniciar() {
+    if (!a || !b) return;
+    const vagas = vagasDaPartida(a, b);
+    if (!vagas.length) return comecar(a, b);
+    setErro(null);
+    startCarregar(async () => {
+      const r = await quemCompleta(p.peladaId, a.id, b.id).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
+      if (!r.ok) return setErro(r.erro);
+      setCompletando({ a, b, vagas, respostas: vagas.map(() => undefined), atual: 0, daConferencia: false, deFora: r.deFora, semTime: r.semTime });
+    });
+  }
+
+  if (completando) {
+    return (
+      <PassosDeQuemCompleta
+        c={completando}
+        times={p.times}
+        iniciando={iniciando}
+        erro={erro}
+        onMudar={(c) => {
+          setErro(null);
+          setCompletando(c);
+        }}
+        onIniciar={() => comecar(completando.a, completando.b, completamDe(completando.vagas, completando.respostas))}
+        onSair={() => {
+          setErro(null);
+          setCompletando(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -163,7 +218,13 @@ function ProximaPartida(p: Props) {
                 <span className="flex-1 text-base font-semibold text-tinta">{NOME_DA_COR[t.cor]}</span>
                 <span className="text-sm text-meta tabular-nums">{i + 1}º</span>
               </span>
-              <span className="mt-1 line-clamp-2 text-sm text-apagado">{t.jogadores.join(', ') || 'Ninguém.'}</span>
+              <span className="mt-1 line-clamp-2 text-sm text-apagado">{t.jogadores.map((j) => j.nome).join(', ') || 'Ninguém.'}</span>
+              {t.completes.length > 0 && (
+                // O COMPLETE é um buraco na placa, como no Sorteio.
+                <span className="mt-1.5 flex-none self-start rounded-placa bg-chao px-1.5 text-sm leading-6 font-medium whitespace-nowrap text-apagado">
+                  {t.completes.length === 1 ? 'COMPLETE' : `${t.completes.length} COMPLETE`}
+                </span>
+              )}
             </button>
           );
         })}
@@ -176,10 +237,96 @@ function ProximaPartida(p: Props) {
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
       </p>
-      <button type="button" className={`mt-4 ${PILULA}`} disabled={!a || !b || iniciando} onClick={comecar}>
-        {iniciando ? 'Iniciando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
+      <button type="button" className={`mt-4 ${PILULA}`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
+        {iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
       </button>
+      {a && b && comComplete.length > 0 && (
+        <p className="mt-2 text-base text-meta">
+          Antes de começar, você escolhe quem completa o {comComplete.map((t) => NOME_DA_COR[t.cor]).join(' e o ')}.
+        </p>
+      )}
     </section>
+  );
+}
+
+/** Os passos "Quem completa o Azul?" (um por vaga) e a conferência com a pílula de iniciar. */
+function PassosDeQuemCompleta({
+  c,
+  times,
+  iniciando,
+  erro,
+  onMudar,
+  onIniciar,
+  onSair,
+}: {
+  c: Completando;
+  times: Time[];
+  iniciando: boolean;
+  erro: string | null;
+  onMudar: (c: Completando) => void;
+  onIniciar: () => void;
+  onSair: () => void;
+}) {
+  const [cadastrados, setCadastrados] = useState<JogadorNota[]>([]);
+  const corDe = useMemo(() => new Map(times.flatMap((t) => t.jogadores.map((j) => [j.id, t.cor] as const))), [times]);
+  const timeDo = (lado: Vaga['lado']) => (lado === 'A' ? c.a : c.b);
+  /** Quantos jogam por um lado, contando quem completa cada vaga respondida (e as abertas como cheias). */
+  const jogaCom = (lado: Vaga['lado'], respostas: (Resposta | undefined)[]) =>
+    timeDo(lado).jogadores.length + c.vagas.filter((v, i) => v.lado === lado && respostas[i]?.tipo !== 'sem').length;
+
+  if (c.atual === 'conferir') {
+    return (
+      <ConferirQuemCompleta
+        corA={c.a.cor}
+        corB={c.b.cor}
+        linhas={c.vagas.map((v, i) => ({ cor: timeDo(v.lado).cor, resposta: c.respostas[i]!, jogaCom: jogaCom(v.lado, c.respostas) }))}
+        iniciando={iniciando}
+        erro={erro}
+        onTrocar={(vaga) => onMudar({ ...c, atual: vaga, daConferencia: true })}
+        onIniciar={onIniciar}
+        onVoltar={onSair}
+      />
+    );
+  }
+
+  const atual = c.atual;
+  const vaga = c.vagas[atual];
+  const ocupados = escolhidosFora(c.respostas, atual);
+  const doJogo = new Set([...c.a.jogadores, ...c.b.jogadores].map((j) => j.id));
+  const porId = new Map([...c.semTime, ...cadastrados, ...c.deFora, ...c.a.jogadores, ...c.b.jogadores].map((j) => [j.id, j]));
+
+  function responder(r: Resposta) {
+    const respostas = c.respostas.map((x, i) => (i === atual ? r : x));
+    const proxima = proximaVaga(respostas, atual);
+    onMudar({ ...c, respostas, atual: proxima ?? 'conferir', daConferencia: proxima === null ? false : c.daConferencia });
+    window.scrollTo({ top: 0 });
+  }
+
+  return (
+    <QuemCompleta
+      key={atual}
+      cor={timeDo(vaga.lado).cor}
+      nota={vaga.nota}
+      jaCompleta={c.vagas.flatMap((v, i) => {
+        const r = c.respostas[i];
+        return i !== atual && v.lado === vaga.lado && r?.tipo === 'jogador' ? [r.jogador.nome] : [];
+      })}
+      faltam={c.vagas.filter((v, i) => i !== atual && v.lado === vaga.lado && c.respostas[i] === undefined).length}
+      jogaSemCom={jogaCom(vaga.lado, c.respostas.map((x, i) => (i === atual ? { tipo: 'sem' } : x)))}
+      deFora={c.deFora.filter((j) => !ocupados.has(j.id))}
+      corDe={(id) => corDe.get(id)}
+      todos={[...porId.values()]}
+      jaEstao={new Set([...doJogo, ...ocupados])}
+      onEscolher={(j) => responder({ tipo: 'jogador', jogador: j })}
+      onCadastrado={(j) => {
+        setCadastrados((cs) => [...cs, j]);
+        responder({ tipo: 'jogador', jogador: j });
+      }}
+      onJogarSem={() => responder({ tipo: 'sem' })}
+      onVoltar={() =>
+        c.daConferencia ? onMudar({ ...c, atual: 'conferir', daConferencia: false }) : atual > 0 ? onMudar({ ...c, atual: atual - 1 }) : onSair()
+      }
+    />
   );
 }
 
