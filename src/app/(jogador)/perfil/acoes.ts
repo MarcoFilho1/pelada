@@ -6,7 +6,8 @@ import { trocarPinComAtual } from '@/server/auth';
 import { criarSessaoJogador, lerSessaoJogador, sair } from '@/server/sessao';
 
 export type RespostaPin =
-  | { ok: true }
+  /** `entrarDeNovo`: o PIN trocou, mas este aparelho não recebeu o cookie novo e precisa entrar de novo. */
+  | { ok: true; entrarDeNovo?: true }
   | { ok: false; erro: 'pin_errado' | 'pin_invalido' | 'falha' }
   | { ok: false; erro: 'bloqueado'; bloqueadoAte: string };
 
@@ -28,10 +29,17 @@ export async function trocarMeuPin(atual: unknown, novo: unknown): Promise<Respo
         ? { ok: false, erro: 'bloqueado', bloqueadoAte: r.bloqueadoAte.toISOString() }
         : { ok: false, erro: r.motivo };
     }
-    await criarSessaoJogador(db, sessao.jogadorId);
   } catch (e) {
     console.error(e);
     return { ok: false, erro: 'falha' };
+  }
+  // A troca já valeu e derrubou as sessões. Se só o cookie novo falhar, dizer "falha" faria a pessoa
+  // tentar de novo com o PIN antigo (que já não vale): melhor avisar que é para entrar de novo.
+  try {
+    await criarSessaoJogador(db, sessao.jogadorId);
+  } catch (e) {
+    console.error(e);
+    return { ok: true, entrarDeNovo: true };
   }
   return { ok: true };
 }

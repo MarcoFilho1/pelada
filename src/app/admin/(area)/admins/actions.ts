@@ -8,7 +8,7 @@ import { criarAdmin, trocarSenhaAdmin } from '@/server/admins';
 import { mensagemParaUsuario } from '@/server/erros';
 import { criarSessaoAdmin, lerSessaoAdmin } from '@/server/sessao';
 
-export type EstadoForm = { ok: boolean; mensagem: string | null; usuario?: string; campo?: 'usuario' | 'senha' };
+export type EstadoForm = { ok: boolean; mensagem: string | null; usuario?: string; campo?: 'usuario' | 'senha'; /** A senha trocou mas o cookie novo falhou: a tela leva para o login. */ entrarDeNovo?: true };
 
 async function exigirAdmin() {
   const sessao = await lerSessaoAdmin(getDb());
@@ -34,10 +34,16 @@ export async function trocarMinhaSenha(_antes: EstadoForm, form: FormData): Prom
   const db = getDb();
   try {
     await trocarSenhaAdmin(db, adminId, String(form.get('atual') ?? ''), String(form.get('nova') ?? ''));
+  } catch (e) {
+    return { ok: false, mensagem: mensagemParaUsuario(e) };
+  }
+  try {
     // A versão subiu e derrubou todos os aparelhos; este recebe cookie novo e segue logado.
     await criarSessaoAdmin(db, adminId);
   } catch (e) {
-    return { ok: false, mensagem: mensagemParaUsuario(e) };
+    // A troca já valeu: dizer "erro" levaria a tentar de novo com a senha antiga.
+    console.error(e);
+    return { ok: true, mensagem: 'Senha trocada. Entre de novo.', entrarDeNovo: true };
   }
   return { ok: true, mensagem: 'Senha trocada. Os outros aparelhos saíram da conta.' };
 }
