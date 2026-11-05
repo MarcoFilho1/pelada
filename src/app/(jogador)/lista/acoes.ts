@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { mensagemParaUsuario } from '@/server/erros';
 import { confirmar, entrarNaFila, remover } from '@/server/presencas';
-import { lerSessaoJogador, sair } from '@/server/sessao';
+import { lerSessaoJogador } from '@/server/sessao';
 
 export type Resposta = { ok: true } | { ok: false; erro: string };
 
@@ -34,9 +34,4 @@ export async function naoVou(): Promise<Resposta> {
 
 export async function queroEntrar(): Promise<Resposta> {
   return comOJogador((id) => entrarNaFila(getDb(), id, new Date()));
-}
-
-export async function sairDaConta(): Promise<void> {
-  await sair('jogador');
-  redirect('/entrar');
 }

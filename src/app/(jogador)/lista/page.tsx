@@ -7,7 +7,6 @@ import { aberturaLista, diaDaSemana, diaMes } from '@/domain/tempo';
 import { estadoDaSemana } from '@/server/presencas';
 import { lerSessaoJogador } from '@/server/sessao';
 import { Tela, Topo } from '@/components/topo';
-import { sairDaConta } from './acoes';
 import { ListaJogador, type TravaTela } from './lista-jogador';
 
 export const metadata: Metadata = { title: 'Lista · Pelada' };
@@ -26,19 +25,7 @@ export default async function ListaPage() {
 
   return (
     <Tela>
-      <Topo
-        inicio="/lista"
-        direita={
-          <form action={sairDaConta}>
-            <button
-              type="submit"
-              className="-mx-3 flex h-12 items-center px-3 text-base font-medium text-apagado transition-colors hover:text-tinta"
-            >
-              Sair
-            </button>
-          </form>
-        }
-      />
+      <Topo inicio="/lista" />
       <ListaJogador
         dataQuarta={diaMes(estado.data)}
         abertura={diaDaSemana(aberturaLista(estado.data))}

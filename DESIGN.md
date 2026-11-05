@@ -425,6 +425,56 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
   o valor em Subtítulo tabular com "gols"/"ast" em #b4b4b4 14px embaixo. O menos fica em Giz sobre placa no zero.
   Tudo trava enquanto um toque salva.
 
+### Barra de baixo do jogador (Lista · Ranking · Perfil)
+- Fixa no rodapé, fundo #000 (como as barras dos mensalistas e do sorteio), sem borda nem sombra, com o recuo da
+  área segura do iPhone. Três itens de largura igual, 56px de altura, Inter 500 16px; o atual em branco sobre placa
+  #111 (raio 10px) e `aria-current="page"`, os outros em #b4b4b4, branco no hover. Sem lima, sem ícone.
+- Reserva a própria altura no fim da página: nada fica escondido atrás dela. A barra do topo perde o "Sair" (ele
+  mora no Perfil). Telas de uma tarefa com teclado aberto (Trocar PIN) não têm a barra; têm "‹ Perfil".
+
+### Filtro de período (ranking e perfil)
+- Abas Geral · Ano · Mês num trilho placa #111 (raio 10px, 4px de respiro), itens de 48px; a escolhida sobe para placa
+  alta com texto branco, as outras em #b4b4b4. Aba sem partida nenhuma fica em Giz, `aria-disabled`.
+- Em Ano e Mês, logo abaixo, o seletor do Contador e seletor de mês: setas 56×56 em placa alta, o período por extenso
+  no meio ("Novembro de 2026"); sem vizinho, a seta apaga (placa, Giz). Só anda pelos anos e meses que têm partida.
+- O período vive na URL (`?p=geral`, `?p=2026`, `?p=2026-11`) para o link ir pro grupo; abas e setas são links.
+  Sem `?p` (ou com um inválido) vale o mês atual se já teve partida encerrada, senão o geral.
+
+### Ranking
+- h1 "Ranking", o filtro, e os **destaques** numa placa #111 só: uma linha por destaque (Artilheiro, Garçom, Mais
+  vitórias), nome em Inter 500 18px com o título em #b4b4b4 14px embaixo e, à direita, o número em Subtítulo
+  tabular com a unidade em Giz 14px ("7 gols", "3 ast"). Destaque que ninguém fez não aparece.
+- **Tabela** que vai até as bordas da tela (a margem de 20px vira respiro da primeira e da última coluna). Posição
+  (Barlow 20px Giz), nome (Inter 500 16px, truncado) e **pontos** ficam presos à esquerda; os pontos em Barlow 24px
+  branco numa coluna de placa #111 com os cantos de cima e de baixo arredondados — a placa do placar, a assinatura
+  da tela. As outras colunas (J, V, E, D, %, G, A, G/J, Pres.) rolam de lado dentro da tabela, números à direita em
+  Inter 16px #b4b4b4 tabular; a página nunca rola de lado. Linhas de 48px, sem divisória nem zebra.
+- Cabeçalho: botões de 48px em Giz 14px; tocar ordena por aquela coluna (números do maior para o menor, nome de A a
+  Z), tocar de novo inverte, "#" volta à ordem do ranking. A coluna ativa fica em branco 600 com a setinha do
+  sentido (`aria-sort`). A posição de cada um não muda com a ordem.
+- A linha da própria pessoa ganha placa alta #2a2a2a de ponta a ponta (como na lista), com "(você)" para leitor de
+  tela. Acima da tabela, em Giz 14px, "Arraste para o lado para ver mais colunas."; abaixo, a legenda das siglas.
+  Notas não entram no ranking (ficam no perfil).
+- Sem ninguém no período: placa #111 com "Nenhuma partida encerrada ainda." e de onde o ranking sai.
+
+### Perfil (só o dono vê)
+- h1 com o nome e, na mesma linha à direita, "nota" em #b4b4b4 com o valor em Subtítulo; abaixo, "Só você vê esta
+  página." O mesmo filtro de período.
+- Os números numa placa #111: pontos em Número (44px) com "pontos" em #b4b4b4 18px, e uma grade 3×3 com valor em
+  Subtítulo e o rótulo em #b4b4b4 14px embaixo (Jogos, Vitórias, Empates / Derrotas, Aproveit., Presenças / Gols,
+  Assist., Gols/jogo). Sem jogos: "Sem jogos no período." e uma frase de quando aparece.
+- "Quartas": `<ol>` de placas #111 (8px entre elas), mais recente primeiro: "Quarta, 28/10" em Inter 500 18px (com o
+  ano quando não é o atual), embaixo o resumo em #b4b4b4 ("3 jogos: 2 vitórias, 1 empate · 1 gol") e, à direita, os
+  pontos da noite em Subtítulo com "pts" em Giz. Número e palavra nunca quebram de linha separados.
+- No fim: "Trocar PIN" (pílula secundária) e "Sair deste aparelho" (texto).
+
+### Trocar PIN pelo perfil
+- Tela de uma tarefa com as Placas do PIN: "‹ Perfil", h1 por etapa ("Trocar PIN" → "PIN novo" → "Digite de novo")
+  e uma frase em #b4b4b4. Primeiro o PIN atual, depois o novo duas vezes; envia sozinho no último dígito. PIN atual
+  errado volta ao começo com "PIN atual errado. Tente de novo." e conta para o bloqueio de 5 erros; bloqueado mostra
+  até que horas. Deu certo: "PIN trocado", o aviso de que os outros aparelhos vão pedir o PIN e a pílula branca
+  "Voltar ao perfil".
+
 ### Tela de erro
 - Para erro inesperado (`error.tsx`, `global-error.tsx`): título "Algo deu errado" a 80px do topo, uma frase
   em #b4b4b4 com a saída ("Tente de novo; se continuar, avise o admin no grupo.") e a pílula branca
