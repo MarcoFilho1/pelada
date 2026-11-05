@@ -155,6 +155,58 @@ describe('fila de escritas (T12-1)', () => {
     expect(await lancesNoBanco()).toEqual([]);
   });
 
+  describe('resposta sem leitura (estado null) e páginas antigas', () => {
+    const escritorNulo = (real: Escritor, gate?: Promise<void>): Escritor => ({
+      anotar: async (j, t) => {
+        await gate;
+        const r = await real.anotar(j, t);
+        return r.ok ? { ok: true, estado: null, lanceId: r.lanceId } : r;
+      },
+      desfazer: async (id) => {
+        await gate;
+        const r = await real.desfazer(id);
+        return r.ok ? { ok: true, estado: null } : r;
+      },
+    });
+    const semLance = (e: EstadoDaPartida, mais: number): EstadoDaPartida => ({ ...e, lidoEm: e.lidoEm + mais });
+
+    it('leitura da página sem o lance chegou durante a fila: depois da resposta null o gol continua contado', async () => {
+      const p = portao();
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal(), p.aberto));
+      a.tocar(pepe, 'gol');
+      a.receberDaPagina(semLance(inicial, 1000)); // leitura que ainda não tinha o toque
+      p.abrir();
+      await a.ocioso();
+      expect(gols(a, pepe)).toBe(1);
+    });
+
+    it('refresh de 5 s que começou antes do commit e chega depois da resposta null: não derruba o gol', async () => {
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.tocar(pepe, 'gol');
+      await a.ocioso();
+      a.receberDaPagina(semLance(inicial, 1000));
+      expect(gols(a, pepe)).toBe(1);
+      // Uma página que já traz o lance concorda: entra e libera a base.
+      await registrarLance(db, partidaId, rafa, 'gol');
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 2000 });
+      expect(gols(a, pepe)).toBe(1);
+      expect(gols(a, rafa)).toBe(1);
+    });
+
+    it('Desfazer com resposta null: página antiga que ainda tem o lance não o traz de volta', async () => {
+      await registrarLance(db, partidaId, pepe, 'gol');
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.desfazer();
+      await a.ocioso();
+      expect(gols(a, pepe)).toBe(0);
+      a.receberDaPagina({ ...inicial, lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(0);
+    });
+  });
+
   describe('escrita parada há mais de 10 s', () => {
     afterEach(() => vi.useRealTimers());
 
@@ -182,12 +234,12 @@ describe('fila de escritas (T12-1)', () => {
     });
 
     it('resposta antes dos 10 s: o aviso nunca liga', async () => {
+      // Um relógio falso só, do começo ao fim (só os timers; as promessas seguem reais).
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const a = new Anotacoes(await estado(), escritorReal());
-      vi.useFakeTimers();
       a.tocar(pepe, 'gol');
-      vi.useRealTimers();
       await a.ocioso();
-      vi.useFakeTimers();
+      expect(vi.getTimerCount()).toBe(0); // o relógio da escrita saiu com ela da fila
       vi.advanceTimersByTime(30_000);
       expect(a.instantaneo().lento).toBe(false);
     });

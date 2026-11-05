@@ -105,6 +105,10 @@ export class Anotacoes {
   private aviso: Aviso | null = null;
   private relogios = new Map<number, ReturnType<typeof setTimeout>>();
   private lentas = new Set<number>();
+  // Lances que respostas sem leitura (estado null) confirmaram ou desfizeram: uma página só entra na
+  // base se concordar com eles (senão uma leitura anterior ao commit derrubaria o número na tela).
+  private confirmados = new Set<number>();
+  private desfeitos = new Set<number>();
   private cauda: Promise<void> = Promise.resolve();
   private ouvintes = new Set<() => void>();
   private atual: Instantaneo;
@@ -173,7 +177,13 @@ export class Anotacoes {
     const desteToque = (x: Escrita) => x.tipo === 'desfazer' && 'toque' in x.alvo && x.alvo.toque === e.chave;
     this.escritas = this.escritas.filter((x) => x.chave !== e.chave);
     if (r.ok) {
-      this.base = r.estado ?? { ...this.base, lances: [...this.base.lances, { id: r.lanceId, jogadorId: e.jogadorId, tipo: e.lance }] };
+      if (r.estado) {
+        this.base = r.estado;
+        this.esquecerPendencias(); // leitura do servidor depois do commit: é a verdade
+      } else {
+        this.confirmados.add(r.lanceId);
+        this.base = { ...this.base, lances: [...this.base.lances, { id: r.lanceId, jogadorId: e.jogadorId, tipo: e.lance }] };
+      }
       // Desfazer pendente deste toque: agora se sabe o id do lance que ele vai tirar.
       this.escritas = this.escritas.map((x) => (desteToque(x) ? { ...x, alvo: { lanceId: r.lanceId } } : x));
     } else {
@@ -193,7 +203,14 @@ export class Anotacoes {
     this.escritas = this.escritas.filter((x) => x.chave !== chave);
     if (r.ok) {
       // Sem leitura (null) o desfazer valeu: tira o lance da base.
-      this.base = r.estado ?? { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
+      if (r.estado) {
+        this.base = r.estado;
+        this.esquecerPendencias();
+      } else {
+        this.confirmados.delete(id);
+        this.desfeitos.add(id);
+        this.base = { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
+      }
       // Não era mais o último (o outro admin anotou depois): o servidor não mexeu em nada.
       if (this.base.lances.some((l) => l.id === id)) {
         this.avisar('Não deu para desfazer: entrou um lance depois desse. Confira o placar.');
@@ -205,9 +222,18 @@ export class Anotacoes {
     this.emitir();
   }
 
+  private esquecerPendencias() {
+    this.confirmados.clear();
+    this.desfeitos.clear();
+  }
+
   private aceitarPagina(): boolean {
     if (this.escritas.length || this.pagina.lidoEm <= this.base.lidoEm) return false;
+    const ids = new Set(this.pagina.lances.map((l) => l.id));
+    // Página sem um lance confirmado (ou ainda com um desfeito) é anterior ao commit: espera outra.
+    if ([...this.confirmados].some((id) => !ids.has(id)) || [...this.desfeitos].some((id) => ids.has(id))) return false;
     this.base = this.pagina;
+    this.esquecerPendencias();
     return true;
   }
 
