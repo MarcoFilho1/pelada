@@ -35,6 +35,12 @@ export function tempoRestanteMs(iniciadaEm: Date, now: Date): number {
   return Math.min(DURACAO_MS, Math.max(0, DURACAO_MS - decorrido));
 }
 
+/** Cronômetro na tela: 'm:ss', com o segundo arredondado para cima (só mostra 0:00 quando acabou). */
+export function relogio(restanteMs: number): string {
+  const s = Math.ceil(Math.max(0, restanteMs) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 /**
  * Hora de sugerir o encerramento (o site só sugere; quem encerra é o admin): 3 gols de um
  * time têm prioridade sobre o tempo esgotado.

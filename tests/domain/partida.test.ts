@@ -8,6 +8,7 @@ import {
   resultadoDoPlacar,
   sugerirEncerrar,
   tempoRestanteMs,
+  relogio,
 } from '@/domain/partida';
 
 const INICIO = new Date('2026-11-11T20:30:00-03:00');
@@ -140,5 +141,16 @@ describe('filaDepois', () => {
     expect(fila).toEqual([4, 1, 2, 3]);
     fila = filaDepois(fila, { timeA: 4, timeB: 1, resultado: 'A' });
     expect(fila).toEqual([4, 2, 3, 1]);
+  });
+});
+
+describe('relogio', () => {
+  it('mostra m:ss arredondando o segundo para cima (8:00 no início, 0:00 só no fim)', () => {
+    expect(relogio(DURACAO_MS)).toBe('8:00');
+    expect(relogio(DURACAO_MS - 1)).toBe('8:00');
+    expect(relogio(5 * 60_000 + 32_000)).toBe('5:32');
+    expect(relogio(61_000)).toBe('1:01');
+    expect(relogio(999)).toBe('0:01');
+    expect(relogio(0)).toBe('0:00');
   });
 });
