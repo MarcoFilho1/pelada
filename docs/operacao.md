@@ -40,7 +40,7 @@ Se uma partida não foi encerrada na noite, ela aparece no topo de **Partidas** 
 Tudo em **Jogadores**: toque no nome do jogador.
 
 - **Zerar PIN:** para quem esqueceu o PIN. O PIN volta a ser 1234 e o jogador precisa criar outro no próximo acesso. O jogador sai de todos os aparelhos.
-- **Desativar:** para quem parou de vir. Ele some da busca, das listas e de todos os aparelhos, mas o histórico e o ranking ficam. Para trazer de volta, marque **Mostrar inativos** e toque em **Reativar**.
+- **Desativar:** para quem parou de vir. Ele some da busca, das listas e de todos os aparelhos, mas o histórico fica guardado e o jogador volta ao ranking se for reativado (o ranking só lista quem está ativo). Para trazer de volta, marque **Mostrar inativos** e toque em **Reativar**.
 - **Renomear:** mude o campo Nome e toque em **Salvar nome**. Não pode repetir o nome de outro jogador (maiúscula e minúscula contam como igual).
 - Quem erra o PIN 5 vezes seguidas fica bloqueado por 15 minutos.
 - **Trocar a sua senha de admin:** em **Admins > Trocar minha senha**. Este aparelho continua logado; os outros aparelhos do mesmo admin saem da conta.
@@ -49,9 +49,29 @@ Tudo em **Jogadores**: toque no nome do jogador.
 
 - **Primeiro, recarregue a página.** A lista e o anotador já se atualizam sozinhos a cada 5 segundos, então quase sempre basta esperar um pouco ou recarregar.
 - **"Salvando há mais de 10 s — confira a conexão" no anotador:** o celular está sem internet boa. Os toques ficam guardados na fila e vão ao servidor na ordem. Não toque de novo no mesmo jogador: espere a conexão voltar (confira o Wi-Fi ou o 4G). Quando voltar, o aviso some e o placar confirma. Se o aviso não sumir, recarregue a página e confira o placar contra o que aconteceu em campo. Enquanto o aviso aparece, a faixa cobre o fim da lista: role a lista para alcançar o último jogador.
+- **"Sem resposta do servidor":** a conexão caiu depois do toque, e o lance pode ter sido salvo. Não toque de novo: espere até 5 segundos, o placar se atualiza sozinho, e só toque se o lance realmente não apareceu.
 - **"Não deu para desfazer":** outro admin anotou um lance depois do que você via. Nada foi apagado; confira o placar.
 - **Saiu da conta sozinho:** acontece depois de trocar PIN ou senha em outro aparelho. Entre de novo.
 
 ## Backup
 
 O banco fica no Neon. Ele guarda o histórico e permite voltar o banco para um momento anterior (restauração a qualquer ponto no tempo, dentro do período do plano). Se algo for apagado por engano, peça a quem cuida do site para restaurar no painel do Neon para um minuto antes do erro. Restaurar desfaz tudo o que foi feito depois desse ponto (listas, partidas, PINs), então avise o grupo.
+
+## Publicar (Vercel + Neon)
+
+Passo a passo para quem cuida do site (nada disto é preciso no dia a dia).
+
+- **Regiões, perto de Recife:** crie o banco no Neon na região AWS `sa-east-1` (São Paulo) e deixe as funções da Vercel em `gru1` (também São Paulo). O `vercel.json` do projeto já fixa `"regions": ["gru1"]`.
+- **Duas URLs do Neon:** o site usa a URL **com pool** (host terminado em `-pooler`) como `DATABASE_URL`. As migrações usam a URL **direta** (sem pool): `DATABASE_URL=$DATABASE_URL_UNPOOLED pnpm db:migrate`.
+- **Variáveis de ambiente na Vercel:**
+  - `DATABASE_URL`: a URL com pool.
+  - `SESSION_SECRET`: texto com pelo menos 32 caracteres.
+  - `ADMIN_USUARIO` e `ADMIN_SENHA`: só para criar o primeiro admin com `pnpm db:seed` (senha com 10 ou mais caracteres). Depois do primeiro acesso podem ser removidas.
+- **Conferir num preview antes de abrir para o grupo:**
+  1. Entrar como admin em `/admin/entrar`.
+  2. Entrar como jogador com PIN 1234, ser levado a trocar o PIN e trocar.
+  3. Confirmar a presença em `/lista`.
+  4. Sorteio, marcar como definitivo, iniciar a partida, tocar GOL e Desfazer, encerrar.
+  5. Abrir `/ranking`.
+  6. Num iPhone, iniciar uma partida e ouvir o aviso sonoro dos 8:00 (o iOS é o mais exigente com som).
+- **Backup:** a restauração a qualquer ponto no tempo do Neon só volta até onde o plano permite (a janela de retenção muda de plano para plano). Confira a janela do seu plano.
