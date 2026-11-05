@@ -177,7 +177,13 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
           >
             <div
               className="grid grid-cols-2 items-start gap-2 baixa:gap-1.5"
-              style={{ '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1) } as CSSProperties}
+              style={
+                {
+                  '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1),
+                  // A marca "completando" é uma linha a mais no cartão: os botões de todos encolhem um pouco para caber.
+                  '--completando': Math.max(...LADOS.map((l) => atual.lados[l].jogadores.filter((j) => j.completando).length)),
+                } as CSSProperties
+              }
             >
               {LADOS.map((l) => (
                 <ul key={l} aria-label={NOME_DA_COR[atual.lados[l].cor]} className="flex flex-col gap-2 baixa:gap-1.5">
@@ -289,10 +295,17 @@ function CartaoDoJogador({
     // Os botões crescem até 72px quando sobra altura e encolhem com a tela: a conta tira da altura
     // visível o topo, a barra de baixo e o resto de cada cartão. Tela alta: de 56px a 72px. Tela
     // baixa (navegador de um celular comum, ≤ 760px): o topo e o cartão apertam e o botão vai até
-    // 48px, para 4 contra 4 caber sem rolar em 360×640.
-    <li className="rounded-placa bg-placa p-1.5 [--botao:clamp(3.5rem,calc((100dvh-16rem)/var(--linhas)-4.5rem),4.5rem)] baixa:p-1 baixa:[--botao:clamp(3rem,calc((100dvh-13rem)/var(--linhas)-3.375rem),4.5rem)]">
+    // 48px, para 4 contra 4 caber sem rolar em 360×640. Cada marca "completando" na coluna mais cheia
+    // (`--completando`) tira a altura dela antes de dividir.
+    <li className="rounded-placa bg-placa p-1.5 [--botao:clamp(3.5rem,calc((100dvh-16rem-var(--completando)*1.25rem)/var(--linhas)-4.5rem),4.5rem)] baixa:p-1 baixa:[--botao:clamp(3rem,calc((100dvh-13rem-var(--completando)*1rem)/var(--linhas)-3.375rem),4.5rem)]">
       <div className="px-1.5 pt-0.5 baixa:pt-0">
         <p className="truncate text-base font-medium text-tinta baixa:leading-5">{jogador.nome}</p>
+        {jogador.completando && (
+          // Buraco na placa, como o COMPLETE no Sorteio: está no lugar de uma vaga só nesta partida.
+          <p className="flex">
+            <span className="flex-none rounded-md bg-chao px-1.5 text-sm leading-5 whitespace-nowrap text-apagado baixa:leading-4">completando</span>
+          </p>
+        )}
         <p className="text-sm text-meta tabular-nums baixa:leading-4">
           <Numero n={gols} salvando={salvando} /> {gols === 1 ? 'gol' : 'gols'} · <Numero n={assistencias} salvando={salvando} /> ast
         </p>
