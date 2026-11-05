@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/*
+ * Pelada — placar de várzea à noite.
+ * Fundo preto puro; placas um degrau de luz acima; números pintados de branco.
+ * Lima só para estado (placa pendurada, coisa confirmada); vermelho só para erro.
+ * Superfícies sem borda e sem sombra: a elevação é só a luminosidade.
+ */
+@theme {
+  --color-chao: #000000; /* fundo */
+  --color-placa: #111111; /* superfície, placa */
+  --color-placa-alta: #2a2a2a; /* placa pressionada, painel aninhado */
+  --color-tinta: #ffffff; /* texto principal */
+  --color-apagado: #b4b4b4; /* texto secundário (10,3:1) */
+  --color-meta: #949494; /* dicas e meta (7,0:1 no chão, 4,6:1 na placa alta) */
+  --color-lima: #c6f24e; /* estado: pendurada, confirmado */
+  --color-erro: #ff6166; /* erro como texto e marca (6,6:1 no chão) */
+  --color-erro-fundo: #2c1a1c; /* placa com erro */
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-placa: var(--font-barlow), var(--font-inter), system-ui, sans-serif;
+
+  --text-titulo: 2rem; /* 32px, h1 */
+  --text-titulo--line-height: 1.05;
+  --text-titulo--letter-spacing: -0.01em;
+  --text-linha: 1.125rem; /* 18px, linhas tocáveis */
+  --text-linha--line-height: 1.4;
+  --text-numero: 2.75rem; /* 44px, número pintado */
+  --text-numero--line-height: 1;
+
+  --radius-placa: 10px;
+  --radius-cartao: 20px;
+
+  --spacing-toque: 3.5rem; /* 56px, alvo de toque principal */
+
+  --animate-pendurar: pendurar 90ms steps(2, end);
+}
+
+@keyframes pendurar {
+  from {
+    transform: translateY(-6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--color-chao);
+    color: var(--color-tinta);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: var(--color-lima);
+    color: var(--color-chao);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-tinta);
+    outline-offset: 3px;
+  }
+
+  input {
+    caret-color: var(--color-lima);
+  }
+
+  input::placeholder {
+    color: var(--color-meta);
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
