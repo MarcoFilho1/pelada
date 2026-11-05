@@ -6,7 +6,7 @@ import { Colete, NOME_DA_COR } from '@/components/colete';
 import { Marca, Mais } from '@/components/icones';
 import { CAMPO, PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { normalizarNome } from '@/domain/nome';
-import { CORES, formatarNota, rotuloDaDiferenca, type Cor, type JogadorNota } from '@/domain/sorteio';
+import { CORES, formatarNota, rotuloDaDiferenca, type Cor, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { TimeDaPelada } from '@/server/times';
 import { cadastrarRapido, marcarDefinitivo, mover, sortear } from './acoes';
@@ -32,7 +32,7 @@ type Props = {
 const MAX_SUGESTOES = 6;
 
 const somar = (js: JogadorNota[]) => js.reduce((s, j) => s + j.nota, 0);
-const comSoma = (js: JogadorNota[]) => ({ jogadores: js, soma: somar(js) });
+const comSoma = (js: JogadorNota[]) => ({ jogadores: js, completes: [] as number[], soma: somar(js) });
 
 export function SorteioAdmin(p: Props) {
   const [refazendo, setRefazendo] = useState(false);
@@ -418,7 +418,7 @@ function Definitivo(p: Props & { onRefazer: () => void }) {
  * A diferença de força dita com todas as letras (soma, ou média por jogador se os tamanhos diferem), o que dá para fazer
  * nos cartões e, à direita, uma ação de texto opcional.
  */
-function Equilibrio({ times, dica, acao }: { times: { jogadores: JogadorNota[]; soma: number }[]; dica: string; acao?: ReactNode }) {
+function Equilibrio({ times, dica, acao }: { times: TimeSorteado[]; dica: string; acao?: ReactNode }) {
   return (
     <div className="mt-5">
       <div className="flex items-center justify-between gap-3">

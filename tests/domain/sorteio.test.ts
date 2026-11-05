@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diferenca, diferencaMedia, rotuloDaDiferenca, sortearTimes, type JogadorNota } from '@/domain/sorteio'
+import { diferenca, diferencaMedia, rotuloDaDiferenca, sortearComCompletes, sortearTimes, type JogadorNota } from '@/domain/sorteio'
 import { criarRng } from '../helpers/rng'
 
 function jogadores(notas: number[]): JogadorNota[] {
@@ -77,7 +77,7 @@ describe('sortearTimes', () => {
   })
 
   it('casos de borda: 0 jogadores e menos jogadores que times', () => {
-    expect(sortearTimes([])).toEqual([0, 1, 2, 3].map(() => ({ jogadores: [], soma: 0 })))
+    expect(sortearTimes([])).toEqual([0, 1, 2, 3].map(() => ({ jogadores: [], completes: [], soma: 0 })))
     const tres = sortearTimes(jogadores([3, 4, 5]), { rng: criarRng(1) })
     expect(tres.map((t) => t.jogadores.length)).toEqual([1, 1, 1, 0])
     expect(diferencaMedia(tres)).toBeGreaterThanOrEqual(0)
@@ -94,15 +94,15 @@ describe('diferenca', () => {
   it('maior soma menos menor soma', () => {
     expect(
       diferenca([
-        { jogadores: [], soma: 10 },
-        { jogadores: [], soma: 7.5 },
+        { jogadores: [], completes: [], soma: 10 },
+        { jogadores: [], completes: [], soma: 7.5 },
       ]),
     ).toBe(2.5)
   })
 })
 
 describe('rotuloDaDiferenca', () => {
-  const time = (notas: number[]) => ({ jogadores: jogadores(notas), soma: notas.reduce((a, b) => a + b, 0) })
+  const time = (notas: number[]) => ({ jogadores: jogadores(notas), completes: [] as number[], soma: notas.reduce((a, b) => a + b, 0) })
 
   it('tamanhos iguais: diferença das somas', () => {
     expect(rotuloDaDiferenca([time([4, 3]), time([3, 2.5])])).toBe('Diferença: 1,5')
@@ -111,5 +111,58 @@ describe('rotuloDaDiferenca', () => {
   it('tamanhos diferentes: diferença das médias, uma casa, por jogador', () => {
     // médias 3,5 e 3,0 (somas 10,5 x 6): a soma diria 4,5
     expect(rotuloDaDiferenca([time([4, 3.5, 3]), time([3, 3])])).toBe('Diferença: 0,5 por jogador')
+  })
+})
+
+describe('sortearComCompletes', () => {
+  const tamanhoDe = (t: { jogadores: unknown[]; completes: number[] }) => t.jogadores.length + t.completes.length
+
+  it('14 jogadores: 4 times de 4, 2 completes no total, ids reais uma vez', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5])
+    const times = sortearComCompletes(js, { rng: criarRng(3) })
+    expect(times.map(tamanhoDe)).toEqual([4, 4, 4, 4])
+    expect(times.flatMap((t) => t.completes)).toHaveLength(2)
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+    for (const t of times) expect(t.soma).toBeCloseTo(t.jogadores.reduce((s, j) => s + j.nota, 0) + t.completes.reduce((s, x) => s + x, 0))
+  })
+
+  it('nota de complete só 2,5, 3 ou 3,5', () => {
+    const js = jogadores([5, 1, 4, 2, 3, 3, 0.5, 4.5, 3.5, 2.5, 1.5])
+    for (const semente of [1, 2, 3]) {
+      for (const c of sortearComCompletes(js, { rng: criarRng(semente) }).flatMap((t) => t.completes)) {
+        expect([2.5, 3, 3.5]).toContain(c)
+      }
+    }
+  })
+
+  it('5 jogadores, 4 times: todo time tem jogador de verdade', () => {
+    const js = jogadores([5, 4, 3, 2, 1])
+    for (const semente of [1, 2, 3, 4]) {
+      const times = sortearComCompletes(js, { rng: criarRng(semente) })
+      expect(times).toHaveLength(4)
+      expect(times.map(tamanhoDe)).toEqual([4, 4, 4, 4])
+      for (const t of times) expect(t.jogadores.length).toBeGreaterThan(0)
+      expect(ids(times)).toEqual(js.map((j) => j.id))
+    }
+  })
+
+  it('16 jogadores: sem complete, igual a sortearTimes', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5, 1, 0.5])
+    const a = sortearComCompletes(js, { rng: criarRng(9) })
+    expect(a.flatMap((t) => t.completes)).toEqual([])
+    expect(a).toEqual(sortearTimes(js, { rng: criarRng(9) }))
+  })
+
+  it('14 de nota 2,0 → completes 2,5; 14 de 4,5 → completes 3,5', () => {
+    const baixos = sortearComCompletes(jogadores(Array(14).fill(2)), { rng: criarRng(5) })
+    expect(baixos.flatMap((t) => t.completes)).toEqual([2.5, 2.5])
+    const altos = sortearComCompletes(jogadores(Array(14).fill(4.5)), { rng: criarRng(5) })
+    expect(altos.flatMap((t) => t.completes)).toEqual([3.5, 3.5])
+  })
+
+  it('diferenca conta a nota dos completes', () => {
+    const t = (completes: number[], soma: number) => ({ jogadores: [], completes, soma })
+    expect(diferenca([t([3], 12), t([], 10)])).toBe(2)
+    expect(rotuloDaDiferenca([{ jogadores: [{ id: 1, nome: 'A', nota: 3 }], completes: [3], soma: 6 }, { jogadores: [{ id: 2, nome: 'B', nota: 3 }, { id: 3, nome: 'C', nota: 3 }], completes: [], soma: 6 }])).toBe('Diferença: 0,0')
   })
 })
