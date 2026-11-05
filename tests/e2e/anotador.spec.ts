@@ -20,10 +20,11 @@ test('anotador: inicia, anota, desfaz, avisa no 3º gol, encerra e entra no hist
   const golsLaranja = page.getByTestId('gols-B');
   await expect(golsAzul).toHaveText(/0$/);
 
-  // 4 contra 4 cabe sem rolar: na tela inteira (390×844) e na parte visível do navegador de
-  // celulares comuns (390×664, 360×640), com GOL e AST de pelo menos 48px.
+  // 4 contra 4 cabe sem rolar: na tela inteira (390×844), logo acima da tela baixa (390×764) e na
+  // parte visível do navegador de celulares comuns (390×664, 360×640), com GOL e AST de pelo menos 48px.
   for (const tamanho of [
     { width: 390, height: 844 },
+    { width: 390, height: 764 },
     { width: 390, height: 664 },
     { width: 360, height: 640 },
   ]) {

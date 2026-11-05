@@ -118,8 +118,12 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         ? `${nomeA} venceu ${placar.A}×${placar.B}`
         : `${nomeB} venceu ${placar.B}×${placar.A}`;
 
+  // Marcas "completando" na coluna mais cheia: cada uma é uma linha a mais. Os botões encolhem para
+  // caber (`--completando`) e a tela baixa começa mais cedo (`data-completando`, ver globals.css).
+  const completando = atual.encerrada ? 0 : Math.max(...LADOS.map((l) => atual.lados[l].jogadores.filter((j) => j.completando).length));
+
   return (
-    <main className="fixed inset-0 z-10 flex justify-center bg-chao">
+    <main className="fixed inset-0 z-10 flex justify-center bg-chao" data-completando={completando || undefined}>
       <div className="flex h-full w-full max-w-md flex-col">
         {/* ---- Topo preso: cronômetro, barra do tempo e placar ---- */}
         <header className="shrink-0 px-4 pt-1">
@@ -180,8 +184,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
               style={
                 {
                   '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1),
-                  // A marca "completando" é uma linha a mais no cartão: os botões de todos encolhem um pouco para caber.
-                  '--completando': Math.max(...LADOS.map((l) => atual.lados[l].jogadores.filter((j) => j.completando).length)),
+                  '--completando': completando,
                 } as CSSProperties
               }
             >

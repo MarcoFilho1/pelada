@@ -124,6 +124,8 @@ type Completando = {
   respostas: (Resposta | undefined)[];
   /** A vaga em escolha, ou a conferência. */
   atual: number | 'conferir';
+  /** A vaga foi aberta pelo "Trocar" da conferência: "Voltar" volta para lá, com as respostas. */
+  daConferencia: boolean;
   deFora: JogadorNota[];
   semTime: JogadorNota[];
 };
@@ -135,6 +137,7 @@ function ProximaPartida(p: Props) {
   const [escolhidos, setEscolhidos] = useState<number[]>(sugeridos);
   const [erro, setErro] = useState<string | null>(null);
   const [iniciando, startIniciar] = useTransition();
+  const [carregando, startCarregar] = useTransition();
   const [completando, setCompletando] = useState<Completando | null>(null);
   const [a, b] = times.filter((t) => escolhidos.includes(t.id)); // na ordem da fila
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
@@ -162,10 +165,10 @@ function ProximaPartida(p: Props) {
     const vagas = vagasDaPartida(a, b);
     if (!vagas.length) return comecar(a, b);
     setErro(null);
-    startIniciar(async () => {
+    startCarregar(async () => {
       const r = await quemCompleta(p.peladaId, a.id, b.id).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (!r.ok) return setErro(r.erro);
-      setCompletando({ a, b, vagas, respostas: vagas.map(() => undefined), atual: 0, deFora: r.deFora, semTime: r.semTime });
+      setCompletando({ a, b, vagas, respostas: vagas.map(() => undefined), atual: 0, daConferencia: false, deFora: r.deFora, semTime: r.semTime });
     });
   }
 
@@ -234,8 +237,8 @@ function ProximaPartida(p: Props) {
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
       </p>
-      <button type="button" className={`mt-4 ${PILULA}`} disabled={!a || !b || iniciando} onClick={tocarIniciar}>
-        {iniciando ? 'Iniciando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
+      <button type="button" className={`mt-4 ${PILULA}`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
+        {iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
       </button>
       {a && b && comComplete.length > 0 && (
         <p className="mt-2 text-base text-meta">
@@ -279,7 +282,7 @@ function PassosDeQuemCompleta({
         linhas={c.vagas.map((v, i) => ({ cor: timeDo(v.lado).cor, resposta: c.respostas[i]!, jogaCom: jogaCom(v.lado, c.respostas) }))}
         iniciando={iniciando}
         erro={erro}
-        onTrocar={(vaga) => onMudar({ ...c, atual: vaga })}
+        onTrocar={(vaga) => onMudar({ ...c, atual: vaga, daConferencia: true })}
         onIniciar={onIniciar}
         onVoltar={onSair}
       />
@@ -294,7 +297,8 @@ function PassosDeQuemCompleta({
 
   function responder(r: Resposta) {
     const respostas = c.respostas.map((x, i) => (i === atual ? r : x));
-    onMudar({ ...c, respostas, atual: proximaVaga(respostas, atual) ?? 'conferir' });
+    const proxima = proximaVaga(respostas, atual);
+    onMudar({ ...c, respostas, atual: proxima ?? 'conferir', daConferencia: proxima === null ? false : c.daConferencia });
     window.scrollTo({ top: 0 });
   }
 
@@ -318,7 +322,9 @@ function PassosDeQuemCompleta({
         responder({ tipo: 'jogador', jogador: j });
       }}
       onJogarSem={() => responder({ tipo: 'sem' })}
-      onVoltar={() => (atual > 0 ? onMudar({ ...c, atual: atual - 1 }) : onSair())}
+      onVoltar={() =>
+        c.daConferencia ? onMudar({ ...c, atual: 'conferir', daConferencia: false }) : atual > 0 ? onMudar({ ...c, atual: atual - 1 }) : onSair()
+      }
     />
   );
 }

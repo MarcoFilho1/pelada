@@ -389,7 +389,10 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
 - **Tela baixa** (variante `baixa`: altura visível ≤ 760px): o cronômetro cai para 32px (Título), o placar para
   56px numa linha de 56px, os cartões apertam (4px de respiro, nome com 20px de linha, números com 16px, 6px entre
   cartões) e GOL/AST vão até 48px (o piso); Desfazer, Encerrar e a pílula da folha ficam com 48px. GOL continua
-  branco e maior que AST.
+  branco e maior que AST. Com quem completa na partida, o limite sobe 20px por marca "completando" na coluna mais
+  cheia (≤ 780px com uma, ≤ 800px com duas), para 4 contra 4 não rolar em altura nenhuma.
+- **Quem completa:** o cartão ganha, abaixo do nome, a marca "completando" (Inter 14px #b4b4b4 sobre #000, o buraco
+  na placa, como o COMPLETE do Sorteio), uma linha a mais que os botões de todos descontam. GOL e AST iguais.
 - **Topo:** seta de voltar (48×48, "Voltar para partidas" para leitor de tela) à esquerda e o cronômetro regressivo
   em Número (44px, tabular, `m:ss`) no centro; abaixo, a barra do tempo de 6px (trilho placa alta, preenchimento
   branco, cresce com o tempo gasto). Depois o placar: bolinha e nome do time (Inter 600 16px, branco) por fora, os
