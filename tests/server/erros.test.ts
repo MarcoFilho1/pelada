@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ErroDeValidacao, idValido, mensagemParaUsuario, MSG_ALGO_DEU_ERRADO } from '@/server/erros';
+import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
+import { ErroDeValidacao, idValido, mensagemParaUsuario } from '@/server/erros';
 
 afterEach(() => vi.restoreAllMocks());
 

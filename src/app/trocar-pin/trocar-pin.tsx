@@ -3,8 +3,8 @@
 import { useState, useTransition } from 'react';
 import { SetaEsquerda } from '@/components/icones';
 import { PlacasPin } from '@/components/placas-pin';
+import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { PIN_PADRAO } from '@/domain/pin';
-import { MSG_ALGO_DEU_ERRADO } from '@/server/erros';
 import { sairDoPerfil, salvarPin } from './actions';
 
 type Etapa = 'novo' | 'confirmar';

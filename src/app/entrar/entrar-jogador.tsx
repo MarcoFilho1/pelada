@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { SetaDireita, SetaEsquerda } from '@/components/icones';
 import { PlacasPin } from '@/components/placas-pin';
+import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { PIN_PADRAO } from '@/domain/pin';
-import { MSG_ALGO_DEU_ERRADO } from '@/server/erros';
 import { entrar, sugerirJogadores, type ErroEntrar } from './actions';
 
 type Jogador = { id: number; nome: string };
