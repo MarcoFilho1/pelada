@@ -1,7 +1,7 @@
-import type { LinhaRanking } from '@/domain/ranking';
+import type { LinhaRankingComNota } from '@/domain/ranking';
 
 /** Colunas que reordenam a tabela. `posicao` é a ordem do ranking (pontos e desempates). */
-export type Coluna = 'posicao' | Exclude<keyof LinhaRanking, 'jogadorId'>;
+export type Coluna = 'posicao' | Exclude<keyof LinhaRankingComNota, 'jogadorId'>;
 
 export type Ordem = { coluna: Coluna; invertida: boolean };
 
@@ -17,7 +17,7 @@ export function proximaOrdem(atual: Ordem, coluna: Coluna): Ordem {
  * Sentido natural: posição e nome crescentes, números do maior para o menor; empate pela posição.
  * Invertida: a lista inteira ao contrário. Recebe as linhas na ordem do ranking.
  */
-export function ordenarLinhas(linhas: LinhaRanking[], ordem: Ordem): { linha: LinhaRanking; posicao: number }[] {
+export function ordenarLinhas(linhas: LinhaRankingComNota[], ordem: Ordem): { linha: LinhaRankingComNota; posicao: number }[] {
   const comPosicao = linhas.map((linha, i) => ({ linha, posicao: i + 1 }));
   const { coluna } = ordem;
   const natural = (a: (typeof comPosicao)[number], b: (typeof comPosicao)[number]) => {

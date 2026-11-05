@@ -22,6 +22,7 @@ const LEGENDA = [
   ['A', 'assistências'],
   ['G/J', 'gols por jogo'],
   ['Pres.', 'quartas em que jogou'],
+  ['Nota', 'a nota do sorteio (0 a 5)'],
 ];
 
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);

@@ -1,8 +1,13 @@
+import type { Cor } from './sorteio';
+
 export type PartidaEncerrada = {
   id: number;
   peladaData: string;
   encerradaEm: Date;
   resultado: 'A' | 'B' | 'empate';
+  /** Cor do colete de cada lado. */
+  corA: Cor;
+  corB: Cor;
   elenco: { jogadorId: number; lado: 'A' | 'B' }[];
   lances: { jogadorId: number; tipo: 'gol' | 'assistencia' }[];
 };
@@ -24,6 +29,21 @@ export type LinhaRanking = {
   presencas: number;
 };
 
+/** Linha do ranking com a nota do jogador (notas são públicas). */
+export type LinhaRankingComNota = LinhaRanking & { nota: number };
+
+/** Uma partida do ponto de vista do jogador: o time dele primeiro. */
+export type PartidaDoJogador = {
+  partidaId: number;
+  corDoTime: Cor;
+  corAdversario: Cor;
+  placarTime: number;
+  placarAdversario: number;
+  resultado: 'V' | 'E' | 'D';
+  gols: number;
+  assistencias: number;
+};
+
 export type QuartaDoJogador = {
   peladaData: string;
   jogos: number;
@@ -32,7 +52,14 @@ export type QuartaDoJogador = {
   derrotas: number;
   gols: number;
   assistencias: number;
+  /** Partidas da noite, da primeira para a última. */
+  partidas: PartidaDoJogador[];
 };
+
+/** Pontuação: vitória 3, empate 1, gol 1, assistência 1. */
+export function pontosDe(n: { vitorias: number; empates: number; gols: number; assistencias: number }): number {
+  return 3 * n.vitorias + n.empates + n.gols + n.assistencias;
+}
 
 /** Prefixo 'YYYY' / 'YYYY-MM' das datas de pelada do período; '' para o geral. */
 export function prefixoDoPeriodo(periodo: Periodo): string {
@@ -97,7 +124,7 @@ export function calcularRanking(partidas: PartidaEncerrada[], nomes: Map<number,
     }
   }
   const linhas = [...acc.values()].map(({ quartas, ...a }): LinhaRanking => {
-    const pontos = 3 * a.vitorias + a.empates + a.gols + a.assistencias;
+    const pontos = pontosDe(a);
     return {
       ...a,
       nome: nomes.get(a.jogadorId) ?? `Jogador ${a.jogadorId}`,
@@ -127,16 +154,26 @@ export function destaques(linhas: LinhaRanking[]): { artilheiro?: LinhaRanking; 
   return out;
 }
 
-/** Uma linha por quarta em que o jogador jogou (nas partidas dadas), mais recente primeiro. */
+/** Gols do lado: soma dos gols de quem estava no elenco daquele lado (sem gol contra). */
+function placarDoLado(p: PartidaEncerrada, lado: 'A' | 'B'): number {
+  const doLado = new Set(p.elenco.filter((e) => e.lado === lado).map((e) => e.jogadorId));
+  return p.lances.filter((l) => l.tipo === 'gol' && doLado.has(l.jogadorId)).length;
+}
+
+/**
+ * Uma linha por quarta em que o jogador jogou (nas partidas dadas), mais recente primeiro,
+ * com as partidas da noite em ordem (a primeira encerrada primeiro).
+ */
 export function historicoDoJogador(partidas: PartidaEncerrada[], jogadorId: number): QuartaDoJogador[] {
   const porQuarta = new Map<string, QuartaDoJogador>();
-  for (const p of partidas) {
+  const emOrdem = [...partidas].sort((a, b) => a.encerradaEm.getTime() - b.encerradaEm.getTime() || a.id - b.id);
+  for (const p of emOrdem) {
     const no = p.elenco.find((e) => e.jogadorId === jogadorId);
     if (!no) continue;
     const d = desempenho(p, jogadorId, no.lado);
     let q = porQuarta.get(p.peladaData);
     if (!q) {
-      q = { peladaData: p.peladaData, jogos: 0, vitorias: 0, empates: 0, derrotas: 0, gols: 0, assistencias: 0 };
+      q = { peladaData: p.peladaData, jogos: 0, vitorias: 0, empates: 0, derrotas: 0, gols: 0, assistencias: 0, partidas: [] };
       porQuarta.set(p.peladaData, q);
     }
     q.jogos++;
@@ -145,6 +182,17 @@ export function historicoDoJogador(partidas: PartidaEncerrada[], jogadorId: numb
     q.derrotas += d.derrota;
     q.gols += d.gols;
     q.assistencias += d.assistencias;
+    const outro = no.lado === 'A' ? 'B' : 'A';
+    q.partidas.push({
+      partidaId: p.id,
+      corDoTime: no.lado === 'A' ? p.corA : p.corB,
+      corAdversario: no.lado === 'A' ? p.corB : p.corA,
+      placarTime: placarDoLado(p, no.lado),
+      placarAdversario: placarDoLado(p, outro),
+      resultado: d.vitoria ? 'V' : d.empate ? 'E' : 'D',
+      gols: d.gols,
+      assistencias: d.assistencias,
+    });
   }
   return [...porQuarta.values()].sort((a, b) => b.peladaData.localeCompare(a.peladaData));
 }

@@ -454,7 +454,7 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
   sentido (`aria-sort`). A posição de cada um não muda com a ordem.
 - A linha da própria pessoa ganha placa alta #2a2a2a de ponta a ponta (como na lista), com "(você)" para leitor de
   tela. Acima da tabela, em Giz 14px, "Arraste para o lado para ver mais colunas."; abaixo, a legenda das siglas.
-  Notas não entram no ranking (ficam no perfil).
+  A última coluna é a **Nota** (notas são públicas), com uma casa ("3,5"); tocar ordena da maior para a menor.
 - Sem ninguém no período: placa #111 com "Nenhuma partida encerrada ainda." e de onde o ranking sai.
 
 ### Perfil (só o dono vê)
@@ -466,6 +466,10 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
 - "Quartas": `<ol>` de placas #111 (8px entre elas), mais recente primeiro: "Quarta, 28/10" em Inter 500 18px (com o
   ano quando não é o atual), embaixo o resumo em #b4b4b4 ("3 jogos: 2 vitórias, 1 empate · 1 gol") e, à direita, os
   pontos da noite em Subtítulo com "pts" em Giz. Número e palavra nunca quebram de linha separados.
+- Dentro da placa de cada quarta, as partidas da noite em ordem, uma linha de 36px em 14px: bolinha e nome do time
+  da pessoa em branco, o placar dela primeiro em Inter 600 tabular ("3×1"), o adversário em #b4b4b4 com a bolinha
+  dele e, à direita, V/E/D em branco 600 e o que ela fez ("· 1 gol, 1 ast") em #b4b4b4. Leitor de tela ouve a frase
+  inteira ("Azul 3 a 1 Laranja, vitória, 1 gol").
 - No fim: "Trocar PIN" (pílula secundária) e "Sair deste aparelho" (texto).
 
 ### Trocar PIN pelo perfil

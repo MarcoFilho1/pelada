@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularRanking, destaques, historicoDoJogador, type PartidaEncerrada } from '@/domain/ranking';
+import { calcularRanking, destaques, historicoDoJogador, pontosDe, type PartidaEncerrada } from '@/domain/ranking';
 
 let seq = 0;
 function partida(
@@ -9,12 +9,15 @@ function partida(
   b: number[],
   lances: PartidaEncerrada['lances'] = [],
   encerradaEm = new Date(`${peladaData}T23:00:00Z`),
+  cores: [PartidaEncerrada['corA'], PartidaEncerrada['corB']] = ['azul', 'laranja'],
 ): PartidaEncerrada {
   return {
     id: ++seq,
     peladaData,
     encerradaEm,
     resultado,
+    corA: cores[0],
+    corB: cores[1],
     elenco: [...a.map((jogadorId) => ({ jogadorId, lado: 'A' as const })), ...b.map((jogadorId) => ({ jogadorId, lado: 'B' as const }))],
     lances,
   };
@@ -136,17 +139,46 @@ describe('destaques', () => {
   });
 });
 
+describe('pontosDe', () => {
+  it('vitória 3, empate 1, gol 1, assistência 1', () => {
+    expect(pontosDe({ vitorias: 2, empates: 1, gols: 3, assistencias: 1 })).toBe(11);
+    expect(pontosDe({ vitorias: 0, empates: 0, gols: 0, assistencias: 0 })).toBe(0);
+  });
+});
+
 describe('historicoDoJogador', () => {
-  it('uma linha por quarta, mais recente primeiro', () => {
-    const ps = [
-      partida('2026-11-04', 'A', [1], [2], [{ jogadorId: 1, tipo: 'gol' }]),
-      partida('2026-11-04', 'empate', [1], [2]),
-      partida('2026-11-11', 'B', [1], [2], [{ jogadorId: 1, tipo: 'assistencia' }]),
-    ];
+  it('uma linha por quarta, mais recente primeiro, com as partidas da noite em ordem', () => {
+    const p1 = partida('2026-11-04', 'A', [1], [2], [{ jogadorId: 1, tipo: 'gol' }], new Date('2026-11-04T23:40:00Z'));
+    const p2 = partida('2026-11-04', 'empate', [3], [1], [], new Date('2026-11-04T23:55:00Z'), ['verde', 'azul']);
+    const p3 = partida('2026-11-11', 'B', [1], [2], [{ jogadorId: 1, tipo: 'assistencia' }, { jogadorId: 2, tipo: 'gol' }]);
+    // fora de ordem de propósito: dentro da noite, a mais antiga primeiro
+    const ps = [p2, p3, p1];
     expect(historicoDoJogador(ps, 1)).toEqual([
-      { peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 0, derrotas: 1, gols: 0, assistencias: 1 },
-      { peladaData: '2026-11-04', jogos: 2, vitorias: 1, empates: 1, derrotas: 0, gols: 1, assistencias: 0 },
+      {
+        peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 0, derrotas: 1, gols: 0, assistencias: 1,
+        partidas: [
+          { partidaId: p3.id, corDoTime: 'azul', corAdversario: 'laranja', placarTime: 0, placarAdversario: 1, resultado: 'D', gols: 0, assistencias: 1 },
+        ],
+      },
+      {
+        peladaData: '2026-11-04', jogos: 2, vitorias: 1, empates: 1, derrotas: 0, gols: 1, assistencias: 0,
+        partidas: [
+          { partidaId: p1.id, corDoTime: 'azul', corAdversario: 'laranja', placarTime: 1, placarAdversario: 0, resultado: 'V', gols: 1, assistencias: 0 },
+          { partidaId: p2.id, corDoTime: 'azul', corAdversario: 'verde', placarTime: 0, placarAdversario: 0, resultado: 'E', gols: 0, assistencias: 0 },
+        ],
+      },
     ]);
     expect(historicoDoJogador(ps, 99)).toEqual([]);
+  });
+
+  it('placar soma só os gols de quem estava no elenco de cada lado', () => {
+    const p = partida('2026-11-04', 'A', [1, 3], [2], [
+      { jogadorId: 1, tipo: 'gol' },
+      { jogadorId: 3, tipo: 'gol' },
+      { jogadorId: 2, tipo: 'gol' },
+      { jogadorId: 9, tipo: 'gol' },
+    ]);
+    const [q] = historicoDoJogador([p], 2);
+    expect(q.partidas[0]).toMatchObject({ corDoTime: 'laranja', corAdversario: 'azul', placarTime: 1, placarAdversario: 2, resultado: 'D', gols: 1 });
   });
 });

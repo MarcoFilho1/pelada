@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { SetaOrdem } from '@/components/icones';
-import type { LinhaRanking } from '@/domain/ranking';
+import type { LinhaRankingComNota as LinhaRanking } from '@/domain/ranking';
 import { ORDEM_PADRAO, ordenarLinhas, proximaOrdem, type Coluna, type Ordem } from './ordenar';
 
 const decimal = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const umaCasa = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 type Rolante = { coluna: Exclude<Coluna, 'posicao' | 'nome' | 'pontos'>; curto: string; nome: string; valor: (l: LinhaRanking) => string };
 
@@ -20,6 +21,7 @@ const ROLANTES: Rolante[] = [
   { coluna: 'assistencias', curto: 'A', nome: 'assistências', valor: (l) => String(l.assistencias) },
   { coluna: 'golsPorJogo', curto: 'G/J', nome: 'gols por jogo', valor: (l) => decimal.format(l.golsPorJogo) },
   { coluna: 'presencas', curto: 'Pres.', nome: 'presenças', valor: (l) => String(l.presencas) },
+  { coluna: 'nota', curto: 'Nota', nome: 'nota', valor: (l) => umaCasa.format(l.nota) },
 ];
 
 // Larguras das colunas fixas: cada uma gruda logo depois da anterior.

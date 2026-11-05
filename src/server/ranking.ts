@@ -1,17 +1,22 @@
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { DB } from '@/db/client';
-import { jogadores, lances, partidaJogadores, partidas, peladas } from '@/db/schema';
+import { jogadores, lances, partidaJogadores, partidas, peladas, times } from '@/db/schema';
 import {
   calcularRanking,
   historicoDoJogador,
   prefixoDoPeriodo,
   type LinhaRanking,
+  type LinhaRankingComNota,
   type PartidaEncerrada,
   type Periodo,
   type QuartaDoJogador,
 } from '@/domain/ranking';
 
-/** Partidas encerradas com resultado cuja quarta cai no período: 4 consultas, sem N+1. */
+const timeA = alias(times, 'time_a');
+const timeB = alias(times, 'time_b');
+
+/** Partidas encerradas com resultado cuja quarta cai no período, com as cores dos dois times: 3 consultas, sem N+1. */
 async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEncerrada[]> {
   const prefixo = prefixoDoPeriodo(periodo);
   const ps = await db
@@ -20,9 +25,13 @@ async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEnce
       peladaData: peladas.data,
       encerradaEm: partidas.encerradaEm,
       resultado: partidas.resultado,
+      corA: timeA.cor,
+      corB: timeB.cor,
     })
     .from(partidas)
     .innerJoin(peladas, eq(partidas.peladaId, peladas.id))
+    .innerJoin(timeA, eq(partidas.timeAId, timeA.id))
+    .innerJoin(timeB, eq(partidas.timeBId, timeB.id))
     .where(and(isNotNull(partidas.encerradaEm), isNotNull(partidas.resultado), sql`${peladas.data}::text like ${prefixo + "%"}`));
   if (!ps.length) return [];
   const ids = ps.map((p) => p.id);
@@ -45,28 +54,31 @@ async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEnce
     peladaData: p.peladaData,
     encerradaEm: p.encerradaEm!,
     resultado: p.resultado!,
+    corA: p.corA,
+    corB: p.corB,
     elenco: elencoDe.get(p.id) ?? [],
     lances: lancesDe.get(p.id) ?? [],
   }));
 }
 
 /**
- * Ranking do período. Só lista jogadores ativos (quem parou de vir some das listas);
- * `incluirInativos` traz todos. Quem não jogou no período não aparece.
+ * Ranking do período, com a nota de cada um (notas são públicas). Só lista jogadores ativos
+ * (quem parou de vir some das listas); `incluirInativos` traz todos. Quem não jogou no período não aparece.
  */
 export async function rankingDoPeriodo(
   db: DB,
   periodo: Periodo,
   opcoes: { incluirInativos?: boolean } = {},
-): Promise<LinhaRanking[]> {
+): Promise<LinhaRankingComNota[]> {
   const [ps, js] = await Promise.all([
     partidasEncerradas(db, periodo),
-    db.select({ id: jogadores.id, nome: jogadores.nome, ativo: jogadores.ativo }).from(jogadores),
+    db.select({ id: jogadores.id, nome: jogadores.nome, ativo: jogadores.ativo, nota: jogadores.nota }).from(jogadores),
   ]);
-  const linhas = calcularRanking(ps, new Map(js.map((j) => [j.id, j.nome])), periodo);
-  if (opcoes.incluirInativos) return linhas;
-  const ativos = new Set(js.filter((j) => j.ativo).map((j) => j.id));
-  return linhas.filter((l) => ativos.has(l.jogadorId));
+  const porId = new Map(js.map((j) => [j.id, j]));
+  const linhas = calcularRanking(ps, new Map(js.map((j) => [j.id, j.nome])), periodo)
+    .filter((l) => opcoes.incluirInativos || porId.get(l.jogadorId)?.ativo)
+    .map((l): LinhaRankingComNota => ({ ...l, nota: Number(porId.get(l.jogadorId)?.nota ?? 0) }));
+  return linhas;
 }
 
 /** Linha do jogador no período (null se não jogou) e histórico por quarta, mais recente primeiro. Vale para inativos. */

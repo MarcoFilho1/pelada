@@ -52,6 +52,7 @@ describe('ranking do servidor', () => {
   }
 
   it('ranking com 2 partidas reais', async () => {
+    await db.update(jogadores).set({ nota: '4.5' }).where(eq(jogadores.id, ana));
     await cenario();
     const r = await rankingDoPeriodo(db, { tipo: 'geral' });
     expect(r.map((l) => [l.nome, l.pontos])).toEqual([
@@ -61,6 +62,8 @@ describe('ranking do servidor', () => {
       ['Davi', 1],
     ]);
     expect(r[0]).toMatchObject({ jogos: 2, vitorias: 1, empates: 1, gols: 2, presencas: 2 });
+    // nota pública, como número (o banco guarda numeric)
+    expect(r.map((l) => l.nota)).toEqual([4.5, 3, 3, 3]);
     const nov = await rankingDoPeriodo(db, { tipo: 'mes', ano: 2026, mes: 11 });
     expect(nov).toHaveLength(4);
     expect(await rankingDoPeriodo(db, { tipo: 'mes', ano: 2026, mes: 10 })).toEqual([]);
@@ -86,9 +89,18 @@ describe('ranking do servidor', () => {
     const e = await estatisticasDoJogador(db, ana, { tipo: 'geral' });
     expect(e.linha).toMatchObject({ nome: 'Ana', pontos: 6 });
     expect(e.historico).toEqual([
-      { peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 1, derrotas: 0, gols: 0, assistencias: 0 },
-      { peladaData: '2026-11-04', jogos: 1, vitorias: 1, empates: 0, derrotas: 0, gols: 2, assistencias: 0 },
+      {
+        peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 1, derrotas: 0, gols: 0, assistencias: 0,
+        partidas: [expect.objectContaining({ corDoTime: 'azul', corAdversario: 'laranja', placarTime: 0, placarAdversario: 0, resultado: 'E' })],
+      },
+      {
+        peladaData: '2026-11-04', jogos: 1, vitorias: 1, empates: 0, derrotas: 0, gols: 2, assistencias: 0,
+        partidas: [expect.objectContaining({ corDoTime: 'azul', corAdversario: 'laranja', placarTime: 2, placarAdversario: 0, resultado: 'V', gols: 2 })],
+      },
     ]);
+    // do outro lado, as cores e o placar se invertem
+    const caioHist = (await estatisticasDoJogador(db, caio, { tipo: 'mes', ano: 2026, mes: 11 })).historico;
+    expect(caioHist[1].partidas[0]).toMatchObject({ corDoTime: 'laranja', corAdversario: 'azul', placarTime: 0, placarAdversario: 2, resultado: 'D' });
     const vazio = await estatisticasDoJogador(db, ana, { tipo: 'ano', ano: 2025 });
     expect(vazio).toEqual({ linha: null, historico: [] });
   });

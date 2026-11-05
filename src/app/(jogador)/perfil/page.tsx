@@ -6,7 +6,8 @@ import { PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { Tela, Topo } from '@/components/topo';
 import { getDb } from '@/db/client';
 import { nomeDoPeriodo, periodoDaUrl } from '@/domain/periodo';
-import type { LinhaRanking, QuartaDoJogador } from '@/domain/ranking';
+import { NOME_DA_COR, Colete } from '@/components/colete';
+import { pontosDe, type LinhaRanking, type PartidaDoJogador, type QuartaDoJogador } from '@/domain/ranking';
 import { dataDe, diaMes } from '@/domain/tempo';
 import { notaDoJogador } from '@/server/jogadores';
 import { estatisticasDoJogador, periodosDisponiveis } from '@/server/ranking';
@@ -60,6 +61,35 @@ function resumo(q: QuartaDoJogador): string {
   return `${plural(q.jogos, 'jogo', 'jogos')}: ${resultados.join(', ')}${lances.length ? ` · ${lances.join(', ')}` : ''}`;
 }
 
+const RESULTADO: Record<PartidaDoJogador['resultado'], string> = { V: 'vitória', E: 'empate', D: 'derrota' };
+
+/** "● Azul 3×1 Laranja ●   V · 1 gol": o time do jogador primeiro. */
+function LinhaPartida({ p }: { p: PartidaDoJogador }) {
+  const lances = [p.gols && plural(p.gols, 'gol', 'gols'), p.assistencias && `${p.assistencias}\u00a0ast`].filter(Boolean);
+  const meu = NOME_DA_COR[p.corDoTime];
+  const deles = NOME_DA_COR[p.corAdversario];
+  return (
+    <li
+      className="flex min-h-9 items-center gap-2 text-sm"
+      aria-label={`${meu} ${p.placarTime} a ${p.placarAdversario} ${deles}, ${RESULTADO[p.resultado]}${lances.length ? `, ${lances.join(', ')}` : ''}`}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-1.5" aria-hidden="true">
+        <Colete cor={p.corDoTime} />
+        <span className="truncate text-tinta">{meu}</span>
+        <span className="shrink-0 font-semibold tabular-nums text-tinta">
+          {p.placarTime}×{p.placarAdversario}
+        </span>
+        <span className="truncate text-apagado">{deles}</span>
+        <Colete cor={p.corAdversario} />
+      </span>
+      <span className="shrink-0 text-right text-apagado" aria-hidden="true">
+        <span className="font-semibold text-tinta">{p.resultado}</span>
+        {lances.length > 0 && ` · ${lances.join(', ')}`}
+      </span>
+    </li>
+  );
+}
+
 function Historico({ historico, anoAtual }: { historico: QuartaDoJogador[]; anoAtual: string }) {
   return (
     <section aria-labelledby="titulo-quartas" className="mt-10">
@@ -68,23 +98,30 @@ function Historico({ historico, anoAtual }: { historico: QuartaDoJogador[]; anoA
       </h2>
       <ol className="mt-3 flex flex-col gap-2">
         {historico.map((q) => {
-          const pontos = 3 * q.vitorias + q.empates + q.gols + q.assistencias;
+          const pontos = pontosDe(q);
           const ano = q.peladaData.slice(0, 4);
           return (
-            <li key={q.peladaData} className="flex items-center gap-3 rounded-placa bg-placa px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-linha font-medium">
-                  Quarta, {diaMes(q.peladaData)}
-                  {ano !== anoAtual && `/${ano}`}
+            <li key={q.peladaData} className="rounded-placa bg-placa px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-linha font-medium">
+                    Quarta, {diaMes(q.peladaData)}
+                    {ano !== anoAtual && `/${ano}`}
+                  </p>
+                  <p className="mt-0.5 text-base text-apagado">{resumo(q)}</p>
+                </div>
+                <p className="shrink-0 text-right" aria-label={plural(pontos, 'ponto', 'pontos')}>
+                  <span className="block font-placa text-subtitulo font-semibold tabular-nums">{pontos}</span>
+                  <span className="block text-sm text-meta" aria-hidden="true">
+                    pts
+                  </span>
                 </p>
-                <p className="mt-0.5 text-base text-apagado">{resumo(q)}</p>
               </div>
-              <p className="shrink-0 text-right" aria-label={plural(pontos, 'ponto', 'pontos')}>
-                <span className="block font-placa text-subtitulo font-semibold tabular-nums">{pontos}</span>
-                <span className="block text-sm text-meta" aria-hidden="true">
-                  pts
-                </span>
-              </p>
+              <ol aria-label="Partidas da noite" className="mt-2">
+                {q.partidas.map((p) => (
+                  <LinhaPartida key={p.partidaId} p={p} />
+                ))}
+              </ol>
             </li>
           );
         })}
