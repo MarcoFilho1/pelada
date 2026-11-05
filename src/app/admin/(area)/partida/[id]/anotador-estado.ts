@@ -7,7 +7,7 @@
 // ainda estão na fila, aplicadas em ordem.
 
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
-import { placar as placarDe, type Lado, type Placar, type TipoLance } from '@/domain/partida';
+import { placar as placarDe, tempoRestanteMs, type Lado, type Placar, type TipoLance } from '@/domain/partida';
 import type { LanceDaPartida } from '@/server/partidas';
 import type { EstadoDaPartida } from './estado';
 
@@ -70,6 +70,16 @@ export function derivar(base: EstadoDaPartida, escritas: Escrita[]): Vista {
     salvando: new Set(escritas.flatMap((e) => (e.tipo === 'toque' && !desfeitos.has(e.chave) ? [e.jogadorId] : []))),
     desfazendo: escritas.some((e) => e.tipo === 'desfazer'),
   };
+}
+
+/**
+ * O cronômetro da tela. Em andamento: pela hora do servidor andando no relógio do aparelho
+ * (`agora`; null antes de montar, aí vale o tempo que veio pronto). Encerrada: parado no que
+ * faltava ao encerrar, sem correr até 0:00 (nem vibrar) ao abrir uma partida antiga.
+ */
+export function tempoNaTela(estado: EstadoDaPartida, agora: number | null): number {
+  if (estado.encerrada || agora === null) return estado.tempoRestanteMs;
+  return tempoRestanteMs(new Date(estado.iniciadaEm), new Date(agora));
 }
 
 export type Instantaneo = Vista & { estado: EstadoDaPartida; aviso: Aviso | null };

@@ -36,6 +36,11 @@ typography:
     fontSize: "4.5rem"
     fontWeight: 600
     lineHeight: 1
+  placar-baixo:
+    fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
+    fontSize: "3.5rem"
+    fontWeight: 600
+    lineHeight: 1
   marca:
     fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
     fontSize: "1.5rem"
@@ -183,6 +188,7 @@ leitura sem chamar atenção. Duas letras, nunca três.
   "x/16" ao lado do h2 das listas.
 - **Número** (Barlow Condensed 600, 44px, 1): o dígito pintado na placa do PIN, a contagem e o cronômetro do anotador.
 - **Placar** (Barlow Condensed 600, 72px, 1, tabular): só os gols do placar do anotador. O maior número do site.
+  Em tela baixa (altura visível ≤ 760px) cai para 56px (**placar-baixo**).
 - **Marca** (Barlow Condensed 600, 24px): "Pelada" no topo.
 - **Linha** (Inter 500, 18px, 1.4): itens tocáveis (nomes sugeridos), texto de campo, rótulo do botão.
 - **Corpo** (Inter 400–500, 16px, 1.5): descrições, rótulos, mensagens. Nada abaixo de 16px em campo (evita o
@@ -356,6 +362,9 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 
 ### Noite das partidas (admin)
 - **Cabeçalho:** h1 "Partidas" e, abaixo, "Quarta, 04/11 · Hoje" (ou "A última pelada") em #b4b4b4, como no Sorteio.
+- **Ficou aberta:** partida de outra pelada que ninguém encerrou aparece no alto, numa placa #111: "Partida de 28/10
+  ficou aberta" em Inter 500 16px branco, o confronto, "Ela só conta no ranking depois de encerrada." em #b4b4b4 e a
+  pílula secundária "Abrir anotador" (lá se encerra).
 - **Em andamento:** placa #111 com "Em andamento" em #b4b4b4, o confronto e a pílula branca "Voltar ao anotador".
   Enquanto uma partida roda não aparece Iniciar.
 - **Próxima partida:** h2 em Barlow 24px, a regra da fila em Giz e os times em grade 2×2 na ordem da fila
@@ -374,8 +383,13 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 ### Anotador ao vivo ("Anotar A", admin)
 A tela mais importante do site: o admin segura o celular na beira da quadra e toca sem olhar direito.
 - **Tela inteira:** sem a barra do topo nem a navegação do admin; margens de 16px (a exceção aos 20px, para as
-  colunas caberem). Topo e barra de baixo presos; só o meio rola, e com 4 contra 4 em 390×844 nada rola (5 contra 5
-  rola pouco). Wake Lock enquanto a partida está aberta.
+  colunas caberem). Topo e barra de baixo presos; só o meio rola. 4 contra 4 não rola nem na parte visível do
+  navegador de um celular comum (360×640, 390×664) nem na tela inteira (390×844); 5 contra 5 rola pouco. Wake Lock
+  enquanto a partida está aberta.
+- **Tela baixa** (variante `baixa`: altura visível ≤ 760px): o cronômetro cai para 32px (Título), o placar para
+  56px numa linha de 56px, os cartões apertam (4px de respiro, nome com 20px de linha, números com 16px, 6px entre
+  cartões) e GOL/AST vão até 48px (o piso); Desfazer, Encerrar e a pílula da folha ficam com 48px. GOL continua
+  branco e maior que AST.
 - **Topo:** seta de voltar (48×48, "Voltar para partidas" para leitor de tela) à esquerda e o cronômetro regressivo
   em Número (44px, tabular, `m:ss`) no centro; abaixo, a barra do tempo de 6px (trilho placa alta, preenchimento
   branco, cresce com o tempo gasto). Depois o placar: bolinha e nome do time (Inter 600 16px, branco) por fora, os
@@ -383,7 +397,8 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
 - **Cartão do jogador:** duas colunas (8px), uma por time, na ordem do placar. Placa #111, raio 10px, 6px de respiro:
   nome em Inter 500 16px (truncado) e, abaixo, "2 gols · 1 ast" em Giz 14px com os números em Inter 600 (brancos
   quando passam de zero). Embaixo, lado a lado, os botões **GOL** (3/5, branco com texto preto, Inter 600 18px) e
-  **AST** (2/5, placa alta, Inter 600 16px), raio 10px, altura de 56px a 72px conforme a altura da tela. GOL e AST
+  **AST** (2/5, placa alta, Inter 600 16px), raio 10px, altura de 56px a 72px conforme a altura da tela (48px a 72px
+  em tela baixa). GOL e AST
   ficam em maiúsculas como no placar (a única exceção à caixa normal; sem espaçamento). Leitor de tela ouve "GOL de
   Pepe" e "AST (assistência) de Pepe".
 - **Toque:** conta na hora (otimista), vibra 30ms e o número entra com o passo de pendurar; enquanto o servidor não
@@ -399,7 +414,8 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
   "Encerrar partida", e na mesma linha o Desfazer e "Continuar jogando" em texto. Nunca encerra sozinha; continuar
   vale até o placar mudar. O botão Encerrar da barra abre a mesma folha como confirmação ("Encerrar com Azul 1×1
   Laranja?") com "Voltar". Sem `alert`/`confirm`.
-- **Encerrada** (aqui ou por outro admin): o placar fica; no lugar dos cartões, "Partida encerrada" em Subtítulo, o
+- **Encerrada** (aqui ou por outro admin): o placar e o cronômetro ficam parados (no que faltava ao encerrar,
+  sem vibrar); no lugar dos cartões, "Partida encerrada" em Subtítulo, o
   resultado em #b4b4b4 18px, "Ver partidas" (pílula branca) e "Corrigir" (secundária).
 
 ### Corrigir partida (admin)

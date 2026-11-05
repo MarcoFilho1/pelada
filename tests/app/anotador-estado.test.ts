@@ -4,7 +4,7 @@ import type { DB } from '@/db/client';
 import { jogadores, lances, peladas } from '@/db/schema';
 import type { TipoLance } from '@/domain/partida';
 import { dataDe } from '@/domain/tempo';
-import { Anotacoes, derivar, type Escritor } from '@/app/admin/(area)/partida/[id]/anotador-estado';
+import { Anotacoes, derivar, tempoNaTela, type Escritor } from '@/app/admin/(area)/partida/[id]/anotador-estado';
 import { lerEstado, type EstadoDaPartida } from '@/app/admin/(area)/partida/[id]/estado';
 import { desfazerUltimo, iniciarPartida, registrarLance } from '@/server/partidas';
 import { salvarTimesDefinitivos, timesDaPelada } from '@/server/times';
@@ -239,5 +239,15 @@ describe('derivar', () => {
     const so = derivar(base, [{ tipo: 'desfazer', chave: 4, alvo: { lanceId: l } }]);
     expect(so.conta(pepe, 'assistencia')).toBe(0);
     expect(so.alvo).toBeNull();
+  });
+});
+
+describe('tempoNaTela', () => {
+  it('em andamento conta pelo relógio; encerrada fica parada no que faltava ao encerrar (P5-c)', async () => {
+    const e = await estado();
+    expect(tempoNaTela(e, null)).toBe(e.tempoRestanteMs);
+    expect(tempoNaTela(e, e.iniciadaEm + 60_000)).toBe(7 * 60_000);
+    const encerrada = { ...e, encerrada: true, tempoRestanteMs: 3 * 60_000 };
+    expect(tempoNaTela(encerrada, e.iniciadaEm + 60 * 60_000)).toBe(3 * 60_000);
   });
 });

@@ -7,11 +7,11 @@ import { Colete, NOME_DA_COR } from '@/components/colete';
 import { SetaEsquerda } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
-import { DURACAO_MS, GOLS_PARA_VENCER, relogio, tempoRestanteMs, type Lado, type TipoLance } from '@/domain/partida';
+import { DURACAO_MS, GOLS_PARA_VENCER, relogio, type Lado, type TipoLance } from '@/domain/partida';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { JogadorNaPartida } from '@/server/partidas';
 import { anotar, desfazer, encerrar } from './acoes';
-import { Anotacoes } from './anotador-estado';
+import { Anotacoes, tempoNaTela } from './anotador-estado';
 import type { EstadoDaPartida } from './estado';
 
 const LADOS: Lado[] = ['A', 'B'];
@@ -44,8 +44,8 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
   const [encerrando, startEncerrar] = useTransition();
 
   const agora = useAgoraDoServidor(doServidor.lidoEm);
-  const restante = agora === null ? atual.tempoRestanteMs : tempoRestanteMs(new Date(atual.iniciadaEm), new Date(agora));
-  useVibrarNoFim(restante === 0);
+  const restante = tempoNaTela(atual, agora);
+  useVibrarNoFim(!atual.encerrada && restante === 0);
   useTelaAcesa(!atual.encerrada);
 
   // Erro da fila: fica 4 s e a página é lida de novo (o servidor pode ter mudado, ex.: encerrada).
@@ -123,11 +123,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
               <SetaEsquerda className="size-6" />
               <span className="sr-only">Voltar para partidas</span>
             </Link>
-            <p className="text-center font-placa text-numero font-semibold tabular-nums" role="timer">
+            <p className="text-center font-placa text-numero font-semibold tabular-nums baixa:text-titulo" role="timer">
               {relogio(restante)}
             </p>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-placa-alta" aria-hidden="true">
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-placa-alta baixa:mt-0.5" aria-hidden="true">
             <div
               className="h-full origin-left rounded-full bg-tinta transition-transform duration-500 ease-linear"
               style={{ transform: `scaleX(${1 - restante / DURACAO_MS})` }}
@@ -136,16 +136,16 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
           <h1 className="sr-only">
             Partida {nomeA} × {nomeB}
           </h1>
-          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3" aria-live="polite">
+          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3 baixa:mt-1" aria-live="polite">
             {LADOS.map((l) => {
               const cor = atual.lados[l].cor;
               return (
-                <div key={l} className={`flex h-20 min-w-0 items-center gap-2 pl-1.5 ${l === 'B' ? 'order-3 flex-row-reverse pr-1.5 pl-0' : ''}`}>
+                <div key={l} className={`flex h-20 min-w-0 items-center gap-2 pl-1.5 baixa:h-14 ${l === 'B' ? 'order-3 flex-row-reverse pr-1.5 pl-0' : ''}`}>
                   <Colete cor={cor} />
                   <span className={`min-w-0 flex-1 truncate text-base font-semibold text-tinta ${l === 'B' ? 'text-right' : ''}`}>
                     {NOME_DA_COR[cor]}
                   </span>
-                  <span data-testid={`gols-${l}`} className="font-placa text-placar font-semibold tabular-nums">
+                  <span data-testid={`gols-${l}`} className="font-placa text-placar font-semibold tabular-nums baixa:text-placar-baixo">
                     <span className="sr-only">{NOME_DA_COR[cor]} </span>
                     {placar[l]}
                   </span>
@@ -162,13 +162,13 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         {atual.encerrada ? (
           <Encerrada estado={atual} frase={fraseDoPlacar} />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-3 baixa:pt-1.5 baixa:pb-2">
             <div
-              className="grid grid-cols-2 items-start gap-2"
+              className="grid grid-cols-2 items-start gap-2 baixa:gap-1.5"
               style={{ '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1) } as CSSProperties}
             >
               {LADOS.map((l) => (
-                <ul key={l} aria-label={NOME_DA_COR[atual.lados[l].cor]} className="flex flex-col gap-2">
+                <ul key={l} aria-label={NOME_DA_COR[atual.lados[l].cor]} className="flex flex-col gap-2 baixa:gap-1.5">
                   {atual.lados[l].jogadores.map((j) => (
                     <CartaoDoJogador
                       key={j.id}
@@ -189,7 +189,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         {/* ---- Embaixo, preso: Desfazer e Encerrar, ou a pergunta de encerrar ---- */}
         {!atual.encerrada && (
           <footer
-            className={`shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] ${
+            className={`shrink-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] baixa:pt-2 baixa:pb-[max(0.75rem,env(safe-area-inset-bottom))] ${
               mostrarSugestao || confirmando ? 'rounded-t-cartao bg-placa shadow-[0_-12px_32px_rgba(0,0,0,0.7)]' : 'bg-chao'
             }`}
           >
@@ -213,7 +213,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
                   )}
                 </p>
                 <p className="mt-1 text-base text-apagado">Depois de encerrar, só dá para mudar em Corrigir.</p>
-                <button type="button" className={`mt-3 ${PILULA}`} disabled={encerrando} onClick={encerrarAgora}>
+                <button type="button" className={`mt-3 ${PILULA} baixa:mt-2 baixa:h-12`} disabled={encerrando} onClick={encerrarAgora}>
                   {encerrando ? 'Encerrando…' : 'Encerrar partida'}
                 </button>
                 <div className="mt-2 flex items-center gap-2">
@@ -236,7 +236,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
             ) : (
               <div className="flex gap-2">
                 <BotaoDesfazer alvo={rotuloAlvo} desfazendo={v.desfazendo} desabilitado={false} onClick={desfazerUltimo} />
-                <button type="button" className={`${PILULA_SEGUNDA} basis-2/5`} onClick={() => setConfirmando(true)}>
+                <button type="button" className={`${PILULA_SEGUNDA} basis-2/5 baixa:h-12`} onClick={() => setConfirmando(true)}>
                   Encerrar
                 </button>
               </div>
@@ -265,16 +265,18 @@ function CartaoDoJogador({
   onToque: (tipo: TipoLance) => void;
 }) {
   return (
-    // Os botões crescem até 72px quando sobra altura (4 contra 4 num celular comum) e nunca ficam
-    // abaixo de 56px; a conta tira da tela o topo, a barra de baixo e o resto de cada cartão.
-    <li className="rounded-placa bg-placa p-1.5 [--botao:clamp(3.5rem,calc((100dvh-16rem)/var(--linhas)-4.5rem),4.5rem)]">
-      <div className="px-1.5 pt-0.5">
-        <p className="truncate text-base font-medium text-tinta">{jogador.nome}</p>
-        <p className="text-sm text-meta tabular-nums">
+    // Os botões crescem até 72px quando sobra altura e encolhem com a tela: a conta tira da altura
+    // visível o topo, a barra de baixo e o resto de cada cartão. Tela alta: de 56px a 72px. Tela
+    // baixa (navegador de um celular comum, ≤ 760px): o topo e o cartão apertam e o botão vai até
+    // 48px, para 4 contra 4 caber sem rolar em 360×640.
+    <li className="rounded-placa bg-placa p-1.5 [--botao:clamp(3.5rem,calc((100dvh-16rem)/var(--linhas)-4.5rem),4.5rem)] baixa:p-1 baixa:[--botao:clamp(3rem,calc((100dvh-13rem)/var(--linhas)-3.375rem),4.5rem)]">
+      <div className="px-1.5 pt-0.5 baixa:pt-0">
+        <p className="truncate text-base font-medium text-tinta baixa:leading-5">{jogador.nome}</p>
+        <p className="text-sm text-meta tabular-nums baixa:leading-4">
           <Numero n={gols} salvando={salvando} /> {gols === 1 ? 'gol' : 'gols'} · <Numero n={assistencias} salvando={salvando} /> ast
         </p>
       </div>
-      <div className="mt-1.5 flex gap-1.5">
+      <div className="mt-1.5 flex gap-1.5 baixa:mt-1">
         <button
           type="button"
           disabled={desabilitado}
@@ -326,7 +328,7 @@ function BotaoDesfazer({
       disabled={!alvo || desabilitado}
       onClick={onClick}
       aria-label={`${desfazendo ? 'Desfazendo…' : 'Desfazer'}: ${alvo ?? 'nada para desfazer'}`}
-      className="flex h-toque min-w-0 flex-1 flex-col items-center justify-center rounded-full bg-placa-alta px-4 leading-tight text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60 disabled:text-meta"
+      className="flex h-toque min-w-0 flex-1 flex-col items-center justify-center rounded-full baixa:h-12 bg-placa-alta px-4 leading-tight text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60 disabled:text-meta"
     >
       <span className="text-base font-semibold">{desfazendo ? 'Desfazendo…' : 'Desfazer'}</span>
       <span className="w-full truncate text-center text-sm text-apagado">{alvo ?? 'nada para desfazer'}</span>
