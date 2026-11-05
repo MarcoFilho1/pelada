@@ -47,6 +47,21 @@ describe('sortearTimes', () => {
     expect(chave(a)).not.toBe(chave(b))
   })
 
+  it('mantém variedade com notas realistas (20 sementes)', () => {
+    const js = jogadores([4.5, 4.5, 4, 4, 4, 3.5, 3.5, 3.5, 3, 3, 3, 3, 2.5, 2.5, 2, 2])
+    const formas = new Map<string, number>()
+    for (let s = 1; s <= 20; s++) {
+      const times = sortearTimes(js, { rng: criarRng(s) })
+      const forma = times
+        .map((t) => t.jogadores.map((j) => j.nota).join(','))
+        .sort()
+        .join('|')
+      formas.set(forma, (formas.get(forma) ?? 0) + 1)
+    }
+    expect(formas.size).toBeGreaterThanOrEqual(8)
+    expect(Math.max(...formas.values())).toBeLessThanOrEqual(10)
+  })
+
   it('é determinístico para a mesma semente', () => {
     const js = jogadores([5, 4, 3, 3, 2, 1, 4, 3, 3, 2, 2, 5, 1, 3, 3, 4])
     expect(sortearTimes(js, { rng: criarRng(9) })).toEqual(sortearTimes(js, { rng: criarRng(9) }))
