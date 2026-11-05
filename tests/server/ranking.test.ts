@@ -105,6 +105,22 @@ describe('ranking do servidor', () => {
     expect(vazio).toEqual({ linha: null, historico: [] });
   });
 
+  it('filtro por período na virada de dezembro para janeiro', async () => {
+    for (const dia of ['2026-12-30', '2027-01-06']) {
+      await peladaJogada(dia, async ({ azul, laranja }) => {
+        const [p] = await db.select().from(peladas).where(eq(peladas.data, dia));
+        await jogar(p.id, azul, laranja, [[ana, 'gol']], dia);
+      });
+    }
+    const jogos = async (periodo: Parameters<typeof rankingDoPeriodo>[1]) => (await rankingDoPeriodo(db, periodo))[0]?.jogos ?? 0;
+    expect(await jogos({ tipo: 'mes', ano: 2026, mes: 12 })).toBe(1);
+    expect(await jogos({ tipo: 'mes', ano: 2027, mes: 1 })).toBe(1);
+    expect(await jogos({ tipo: 'ano', ano: 2026 })).toBe(1);
+    expect(await jogos({ tipo: 'ano', ano: 2027 })).toBe(1);
+    expect(await jogos({ tipo: 'geral' })).toBe(2);
+    expect(await jogos({ tipo: 'mes', ano: 2026, mes: 11 })).toBe(0);
+  });
+
   it('periodosDisponiveis: anos e meses com partida encerrada, mais recentes primeiro', async () => {
     expect(await periodosDisponiveis(db)).toEqual({ anos: [], meses: [] });
     await cenario();
