@@ -8,13 +8,17 @@ let contexto: AudioContext | null = null;
 /** Chame dentro de um toque do usuário. Sem suporte ou com erro, não faz nada. */
 export function destravarAudio(): void {
   try {
+    // iOS 17+: 'playback' toca mesmo com o interruptor de silêncio ligado.
+    const sessao = 'audioSession' in navigator ? (navigator as unknown as { audioSession: { type: string } }).audioSession : null;
+    if (sessao) sessao.type = 'playback';
     if (!contexto) {
       const Ctx: ContextoDeAudio | undefined =
         window.AudioContext ?? (window as unknown as { webkitAudioContext?: ContextoDeAudio }).webkitAudioContext;
       if (!Ctx) return;
       contexto = new Ctx();
     }
-    if (contexto.state === 'suspended') void contexto.resume().catch(() => {});
+    // 'interrupted' (WebKit, depois de ligação/alarme) também precisa de resume, não só 'suspended'.
+    if (contexto.state !== 'running') void contexto.resume().catch(() => {});
   } catch {
     contexto = null;
   }
