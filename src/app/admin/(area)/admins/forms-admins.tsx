@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useEffect, useRef } from 'react';
 import { novoAdmin, trocarMinhaSenha, type EstadoForm } from './actions';
 
@@ -120,11 +119,6 @@ export function FormsAdmins() {
             Pelo menos 10 caracteres. Os outros aparelhos saem da conta.
           </p>
           <Mensagem id="troca-msg" estado={troca} />
-          {troca.entrarDeNovo && (
-            <Link href="/admin/entrar" className="mt-2 text-base font-medium text-apagado underline underline-offset-4 hover:text-tinta">
-              Entrar de novo
-            </Link>
-          )}
           <button type="submit" disabled={trocando} className={PILULA}>
             {trocando ? 'Trocando…' : 'Trocar senha'}
           </button>

@@ -46,7 +46,6 @@ export function TrocarMeuPin() {
   const [novo, setNovo] = useState('');
   const [pin, setPin] = useState('');
   const [erro, setErro] = useState<Erro | null>(null);
-  const [entrarDeNovo, setEntrarDeNovo] = useState(false);
   const [salvando, startSalvar] = useTransition();
 
   const bloqueado = erro?.tipo === 'bloqueado';
@@ -76,30 +75,12 @@ export function TrocarMeuPin() {
     if (v !== novo) return irPara('novo', { tipo: 'diferente' });
     startSalvar(async () => {
       const r = await trocarMeuPin(atual, v);
-      if (r.ok) {
-        setEntrarDeNovo(!!r.entrarDeNovo);
-        return irPara('feito');
-      }
+      if (r.ok) return irPara('feito');
       if (r.erro === 'bloqueado') return irPara('atual', { tipo: 'bloqueado', ate: r.bloqueadoAte });
       if (r.erro === 'pin_errado') return irPara('atual', { tipo: 'atual_errado' });
       if (r.erro === 'pin_invalido') return irPara('novo', { tipo: 'servidor' });
       irPara('atual', { tipo: 'falha' });
     });
-  }
-
-  if (etapa === 'feito' && entrarDeNovo) {
-    // O PIN trocou, mas este aparelho ficou sem o cookie novo: a sessão antiga já caiu.
-    return (
-      <main className="flex flex-1 flex-col">
-        <h1 className="mt-6 font-placa text-titulo font-semibold">PIN trocado</h1>
-        <p role="status" className="mt-2 text-base text-apagado">
-          PIN trocado. Entre de novo.
-        </p>
-        <Link href="/entrar" className={`${PILULA} mt-8`}>
-          Entrar de novo
-        </Link>
-      </main>
-    );
   }
 
   if (etapa === 'feito') {
