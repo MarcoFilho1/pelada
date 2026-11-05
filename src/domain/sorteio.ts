@@ -113,7 +113,7 @@ function sortearInterno(
   const boas = dentro.filter((c) => c.amplitude <= 1)
   const finais = boas.length ? boas : dentro
   const escolhido = finais[Math.min(finais.length - 1, Math.floor(rng() * finais.length))]
-  return { times: escolhido.times.map(montar), custo: escolhido.custo }
+  return { times: escolhido.times.map(montar), custo: melhor }
 }
 
 /** Todos os multiconjuntos de `k` notas de COMPLETE (combinações com repetição). */

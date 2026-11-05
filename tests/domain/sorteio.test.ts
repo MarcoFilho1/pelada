@@ -165,4 +165,13 @@ describe('sortearComCompletes', () => {
     expect(diferenca([t([3], 12), t([], 10)])).toBe(2)
     expect(rotuloDaDiferenca([{ jogadores: [{ id: 1, nome: 'A', nota: 3 }], completes: [3], soma: 6 }, { jogadores: [{ id: 2, nome: 'B', nota: 3 }, { id: 3, nome: 'C', nota: 3 }], completes: [], soma: 6 }])).toBe('Diferença: 0,0')
   })
+
+  it('empate de custo: vence a combinação de notas mais perto de 3,0', () => {
+    // 4 jogadores de 3,0, 2 times de 3: [3, 3] e [2,5, 3,5] (no mesmo time) empatam em custo 0
+    const js = jogadores([3, 3, 3, 3])
+    for (const semente of [1, 2, 3, 4, 5, 6]) {
+      const times = sortearComCompletes(js, { times: 2, porTime: 3, rng: criarRng(semente) })
+      expect(times.flatMap((t) => t.completes).sort()).toEqual([3, 3])
+    }
+  })
 })
