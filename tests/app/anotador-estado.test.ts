@@ -47,8 +47,8 @@ function escritorReal(): Escritor {
       return { ok: true, estado: await estado(), lanceId };
     },
     async desfazer(esperadoId: number) {
-      await desfazerUltimo(db, partidaId, esperadoId);
-      return { ok: true, estado: await estado() };
+      const apagado = await desfazerUltimo(db, partidaId, esperadoId);
+      return { ok: true, estado: await estado(), desfeito: apagado !== null };
     },
   };
 }
@@ -145,7 +145,7 @@ describe('fila de escritas (T12-1)', () => {
       ...real,
       desfazer: async (id) => {
         const r = await real.desfazer(id);
-        return r.ok ? { ok: true, estado: null } : r;
+        return r.ok ? { ok: true, estado: null, desfeito: r.desfeito } : r;
       },
     });
     expect(b.desfazer()).toBe(true);
@@ -165,7 +165,7 @@ describe('fila de escritas (T12-1)', () => {
       desfazer: async (id) => {
         await gate;
         const r = await real.desfazer(id);
-        return r.ok ? { ok: true, estado: null } : r;
+        return r.ok ? { ok: true, estado: null, desfeito: r.desfeito } : r;
       },
     });
     const semLance = (e: EstadoDaPartida, mais: number): EstadoDaPartida => ({ ...e, lidoEm: e.lidoEm + mais });
@@ -204,6 +204,33 @@ describe('fila de escritas (T12-1)', () => {
       expect(gols(a, pepe)).toBe(0);
       a.receberDaPagina({ ...inicial, lidoEm: inicial.lidoEm + 1000 });
       expect(gols(a, pepe)).toBe(0);
+    });
+
+    it('Desfazer recusado pelo servidor com resposta null: não marca o lance como desfeito e avisa', async () => {
+      await registrarLance(db, partidaId, pepe, 'gol');
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      await registrarLance(db, partidaId, biel, 'gol'); // o outro admin anotou depois: o servidor não desfaz
+      a.desfazer();
+      await a.ocioso();
+      expect(a.instantaneo().aviso?.texto).toMatch(/Não deu para desfazer/);
+      expect(gols(a, pepe)).toBe(1);
+      // A página que traz os dois lances não pode ser recusada por um "desfeito" que nunca houve.
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(1);
+      expect(gols(a, biel)).toBe(1);
+    });
+
+    it('a trava expira: duas páginas seguidas recusadas limpam as listas e a página entra', async () => {
+      const inicial = await estado();
+      const a = new Anotacoes(inicial, escritorNulo(escritorReal()));
+      a.tocar(pepe, 'gol');
+      await a.ocioso();
+      await db.delete(lances).where(eq(lances.partidaId, partidaId)); // o lance sumiu do servidor por outro caminho
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+      expect(gols(a, pepe)).toBe(1); // 1ª recusa: ainda pode ser leitura anterior ao commit
+      a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 2000 });
+      expect(gols(a, pepe)).toBe(0); // 2ª recusa: a trava expira e a página vale
     });
   });
 

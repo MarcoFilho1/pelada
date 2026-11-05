@@ -166,7 +166,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
         {atual.encerrada ? (
           <Encerrada estado={atual} frase={fraseDoPlacar} />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-3 baixa:pt-1.5 baixa:pb-2">
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto px-4 pt-2 baixa:pt-1.5 ${
+              v.lento && !textoDoErro ? 'pb-24 baixa:pb-24' : 'pb-3 baixa:pb-2'
+            }`}
+          >
             <div
               className="grid grid-cols-2 items-start gap-2 baixa:gap-1.5"
               style={{ '--linhas': Math.max(atual.lados.A.jogadores.length, atual.lados.B.jogadores.length, 1) } as CSSProperties}
@@ -197,11 +201,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
               mostrarSugestao || confirmando ? 'rounded-t-cartao bg-placa shadow-[0_-12px_32px_rgba(0,0,0,0.7)]' : 'bg-chao'
             }`}
           >
-            {/* Faixa sobre a lista, sem empurrar nada (4 contra 4 segue sem rolar) e sem pegar toque. */}
+            {/* Faixa sobre a lista, sem empurrar nada (4 contra 4 segue sem rolar). Ela pega o toque (sem fazer nada), para o dedo não cair num GOL escondido; a lista ganha folga embaixo enquanto a faixa aparece. */}
             {!textoDoErro && v.lento && (
               <p
                 role="status"
-                className="pointer-events-none absolute inset-x-4 bottom-full mb-2 rounded-placa bg-placa-alta px-3 py-2 text-base font-medium text-tinta shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
+                className="absolute inset-x-4 bottom-full mb-2 rounded-placa bg-placa-alta px-3 py-2 text-base font-medium text-tinta shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
               >
                 Salvando há mais de 10 s — confira a conexão.
               </p>

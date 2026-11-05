@@ -11,6 +11,8 @@ import { lerEstado, type EstadoDaPartida } from './estado';
 export type RespostaPartida = { ok: true; estado: EstadoDaPartida } | { ok: false; erro: string };
 /** `estado: null`: a mudança gravou, mas a leitura logo depois falhou; a tela confere na próxima leitura da página. */
 export type RespostaDeEscrita = { ok: true; estado: EstadoDaPartida | null } | { ok: false; erro: string };
+/** Como `RespostaDeEscrita`, com `desfeito`: o servidor apagou o lance (false: já não era o último). */
+export type RespostaDeDesfazer = { ok: true; estado: EstadoDaPartida | null; desfeito: boolean } | { ok: false; erro: string };
 
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 const TIPOS: readonly unknown[] = ['gol', 'assistencia'] satisfies TipoLance[];
@@ -54,10 +56,14 @@ export async function anotar(
  * Desfaz o lance que a tela mostrava como último (`esperadoId`). Se ele já não for o último
  * (outro admin desfez, ou entrou lance novo), não mexe em nada: a tela compara com o estado novo.
  */
-export async function desfazer(partidaId: number, esperadoId: number): Promise<RespostaDeEscrita> {
+export async function desfazer(partidaId: number, esperadoId: number): Promise<RespostaDeDesfazer> {
   await exigirAdmin();
   if (!idValido(partidaId) || !idValido(esperadoId)) return PEDIDO_INVALIDO;
-  return eDepoisLer(partidaId, () => desfazerUltimo(getDb(), partidaId, esperadoId));
+  let apagado: number | null = null;
+  const r = await eDepoisLer(partidaId, async () => {
+    apagado = await desfazerUltimo(getDb(), partidaId, esperadoId);
+  });
+  return r.ok ? { ...r, desfeito: apagado !== null } : r;
 }
 
 /** Encerra com o placar de agora e volta para a noite (histórico). */

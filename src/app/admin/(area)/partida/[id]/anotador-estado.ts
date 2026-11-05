@@ -13,12 +13,12 @@ import type { EstadoDaPartida } from './estado';
 
 type Falha = { ok: false; erro: string };
 /** `estado: null`: gravou, mas a leitura depois falhou; a base se ajusta sozinha e a página confere em até 5 s. */
-type Resposta = { ok: true; estado: EstadoDaPartida | null } | Falha;
+type RespostaDesfazer = { ok: true; estado: EstadoDaPartida | null; /** O servidor apagou o lance (false: já não era o último). */ desfeito: boolean };
 
 /** As duas ações da tela, já presas à partida. */
 export type Escritor = {
   anotar(jogadorId: number, tipo: TipoLance): Promise<{ ok: true; estado: EstadoDaPartida | null; lanceId: number } | Falha>;
-  desfazer(esperadoId: number): Promise<Resposta>;
+  desfazer(esperadoId: number): Promise<RespostaDesfazer | Falha>;
 };
 
 /**
@@ -109,6 +109,8 @@ export class Anotacoes {
   // base se concordar com eles (senão uma leitura anterior ao commit derrubaria o número na tela).
   private confirmados = new Set<number>();
   private desfeitos = new Set<number>();
+  private recusadas = 0;
+  private ultimaRecusada: number | null = null;
   private cauda: Promise<void> = Promise.resolve();
   private ouvintes = new Set<() => void>();
   private atual: Instantaneo;
@@ -202,17 +204,17 @@ export class Anotacoes {
     const r = await this.escritor.desfazer(id).catch(() => FALHA);
     this.escritas = this.escritas.filter((x) => x.chave !== chave);
     if (r.ok) {
-      // Sem leitura (null) o desfazer valeu: tira o lance da base.
       if (r.estado) {
         this.base = r.estado;
         this.esquecerPendencias();
-      } else {
+      } else if (r.desfeito) {
+        // Sem leitura, mas o servidor apagou: tira o lance da base.
         this.confirmados.delete(id);
         this.desfeitos.add(id);
         this.base = { ...this.base, lances: this.base.lances.filter((l) => l.id !== id) };
       }
       // Não era mais o último (o outro admin anotou depois): o servidor não mexeu em nada.
-      if (this.base.lances.some((l) => l.id === id)) {
+      if (this.base.lances.some((l) => l.id === id) || !r.desfeito) {
         this.avisar('Não deu para desfazer: entrou um lance depois desse. Confira o placar.');
       }
     } else {
@@ -225,13 +227,22 @@ export class Anotacoes {
   private esquecerPendencias() {
     this.confirmados.clear();
     this.desfeitos.clear();
+    this.recusadas = 0;
+    this.ultimaRecusada = null;
   }
 
   private aceitarPagina(): boolean {
     if (this.escritas.length || this.pagina.lidoEm <= this.base.lidoEm) return false;
     const ids = new Set(this.pagina.lances.map((l) => l.id));
     // Página sem um lance confirmado (ou ainda com um desfeito) é anterior ao commit: espera outra.
-    if ([...this.confirmados].some((id) => !ids.has(id)) || [...this.desfeitos].some((id) => ids.has(id))) return false;
+    if ([...this.confirmados].some((id) => !ids.has(id)) || [...this.desfeitos].some((id) => ids.has(id))) {
+      // A trava expira: se duas páginas seguidas (leituras diferentes) discordam, o servidor mudou
+      // por outro caminho e a página vale mais que a memória daqui.
+      if (this.ultimaRecusada !== this.pagina.lidoEm) {
+        this.ultimaRecusada = this.pagina.lidoEm;
+        if (++this.recusadas < 2) return false;
+      } else return false;
+    }
     this.base = this.pagina;
     this.esquecerPendencias();
     return true;
