@@ -1,6 +1,6 @@
 import { desc, eq, inArray, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
-import { jogadores, peladas, presencas } from '@/db/schema';
+import { jogadores, partidas, peladas, presencas } from '@/db/schema';
 import type { EstadoManual } from '@/domain/lista';
 import { normalizarNome } from '@/domain/nome';
 import { aberturaLista, dataDe, mesDaQuarta, proximaQuarta } from '@/domain/tempo';
@@ -17,7 +17,8 @@ export type MotivoLista =
   | 'lista_cancelada'
   | 'jogo_comecou'
   | 'jogador_inativo'
-  | 'pelada_inexistente';
+  | 'pelada_inexistente'
+  | 'ja_tem_partida';
 
 const MENSAGENS: Record<MotivoLista, string> = {
   nao_esta_na_lista: 'Só quem está na lista principal e ainda não confirmou pode confirmar.',
@@ -27,6 +28,7 @@ const MENSAGENS: Record<MotivoLista, string> = {
   jogo_comecou: 'A pelada já começou. Fale com o admin.',
   jogador_inativo: 'Esse jogador está desativado ou não existe.',
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
+  ja_tem_partida: 'Já tem partida jogada nessa pelada; não dá pra cancelar.',
 };
 
 export class ErroLista extends ErroDeValidacao {
@@ -77,19 +79,30 @@ export async function peladaExistenteDaSemana(db: DB, now: Date): Promise<Pelada
 
 /**
  * A pelada da noite, para sorteio e partidas: a de hoje (Recife) ou, fora da quarta, a última
- * até hoje. Nunca uma futura. Não usa `proximaQuarta`, que vira para a semana seguinte às 22:30.
+ * até hoje. Nunca uma futura. Na quarta, se a de hoje ainda não existe (ninguém abriu a lista),
+ * cria por `obterPeladaDaSemana`, com os mensalistas, em vez de mostrar a da semana passada.
+ * Depois das 22:30 não cria: aí `proximaQuarta` já é a semana seguinte.
  */
 export async function peladaDoDia(db: DB, now: Date): Promise<Pelada | null> {
-  const [p] = await db.select().from(peladas).where(lte(peladas.data, dataDe(now))).orderBy(desc(peladas.data)).limit(1);
+  const hoje = dataDe(now);
+  const [p] = await db.select().from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1);
+  if (p?.data !== hoje && proximaQuarta(now) === hoje) return obterPeladaDaSemana(db, now);
   return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
 }
 
-/** Admin abre, fecha ou cancela a pelada à mão; `null` volta para o automático (segunda 00:00 até o fim do jogo). */
+/**
+ * Admin abre, fecha ou cancela a pelada à mão; `null` volta para o automático (segunda 00:00 até o
+ * fim do jogo). Cancelar é recusado se a pelada já tem partida: as partidas contam no ranking.
+ * A linha da pelada fica travada, como em `iniciarPartida`, para as duas coisas não se cruzarem.
+ */
 export async function definirEstadoManual(db: DB, peladaId: number, estado: EstadoManual): Promise<void> {
-  const atualizadas = await db
-    .update(peladas)
-    .set({ estadoManual: estado })
-    .where(eq(peladas.id, peladaId))
-    .returning({ id: peladas.id });
-  if (atualizadas.length === 0) throw new ErroLista('pelada_inexistente');
+  await db.transaction(async (tx) => {
+    const [p] = await tx.select({ id: peladas.id }).from(peladas).where(eq(peladas.id, peladaId)).for('update');
+    if (!p) throw new ErroLista('pelada_inexistente');
+    if (estado === 'cancelada') {
+      const [partida] = await tx.select({ id: partidas.id }).from(partidas).where(eq(partidas.peladaId, peladaId)).limit(1);
+      if (partida) throw new ErroLista('ja_tem_partida');
+    }
+    await tx.update(peladas).set({ estadoManual: estado }).where(eq(peladas.id, peladaId));
+  });
 }

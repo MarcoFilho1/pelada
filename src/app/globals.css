@@ -6,6 +6,9 @@
  * Lima só para estado (placa pendurada, coisa confirmada); vermelho só para erro.
  * Superfícies sem borda e sem sombra: a elevação é só a luminosidade.
  */
+/* Tela baixa (a parte visível do navegador num celular comum: 360×640, 390×664): o anotador aperta o topo e os cartões. */
+@custom-variant baixa (@media (max-height: 760px));
+
 @theme {
   --color-chao: #000000; /* fundo */
   --color-placa: #111111; /* superfície, placa */
@@ -33,6 +36,10 @@
   --text-subtitulo--line-height: 1.1;
   --text-numero: 2.75rem; /* 44px, número pintado */
   --text-numero--line-height: 1;
+  --text-placar: 4.5rem; /* 72px, o placar do anotador */
+  --text-placar--line-height: 1;
+  --text-placar-baixo: 3.5rem; /* 56px, o placar em tela baixa */
+  --text-placar-baixo--line-height: 1;
 
   --radius-placa: 10px;
   --radius-cartao: 20px;

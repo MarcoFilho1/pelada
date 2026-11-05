@@ -2,8 +2,8 @@
 
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
+import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { entrarAdmin } from '@/server/auth';
-import { MSG_ALGO_DEU_ERRADO } from '@/server/erros';
 import { criarSessaoAdmin } from '@/server/sessao';
 
 const HORA = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Recife' });

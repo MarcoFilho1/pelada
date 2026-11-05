@@ -1,5 +1,4 @@
-/** Mensagem que o usuário vê quando algo inesperado quebra (o detalhe fica só no log do servidor). */
-export const MSG_ALGO_DEU_ERRADO = 'Algo deu errado. Tente de novo.';
+import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 
 /**
  * Erro de regra ou de validação: a mensagem é em português, pensada para o usuário, e pode

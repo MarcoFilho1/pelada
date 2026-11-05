@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { Colete, NOME_DA_COR } from '@/components/colete';
 import { Marca, Mais } from '@/components/icones';
 import { CAMPO, PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { normalizarNome } from '@/domain/nome';
@@ -23,9 +25,10 @@ type Props = {
   sugeridos: number[];
   times: TimeDaPelada[];
   temPartida: boolean;
+  /** Id da partida rolando (o que mudar aqui só vale para a próxima), ou null. */
+  emAndamento: number | null;
 };
 
-const NOME_DA_COR: Record<Cor, string> = { azul: 'Azul', laranja: 'Laranja', verde: 'Verde', preto: 'Preto' };
 const MAX_SUGESTOES = 6;
 
 const somar = (js: JogadorNota[]) => js.reduce((s, j) => s + j.nota, 0);
@@ -48,6 +51,14 @@ export function SorteioAdmin(p: Props) {
           </span>
         )}
       </p>
+      {p.emAndamento !== null && (
+        <div role="status" className="mt-3 flex items-center gap-3 rounded-placa bg-placa py-1 pr-1 pl-4">
+          <p className="flex-1 py-2 text-base font-medium text-tinta">Partida em andamento — mudanças valem para a próxima.</p>
+          <Link href={`/admin/partida/${p.emAndamento}`} className={`shrink-0 ${TEXTO}`}>
+            Anotador
+          </Link>
+        </div>
+      )}
       {definitivo ? (
         <Definitivo {...p} onRefazer={() => setRefazendo(true)} />
       ) : (
@@ -423,17 +434,6 @@ function Equilibrio({ times, dica, acao }: { times: { jogadores: JogadorNota[]; 
       <p className="mt-1 text-base text-meta">{dica}</p>
     </div>
   );
-}
-
-/** Bolinha com a cor do colete. O preto ganha contorno para aparecer no fundo preto. */
-function Colete({ cor }: { cor: Cor }) {
-  const fundo: Record<Cor, string> = {
-    azul: 'bg-colete-azul',
-    laranja: 'bg-colete-laranja',
-    verde: 'bg-colete-verde',
-    preto: 'bg-chao ring-2 ring-inset ring-apagado',
-  };
-  return <span aria-hidden="true" className={`size-4 shrink-0 rounded-full ${fundo[cor]}`} />;
 }
 
 function GradeDeTimes({

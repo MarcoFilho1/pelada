@@ -55,9 +55,28 @@ describe('peladaDoDia', () => {
     expect((await peladaDoDia(db, new Date('2026-11-12T02:00:00Z')))?.id).toBe(id);
   });
 
-  it('sem pelada até hoje: null', async () => {
+  it('fora da quarta, sem pelada até hoje: null (e não cria nada)', async () => {
     await novaPelada('2026-11-18');
-    expect(await peladaDoDia(db, QUARTA_TARDE)).toBeNull();
+    expect(await peladaDoDia(db, new Date('2026-11-13T10:00:00-03:00'))).toBeNull();
+    expect(await db.select().from(peladas)).toHaveLength(1);
+  });
+
+  it('na quarta sem a pelada de hoje: cria, com os mensalistas, em vez de cair na da semana passada', async () => {
+    const passada = await novaPelada('2026-11-04');
+    const ms = await criar(['Ana', 'Bia']);
+    await definirMensalistas(db, '2026-11', ms);
+
+    const pelada = await peladaDoDia(db, QUARTA_TARDE);
+    expect(pelada).toMatchObject({ data: '2026-11-11', estadoManual: null });
+    expect(pelada?.id).not.toBe(passada);
+    expect((await estadoDaPelada(db, pelada!.id, SEGUNDA)).principal.map((i) => i.jogadorId)).toEqual(ms);
+    expect((await peladaDoDia(db, QUARTA_TARDE))?.id).toBe(pelada?.id); // a segunda chamada só lê
+  });
+
+  it('quarta depois das 22:30 sem a pelada de hoje: não cria a da semana seguinte', async () => {
+    const passada = await novaPelada('2026-11-04');
+    expect((await peladaDoDia(db, QUARTA_NOITE))?.id).toBe(passada);
+    expect(await db.select().from(peladas)).toHaveLength(1);
   });
 });
 
