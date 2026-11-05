@@ -55,15 +55,17 @@ describe('parseNomesColados', () => {
 describe('criarJogadores', () => {
   it('cria com nota 3,0, PIN padrão e troca obrigatória', async () => {
     const r = await criarJogadores(db, ['  Pepe ', '', 'Caio']);
-    expect(r).toEqual({ criados: ['Pepe', 'Caio'], ignorados: [] });
     const [pepe] = await db.select().from(jogadores).where(eq(jogadores.nome, 'Pepe'));
+    const [caio] = await db.select().from(jogadores).where(eq(jogadores.nome, 'Caio'));
+    expect(r).toEqual({ criados: [{ id: pepe.id, nome: 'Pepe' }, { id: caio.id, nome: 'Caio' }], ignorados: [] });
     expect(pepe).toMatchObject({ nota: '3.0', pinHash: null, pinPrecisaTrocar: true, ativo: true });
     expect(await entrarJogador(db, pepe.id, '1234', now)).toEqual({ ok: true, precisaTrocar: true });
   });
 
   it('ignora nome que já existe', async () => {
     await criarJogadores(db, ['Pepe']);
-    expect(await criarJogadores(db, ['Pepe', 'Caio'])).toEqual({ criados: ['Caio'], ignorados: ['Pepe'] });
+    const r = await criarJogadores(db, ['Pepe', 'Caio']);
+    expect(r).toEqual({ criados: [{ id: expect.any(Number), nome: 'Caio' }], ignorados: ['Pepe'] });
   });
 
   it('Joao e João, ou caixa diferente, são o mesmo nome; vale também dentro do lote e para inativos', async () => {
@@ -72,7 +74,7 @@ describe('criarJogadores', () => {
       ativo: false,
     });
     const r = await criarJogadores(db, ['Joao', 'JOÃO', 'zeca', 'Caio', 'caio']);
-    expect(r).toEqual({ criados: ['Caio'], ignorados: ['Joao', 'JOÃO', 'zeca', 'caio'] });
+    expect(r).toEqual({ criados: [{ id: expect.any(Number), nome: 'Caio' }], ignorados: ['Joao', 'JOÃO', 'zeca', 'caio'] });
   });
 });
 

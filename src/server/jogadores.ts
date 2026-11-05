@@ -11,18 +11,19 @@ export { parseNomesColados };
  * Cria jogadores com nota 3,0 e PIN padrão (`pin_hash` nulo, troca obrigatória).
  * Nome vazio, grande demais ou já existente (Joao = João = JOÃO, até de inativos) é ignorado.
  */
-export async function criarJogadores(db: DB, nomes: string[]): Promise<{ criados: string[]; ignorados: string[] }> {
+export async function criarJogadores(db: DB, nomes: string[]): Promise<{ criados: { id: number; nome: string }[]; ignorados: string[] }> {
   const existentes = await db.select({ nome: jogadores.nome }).from(jogadores);
   const { criar, ignorar } = separarNomes(
     nomes,
     existentes.map((j) => j.nome),
   );
-  const criados: string[] = [];
+  const criados: { id: number; nome: string }[] = [];
   const ignorados = [...ignorar];
   for (const nome of criar) {
     // O índice único em lower(nome) segura dois cadastros simultâneos do mesmo nome.
-    const inseridos = await db.insert(jogadores).values({ nome }).onConflictDoNothing().returning({ id: jogadores.id });
-    (inseridos.length ? criados : ignorados).push(nome);
+    const [novo] = await db.insert(jogadores).values({ nome }).onConflictDoNothing().returning({ id: jogadores.id, nome: jogadores.nome });
+    if (novo) criados.push(novo);
+    else ignorados.push(nome);
   }
   return { criados, ignorados };
 }

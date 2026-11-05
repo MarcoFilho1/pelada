@@ -1,10 +1,8 @@
 'use server';
 
-import { eq, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
-import { jogadores } from '@/db/schema';
 import { CORES, diferenca, diferencaMedia, sortearTimes, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
 import { criarJogadores, listarJogadores } from '@/server/jogadores';
@@ -72,6 +70,9 @@ export async function mover(jogadorId: number, de: number | null, para: number |
   return tentar(() => moverJogador(getDb(), jogadorId, de, para));
 }
 
+/** Nota de quem acaba de ser cadastrado (o padrão da coluna `jogadores.nota`). */
+const NOTA_INICIAL = 3;
+
 /** Cadastro rápido na beira da quadra: só o nome, nota 3,0, PIN 1234. Devolve o jogador criado. */
 export async function cadastrarRapido(nome: string): Promise<{ ok: true; jogador: JogadorNota } | { ok: false; erro: string }> {
   await exigirAdmin();
@@ -85,12 +86,8 @@ export async function cadastrarRapido(nome: string): Promise<{ ok: true; jogador
         erro: 'Já existe um jogador com esse nome (Joao e João contam como o mesmo). Se ele não aparece na busca, está desativado: reative em Jogadores.',
       };
     }
-    const [j] = await db
-      .select({ id: jogadores.id, nome: jogadores.nome, nota: jogadores.nota })
-      .from(jogadores)
-      .where(eq(sql`lower(${jogadores.nome})`, criados[0].toLowerCase()));
     revalidatePath('/admin/jogadores');
-    return { ok: true, jogador: { id: j.id, nome: j.nome, nota: Number(j.nota) } };
+    return { ok: true, jogador: { id: criados[0].id, nome: criados[0].nome, nota: NOTA_INICIAL } };
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }
