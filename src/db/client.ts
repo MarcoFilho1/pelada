@@ -2,6 +2,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import { attachDatabasePool } from '@vercel/functions';
 import { Pool } from 'pg';
 import * as schema from './schema';
 
@@ -18,9 +19,16 @@ function criarDb(url: string): DB {
   if (url.startsWith(PGLITE_PREFIX)) {
     return drizzlePglite({ client: new PGlite(url.slice(PGLITE_PREFIX.length)), schema });
   }
-  const pool = new Pool({ connectionString: url });
+  // Serverless: cada instância da função abre poucas conexões e as solta logo; quem multiplexa é o
+  // pooler do Neon (use a URL `-pooler` em DATABASE_URL, ver .env.example).
+  const pool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000 });
   // Sem este listener, um erro numa conexão ociosa derruba o processo.
   pool.on('error', (err) => console.error('Erro no pool do Postgres:', err));
+  try {
+    attachDatabasePool(pool); // na Vercel solta as conexões ociosas antes da função ser suspensa; fora dela não faz nada
+  } catch (err) {
+    console.error('attachDatabasePool falhou:', err);
+  }
   return drizzlePg({ client: pool, schema });
 }
 
