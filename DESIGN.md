@@ -391,7 +391,8 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
   servidor recusar, o número volta e o erro aparece em vermelho na barra de baixo por 4 s.
 - **Barra de baixo:** fundo #000. "Desfazer" (3/5, pílula placa alta de 56px em duas linhas: "Desfazer" em Inter 600
   16px e o que vai sair em #b4b4b4 14px — "gol de Pepe"; sem lance, "nada para desfazer" e desabilitado) e "Encerrar"
-  (2/5, pílula secundária). Enquanto desfaz: "Desfazendo…".
+  (2/5, pílula secundária). Com Desfazer na fila: "Desfazendo…", e o botão continua tocável (cada toque enfileira
+  mais um, sempre o último que a tela mostra). Toques e Desfazer vão ao servidor numa fila única, na ordem feita.
 - **Pergunta de encerrar** (folha: placa #111, raio 20px só em cima, sombra para cima; o meio encolhe e continua
   rolando): no 3º gol, "Azul venceu 3×1 — encerrar?"; aos 0:00 (com vibração longa), "Acabou o tempo. Empate 1×1 —
   encerrar?", em Subtítulo. Abaixo, "Depois de encerrar, só dá para mudar em Corrigir." em #b4b4b4, a pílula branca
