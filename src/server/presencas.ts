@@ -171,8 +171,8 @@ export async function entrarNaFila(db: DB, jogadorId: number, now: Date): Promis
  * Põe um jogador ativo na lista, por padrão como D no fim da fila (ou direto na lista, se houver
  * vaga). Quem já teve presença nesta pelada (saiu, perdeu o prazo) volta sempre como D: "se voltar,
  * entra no fim da fila". Só o mensalista do mês sem presença nenhuma (marcado depois que a pelada
- * existia), antes do prazo, entra como M; e nem assim se, como M, tiraria da lista um diarista
- * que já confirmou.
+ * existia), antes do prazo, entra como M; e nem assim se não couber na lista principal ou se, como
+ * M, tiraria da lista um diarista que já confirmou.
  */
 export async function adminAdicionar(db: DB, peladaId: number, jogadorId: number, now: Date): Promise<void> {
   await mudarLista(db, peladaId, jogadorId, now, async ({ tx, pelada, ps, estado, minha }) => {
@@ -188,18 +188,22 @@ export async function adminAdicionar(db: DB, peladaId: number, jogadorId: number
         .select({ id: mensalistasMes.jogadorId })
         .from(mensalistasMes)
         .where(and(eq(mensalistasMes.mes, mesDaQuarta(pelada.data)), eq(mensalistasMes.jogadorId, jogadorId)));
-      if (mensalista && !tiraDiaristaConfirmado(pelada, ps, estado, jogadorId, now)) tipo = 'M';
+      if (mensalista && cabeComoM(pelada, ps, estado, jogadorId, now)) tipo = 'M';
     }
     await porNaLista(tx, peladaId, jogadorId, tipo, now);
   });
 }
 
-/** Entrar como M agora empurraria para a fila algum diarista que já confirmou? */
-function tiraDiaristaConfirmado(pelada: Pelada, ps: Presenca[], estado: EstadoLista, jogadorId: number, now: Date): boolean {
+/**
+ * Entrar como M só vale se, como M, ele cai na lista principal (com 16 M já listados cairia além
+ * das vagas) e sem empurrar para a fila nenhum diarista que já confirmou.
+ */
+function cabeComoM(pelada: Pelada, ps: Presenca[], estado: EstadoLista, jogadorId: number, now: Date): boolean {
   const novo: Presenca = { id: Number.MAX_SAFE_INTEGER, jogadorId, nome: '', tipo: 'M', status: 'pendente', entrouEm: now };
   const depois = calcularLista({ presencas: [...ps, novo], dataQuarta: pelada.data, estadoManual: pelada.estadoManual, now });
   const ficam = new Set(depois.principal.map((i) => i.jogadorId));
-  return estado.principal.some((i) => i.tipo === 'D' && i.confirmado && !ficam.has(i.jogadorId));
+  if (!ficam.has(jogadorId)) return false;
+  return !estado.principal.some((i) => i.tipo === 'D' && i.confirmado && !ficam.has(i.jogadorId));
 }
 
 /** Confirma por alguém que está na lista principal (mesmo com a lista fechada). */

@@ -96,12 +96,21 @@ describe('calcularLista', () => {
     expect(lista).toEqual(copia);
   });
 
-  it('vagas menor que o número de mensalistas limita o principal', () => {
+  it('vagas menor que o número de mensalistas: o mensalista que sobra vai pra frente da fila, ninguém some', () => {
     const ms = [p('M'), p('M'), p('M')];
     const d = p('D');
     const r = calcularLista(entrada([...ms, d], ANTES_PRAZO, { vagas: 2 }));
     expect(r.principal.map((i) => i.jogadorId)).toEqual([ms[0].jogadorId, ms[1].jogadorId]);
-    expect(r.fila.map((i) => i.jogadorId)).toEqual([d.jogadorId]);
+    expect(r.fila.map((i) => i.jogadorId)).toEqual([ms[2].jogadorId, d.jogadorId]);
+  });
+
+  it('17 mensalistas: 16 na lista e o 17º na frente da fila', () => {
+    const ms = Array.from({ length: 17 }, () => p('M'));
+    const d = p('D');
+    const r = calcularLista(entrada([d, ...ms]));
+    expect(r.principal.map((i) => i.jogadorId)).toEqual(ms.slice(0, 16).map((m) => m.jogadorId));
+    expect(r.fila.map((i) => i.jogadorId)).toEqual([ms[16].jogadorId, d.jogadorId]);
+    expect(r.fila[0]).toMatchObject({ tipo: 'M', confirmado: false });
   });
 
   it('sem presenças: listas vazias', () => {
@@ -176,6 +185,9 @@ describe('travaDoJogador', () => {
   });
   it('aberta à mão vale mesmo depois do horário', () => {
     expect(trava('aberta', JOGO)).toBeNull();
+  });
+  it('fechada à mão e já na hora do jogo: vale "começou" (nada mais muda pelo site)', () => {
+    expect(trava('fechada', JOGO)).toBe('comecou');
   });
   it('fechada, cancelada e antes de abrir', () => {
     expect(trava('fechada', ANTES_JOGO)).toBe('fechada');

@@ -288,6 +288,18 @@ describe('entrarNaFila', () => {
 });
 
 describe('admin', () => {
+  it('com 16 mensalistas na lista, o mensalista marcado depois entra como D na fila (não some)', async () => {
+    const { ms } = await cenarioCheio(0);
+    const [b] = await criar(['Bruno']);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await db.insert(mensalistasMes).values({ mes: '2026-11', jogadorId: b });
+    await adminAdicionar(db, p.id, b, TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(idsDe(estado.principal)).toEqual(expect.arrayContaining(ms));
+    expect(estado.fila).toEqual([expect.objectContaining({ jogadorId: b, tipo: 'D' })]);
+    await expect(entrarNaFila(db, b, TERCA)).rejects.toMatchObject({ motivo: 'ja_na_lista' });
+  });
+
   it('mensalista que saiu e é re-adicionado volta como D no fim da fila: o diarista confirmado fica na vaga', async () => {
     const { ms, ds } = await cenarioCheio(2);
     await entrarNaFila(db, ds[0], SEGUNDA);

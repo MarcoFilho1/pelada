@@ -46,7 +46,8 @@ export function calcularLista(input: {
   const principalM = mensalistas.slice(0, vagas);
   const sobra = vagas - principalM.length;
   const principal = [...principalM, ...diaristas.slice(0, sobra)].map(item);
-  const fila = diaristas.slice(sobra).map(item);
+  // Mensalista além das vagas (só acontece com mais de 16 M vivos) vai pra frente da fila: ninguém some.
+  const fila = [...mensalistas.slice(vagas), ...diaristas.slice(sobra)].map(item);
 
   const naJanela = now >= aberturaLista(dataQuarta) && now < fimJogo(dataQuarta);
   return {
@@ -77,8 +78,9 @@ export function travaDoJogador(
   now: Date,
 ): Trava | null {
   if (estado.cancelada) return 'cancelada';
-  if (!estado.aberta) return 'fechada';
+  // "Começou" antes de "fechada": fechada à mão depois das 20:30 também não deixa mais sair.
   if (estadoManual !== 'aberta' && now >= inicioJogo(dataQuarta)) return 'comecou';
+  if (!estado.aberta) return 'fechada';
   return null;
 }
 
