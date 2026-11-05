@@ -18,10 +18,12 @@ import { ErroDeValidacao } from './erros';
 
 type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 type Partida = typeof partidas.$inferSelect;
+type Pelada = typeof peladas.$inferSelect;
 
 export type MotivoPartida =
   | 'pelada_inexistente'
   | 'pelada_nao_e_hoje'
+  | 'pelada_cancelada'
   | 'mesmo_time'
   | 'time_vazio'
   | 'time_inexistente'
@@ -35,6 +37,7 @@ export type MotivoPartida =
 const MENSAGENS: Record<MotivoPartida, string> = {
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
   pelada_nao_e_hoje: 'Só dá para iniciar partida no dia da pelada.',
+  pelada_cancelada: 'A pelada de hoje foi cancelada. Para jogar, tire o cancelamento em Pelada.',
   mesmo_time: 'Escolha dois times diferentes.',
   time_vazio: 'Os dois times precisam de pelo menos um jogador ativo.',
   time_inexistente: 'Esse time não existe mais nesta pelada. Recarregue a página.',
@@ -60,8 +63,12 @@ export type LanceNovo = { jogadorId: number; tipo: TipoLance };
  * desfazer, encerrar, corrigir, mover jogador) anda uma operação de cada vez: dois admins no
  * mesmo jogo não se atropelam.
  */
-async function travarPelada(tx: Tx, peladaId: number): Promise<{ data: string }> {
-  const [p] = await tx.select({ data: peladas.data }).from(peladas).where(eq(peladas.id, peladaId)).for('update');
+async function travarPelada(tx: Tx, peladaId: number): Promise<{ data: string; estadoManual: Pelada['estadoManual'] }> {
+  const [p] = await tx
+    .select({ data: peladas.data, estadoManual: peladas.estadoManual })
+    .from(peladas)
+    .where(eq(peladas.id, peladaId))
+    .for('update');
   if (!p) throw new ErroPartida('pelada_inexistente');
   return p;
 }
@@ -99,6 +106,7 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
   return db.transaction(async (tx) => {
     const pelada = await travarPelada(tx, peladaId);
     if (pelada.data !== dataDe(now)) throw new ErroPartida('pelada_nao_e_hoje');
+    if (pelada.estadoManual === 'cancelada') throw new ErroPartida('pelada_cancelada');
 
     const daPelada = await tx
       .select({ id: times.id })
@@ -145,9 +153,14 @@ export async function registrarLance(db: DB, partidaId: number, jogadorId: numbe
   });
 }
 
-/** Apaga o último lance (maior `id`) desta partida; sem lances, não faz nada. Partida encerrada se corrige com `corrigirPartida`. */
-export async function desfazerUltimo(db: DB, partidaId: number): Promise<void> {
-  await db.transaction(async (tx) => {
+/**
+ * Apaga o último lance (maior `id`) desta partida e devolve o id dele; sem lances, não faz nada
+ * (null). Com `esperadoId` (o último lance que a tela do admin mostrava), só apaga se ele ainda
+ * for o último: dois admins tocando Desfazer no mesmo lance tiram um lance só, e um lance que
+ * entrou depois não some por engano. Partida encerrada se corrige com `corrigirPartida`.
+ */
+export async function desfazerUltimo(db: DB, partidaId: number, esperadoId?: number): Promise<number | null> {
+  return db.transaction(async (tx) => {
     const partida = await travarPartida(tx, partidaId);
     if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
     const [ultimo] = await tx
@@ -156,7 +169,9 @@ export async function desfazerUltimo(db: DB, partidaId: number): Promise<void> {
       .where(eq(lances.partidaId, partidaId))
       .orderBy(desc(lances.id))
       .limit(1);
-    if (ultimo) await tx.delete(lances).where(eq(lances.id, ultimo.id));
+    if (!ultimo || (esperadoId !== undefined && ultimo.id !== esperadoId)) return null;
+    await tx.delete(lances).where(eq(lances.id, ultimo.id));
+    return ultimo.id;
   });
 }
 
@@ -171,6 +186,31 @@ export async function encerrarPartida(db: DB, partidaId: number, now: Date): Pro
   });
 }
 
+/** Aplica a correção já com a trava (tudo ou nada) e grava o resultado recalculado pelo placar. */
+async function aplicarCorrecao(tx: Tx, partidaId: number, adicionar: LanceNovo[], remover: number[]): Promise<Resultado> {
+  if (remover.length) {
+    const apagados = await tx
+      .delete(lances)
+      .where(and(eq(lances.partidaId, partidaId), inArray(lances.id, remover)))
+      .returning({ id: lances.id });
+    if (apagados.length !== remover.length) throw new ErroPartida('lance_inexistente');
+  }
+  if (adicionar.length) {
+    const lados = await ladosDaPartida(tx, partidaId);
+    if (adicionar.some((l) => !lados.has(l.jogadorId))) throw new ErroPartida('fora_da_partida');
+    await tx.insert(lances).values(adicionar.map((l) => ({ partidaId, jogadorId: l.jogadorId, tipo: l.tipo })));
+  }
+  const resultado = resultadoDoPlacar(await placarDaPartida(tx, partidaId));
+  await tx.update(partidas).set({ resultado }).where(eq(partidas.id, partidaId));
+  return resultado;
+}
+
+/** Trava a partida e confere que ela já foi encerrada (só essas se corrigem). */
+async function travarEncerrada(tx: Tx, partidaId: number): Promise<void> {
+  const partida = await travarPartida(tx, partidaId);
+  if (!partida.encerradaEm) throw new ErroPartida('nao_encerrada');
+}
+
 /**
  * Admin corrige uma partida já encerrada: tira lances dela e/ou põe lances novos (de jogadores
  * da foto do elenco) e o resultado é recalculado pelo placar. Tudo ou nada. Devolve o resultado.
@@ -183,25 +223,33 @@ export async function corrigirPartida(
   const adicionar = correcao.adicionar ?? [];
   const remover = [...new Set(correcao.removerLanceIds ?? [])];
   return db.transaction(async (tx) => {
-    const partida = await travarPartida(tx, partidaId);
-    if (!partida.encerradaEm) throw new ErroPartida('nao_encerrada');
+    await travarEncerrada(tx, partidaId);
+    return aplicarCorrecao(tx, partidaId, adicionar, remover);
+  });
+}
 
-    if (remover.length) {
-      const apagados = await tx
-        .delete(lances)
-        .where(and(eq(lances.partidaId, partidaId), inArray(lances.id, remover)))
-        .returning({ id: lances.id });
-      if (apagados.length !== remover.length) throw new ErroPartida('lance_inexistente');
-    }
-    if (adicionar.length) {
-      const lados = await ladosDaPartida(tx, partidaId);
-      if (adicionar.some((l) => !lados.has(l.jogadorId))) throw new ErroPartida('fora_da_partida');
-      await tx.insert(lances).values(adicionar.map((l) => ({ partidaId, jogadorId: l.jogadorId, tipo: l.tipo })));
-    }
-
-    const resultado = resultadoDoPlacar(await placarDaPartida(tx, partidaId));
-    await tx.update(partidas).set({ resultado }).where(eq(partidas.id, partidaId));
-    return resultado;
+/**
+ * A correção da tela "Corrigir": +1 põe um lance do jogador; −1 tira o mais recente dele daquele
+ * tipo. Só em partida encerrada; o resultado é recalculado. Devolve o resultado.
+ */
+export async function corrigirContagem(
+  db: DB,
+  partidaId: number,
+  jogadorId: number,
+  tipo: TipoLance,
+  delta: 1 | -1,
+): Promise<Resultado> {
+  return db.transaction(async (tx) => {
+    await travarEncerrada(tx, partidaId);
+    if (delta === 1) return aplicarCorrecao(tx, partidaId, [{ jogadorId, tipo }], []);
+    const [maisRecente] = await tx
+      .select({ id: lances.id })
+      .from(lances)
+      .where(and(eq(lances.partidaId, partidaId), eq(lances.jogadorId, jogadorId), eq(lances.tipo, tipo)))
+      .orderBy(desc(lances.id))
+      .limit(1);
+    if (!maisRecente) throw new ErroPartida('lance_inexistente');
+    return aplicarCorrecao(tx, partidaId, [], [maisRecente.id]);
   });
 }
 
@@ -218,8 +266,8 @@ export type PartidaAoVivo = {
   tempoRestanteMs: number;
   /** Só para partida em andamento. */
   sugerirEncerrar: null | 'tres_gols' | 'tempo';
-  /** Para o rótulo do Desfazer. */
-  ultimoLanceId: number | null;
+  /** O que o Desfazer vai tirar ("Desfazer: gol do Pepe"); o id vai junto como `esperadoId`. */
+  ultimoLance: { id: number; jogadorId: number; tipo: TipoLance } | null;
   lados: Record<Lado, LadoAoVivo>;
 };
 
@@ -263,7 +311,7 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     placar: pl,
     tempoRestanteMs: tempoRestanteMs(p.iniciadaEm, relogio),
     sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, p.iniciadaEm, now),
-    ultimoLanceId: ls.length ? ls[ls.length - 1].id : null,
+    ultimoLance: ls.length ? ls[ls.length - 1] : null,
     lados: { A: lado('A', p.timeAId), B: lado('B', p.timeBId) },
   };
 }

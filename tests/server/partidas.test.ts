@@ -4,6 +4,7 @@ import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas } from '@/db/schema';
 import { DURACAO_MS } from '@/domain/partida';
 import {
+  corrigirContagem,
   corrigirPartida,
   desfazerUltimo,
   encerrarPartida,
@@ -160,6 +161,16 @@ describe('iniciarPartida', () => {
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.l2));
     expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE))).toBe('time_vazio');
   });
+
+  it('recusa iniciar com a pelada cancelada (T11-b)', async () => {
+    const c = await cenario();
+    await db.update(peladas).set({ estadoManual: 'cancelada' }).where(eq(peladas.id, c.peladaId));
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE))).toBe('pelada_cancelada');
+    expect(await db.select().from(partidas)).toHaveLength(0);
+
+    await db.update(peladas).set({ estadoManual: 'fechada' }).where(eq(peladas.id, c.peladaId));
+    expect(await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE)).toBeGreaterThan(0);
+  });
 });
 
 describe('registrarLance e desfazerUltimo', () => {
@@ -198,6 +209,37 @@ describe('registrarLance e desfazerUltimo', () => {
     await registrarLance(db, id, c.l1, 'gol');
     await Promise.all([desfazerUltimo(db, id), desfazerUltimo(db, id)]);
     expect((await db.select().from(lances)).map((l) => l.id)).toEqual([primeiro]);
+  });
+
+  it('devolve o id do lance desfeito, ou null quando não tinha lance', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const gol = await registrarLance(db, id, c.a1, 'gol');
+    expect(await desfazerUltimo(db, id)).toBe(gol);
+    expect(await desfazerUltimo(db, id)).toBeNull();
+  });
+
+  it('com o id esperado: só desfaz se ele ainda for o último (dois admins no mesmo Desfazer, T11-b)', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const primeiro = await registrarLance(db, id, c.a1, 'gol');
+    const segundo = await registrarLance(db, id, c.a2, 'gol');
+
+    // Os dois admins viam o mesmo último lance e tocaram Desfazer: sai um lance só.
+    const [r1, r2] = await Promise.all([desfazerUltimo(db, id, segundo), desfazerUltimo(db, id, segundo)]);
+    expect([r1, r2].sort()).toEqual([null, segundo].sort());
+    expect((await db.select().from(lances)).map((l) => l.id)).toEqual([primeiro]);
+
+    // Um lance novo entrou depois do que a tela mostrava: não desfaz o lance novo.
+    const novo = await registrarLance(db, id, c.l1, 'gol');
+    expect(await desfazerUltimo(db, id, primeiro)).toBeNull();
+    expect((await db.select().from(lances)).map((l) => l.id)).toEqual([primeiro, novo]);
+
+    // O esperado é o último: desfaz.
+    expect(await desfazerUltimo(db, id, novo)).toBe(novo);
+    // Sem lances, com esperado: nada.
+    await desfazerUltimo(db, id);
+    expect(await desfazerUltimo(db, id, primeiro)).toBeNull();
   });
 
   it('dois admins anotando ao mesmo tempo: os dois lances ficam', async () => {
@@ -321,6 +363,40 @@ describe('corrigirPartida', () => {
   });
 });
 
+describe('corrigirContagem', () => {
+  it('+1 põe um lance do jogador; −1 tira o mais recente dele daquele tipo; o resultado acompanha', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const golAntigo = await registrarLance(db, id, c.a1, 'gol');
+    const assist = await registrarLance(db, id, c.a1, 'assistencia');
+    const golNovo = await registrarLance(db, id, c.a1, 'gol');
+    await encerrarPartida(db, id, depois(8 * MIN));
+
+    expect(await corrigirContagem(db, id, c.a1, 'gol', -1)).toBe('A');
+    expect((await db.select().from(lances).orderBy(asc(lances.id))).map((l) => l.id)).toEqual([golAntigo, assist]);
+    expect(golNovo).toBeGreaterThan(golAntigo);
+
+    expect(await corrigirContagem(db, id, c.l1, 'gol', 1)).toBe('empate');
+    expect(await corrigirContagem(db, id, c.l2, 'gol', 1)).toBe('B');
+    const [p] = await db.select().from(partidas).where(eq(partidas.id, id));
+    expect(p.resultado).toBe('B');
+    expect(await placarDe(id)).toEqual({ A: 1, B: 2 });
+  });
+
+  it('recusa −1 sem lance daquele tipo, jogador fora da partida e partida não encerrada', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await registrarLance(db, id, c.a1, 'assistencia');
+    expect(await motivo(corrigirContagem(db, id, c.a1, 'gol', 1))).toBe('nao_encerrada');
+    await encerrarPartida(db, id, depois(8 * MIN));
+
+    expect(await motivo(corrigirContagem(db, id, c.a1, 'gol', -1))).toBe('lance_inexistente');
+    expect(await motivo(corrigirContagem(db, id, c.v1, 'gol', 1))).toBe('fora_da_partida');
+    expect(await motivo(corrigirContagem(db, 999_999, c.a1, 'gol', 1))).toBe('partida_inexistente');
+    expect(await db.select().from(lances)).toHaveLength(1);
+  });
+});
+
 describe('partidaAoVivo', () => {
   it('traz placar, lados com cores e números de cada jogador, cronômetro e o último lance', async () => {
     const c = await cenario();
@@ -340,7 +416,7 @@ describe('partidaAoVivo', () => {
       placar: { A: 2, B: 1 },
       tempoRestanteMs: 5 * MIN,
       sugerirEncerrar: null,
-      ultimoLanceId: ultimo,
+      ultimoLance: { id: ultimo, jogadorId: c.l1, tipo: 'gol' },
       lados: {
         A: {
           timeId: c.azul,
@@ -387,7 +463,7 @@ describe('partidaAoVivo', () => {
   it('sem lances: último lance null; partida que não existe: null', async () => {
     const c = await cenario();
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    expect((await partidaAoVivo(db, id, NOITE))!.ultimoLanceId).toBeNull();
+    expect((await partidaAoVivo(db, id, NOITE))!.ultimoLance).toBeNull();
     expect(await partidaAoVivo(db, 999_999, NOITE)).toBeNull();
   });
 });
