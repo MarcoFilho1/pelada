@@ -434,15 +434,15 @@ export async function historicoDaPelada(db: DB, peladaId: number): Promise<Parti
  */
 export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
   const [ts, jogadas] = await Promise.all([
-    db.select({ id: times.id }).from(times).where(eq(times.peladaId, peladaId)).orderBy(asc(times.ordem)),
+    db.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))).orderBy(asc(times.ordem)),
     db
       .select({ timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado })
       .from(partidas)
       .where(and(eq(partidas.peladaId, peladaId), isNotNull(partidas.encerradaEm)))
       .orderBy(asc(partidas.id)),
   ]);
-  return jogadas.reduce(
-    (fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado! }),
-    ts.map((t) => t.id),
-  );
+  const atuais = new Set(ts.map((t) => t.id));
+  return jogadas
+    .filter((p) => atuais.has(p.timeA) && atuais.has(p.timeB))
+    .reduce((fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado! }), ts.map((t) => t.id));
 }

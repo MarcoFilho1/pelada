@@ -1,7 +1,7 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
-import { jogadores, lances, partidaJogadores, partidas, peladas } from '@/db/schema';
+import { jogadores, lances, partidaJogadores, partidas, peladas, timeJogadores } from '@/db/schema';
 import { DURACAO_MS } from '@/domain/partida';
 import {
   corrigirContagem,
@@ -54,10 +54,28 @@ async function cenario() {
     [p1, p2],
   ]);
   const [azul, laranja, verde, preto] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
-  return { peladaId, azul, laranja, verde, preto, a1, a2, l1, l2, v1, v2, p1, p2 };
+  return {
+    peladaId,
+    azul,
+    laranja,
+    verde,
+    preto,
+    a1,
+    a2,
+    l1,
+    l2,
+    v1,
+    v2,
+    p1,
+    p2,
+  };
 }
 
-const motivo = (p: Promise<unknown>) => p.then(() => undefined, (e: ErroPartida) => e.motivo);
+const motivo = (p: Promise<unknown>) =>
+  p.then(
+    () => undefined,
+    (e: ErroPartida) => e.motivo,
+  );
 
 async function placarDe(partidaId: number) {
   return (await partidaAoVivo(db, partidaId, NOITE))!.placar;
@@ -73,10 +91,19 @@ describe('iniciarPartida', () => {
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
 
     const [p] = await db.select().from(partidas).where(eq(partidas.id, id));
-    expect(p).toMatchObject({ peladaId: c.peladaId, timeAId: c.azul, timeBId: c.laranja, encerradaEm: null, resultado: null });
+    expect(p).toMatchObject({
+      peladaId: c.peladaId,
+      timeAId: c.azul,
+      timeBId: c.laranja,
+      encerradaEm: null,
+      resultado: null,
+    });
     expect(p.iniciadaEm.getTime()).toBe(NOITE.getTime());
     const elenco = await db
-      .select({ jogadorId: partidaJogadores.jogadorId, lado: partidaJogadores.lado })
+      .select({
+        jogadorId: partidaJogadores.jogadorId,
+        lado: partidaJogadores.lado,
+      })
       .from(partidaJogadores)
       .where(eq(partidaJogadores.partidaId, id))
       .orderBy(asc(partidaJogadores.jogadorId));
@@ -130,9 +157,19 @@ describe('iniciarPartida', () => {
     const c = await cenario();
     await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
     const insere = (encerradaEm: Date | null) =>
-      db.insert(partidas).values({ peladaId: c.peladaId, timeAId: c.verde, timeBId: c.preto, encerradaEm });
-    const erro = await insere(null).then(() => null, (e: unknown) => e);
-    expect(erro).toMatchObject({ cause: { code: '23505', constraint: 'partidas_uma_aberta_por_pelada' } });
+      db.insert(partidas).values({
+        peladaId: c.peladaId,
+        timeAId: c.verde,
+        timeBId: c.preto,
+        encerradaEm,
+      });
+    const erro = await insere(null).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(erro).toMatchObject({
+      cause: { code: '23505', constraint: 'partidas_uma_aberta_por_pelada' },
+    });
     expect(violouUmaAberta(erro)).toBe(true); // é o que iniciarPartida traduz em 'partida_em_andamento'
     expect(violouUmaAberta(new Error('outro'))).toBe(false);
     await insere(NOITE); // encerrada não conta
@@ -145,7 +182,9 @@ describe('iniciarPartida', () => {
       iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE),
     ]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect(r.find((x) => x.status === 'rejected')).toMatchObject({ reason: { motivo: 'partida_em_andamento' } });
+    expect(r.find((x) => x.status === 'rejected')).toMatchObject({
+      reason: { motivo: 'partida_em_andamento' },
+    });
     expect(await db.select().from(partidas)).toHaveLength(1);
   });
 
@@ -270,7 +309,9 @@ describe('registrarLance e desfazerUltimo', () => {
     await encerrarPartida(db, p1, depois(8 * MIN));
     const p2 = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN));
     const golP2 = await registrarLance(db, p2, c.v1, 'gol');
-    await corrigirPartida(db, p1, { adicionar: [{ jogadorId: c.a1, tipo: 'gol' }] }); // id maior, na p1
+    await corrigirPartida(db, p1, {
+      adicionar: [{ jogadorId: c.a1, tipo: 'gol' }],
+    }); // id maior, na p1
 
     await desfazerUltimo(db, p2);
     const restantes = await db.select().from(lances);
@@ -365,12 +406,24 @@ describe('corrigirPartida', () => {
   it('só em partida encerrada, com jogadores e lances da própria partida', async () => {
     const c = await cenario();
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    expect(await motivo(corrigirPartida(db, id, { adicionar: [{ jogadorId: c.a1, tipo: 'gol' }] }))).toBe('nao_encerrada');
+    expect(
+      await motivo(
+        corrigirPartida(db, id, {
+          adicionar: [{ jogadorId: c.a1, tipo: 'gol' }],
+        }),
+      ),
+    ).toBe('nao_encerrada');
     await encerrarPartida(db, id, depois(8 * MIN));
 
     const outra = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN));
     const golDaOutra = await registrarLance(db, outra, c.v1, 'gol');
-    expect(await motivo(corrigirPartida(db, id, { adicionar: [{ jogadorId: c.v1, tipo: 'gol' }] }))).toBe('fora_da_partida');
+    expect(
+      await motivo(
+        corrigirPartida(db, id, {
+          adicionar: [{ jogadorId: c.v1, tipo: 'gol' }],
+        }),
+      ),
+    ).toBe('fora_da_partida');
     expect(await motivo(corrigirPartida(db, id, { removerLanceIds: [golDaOutra] }))).toBe('lance_inexistente');
     expect(await motivo(corrigirPartida(db, 999_999, {}))).toBe('partida_inexistente');
     // Nada foi gravado pela metade.
@@ -461,7 +514,10 @@ describe('partidaAoVivo', () => {
   it('sugere encerrar no 3º gol e quando o tempo acaba', async () => {
     const c = await cenario();
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    expect((await partidaAoVivo(db, id, depois(8 * MIN)))!).toMatchObject({ sugerirEncerrar: 'tempo', tempoRestanteMs: 0 });
+    expect((await partidaAoVivo(db, id, depois(8 * MIN)))!).toMatchObject({
+      sugerirEncerrar: 'tempo',
+      tempoRestanteMs: 0,
+    });
     for (let i = 0; i < 3; i++) await registrarLance(db, id, c.l2, 'gol');
     expect((await partidaAoVivo(db, id, depois(MIN)))!.sugerirEncerrar).toBe('tres_gols');
   });
@@ -569,7 +625,13 @@ describe('partidasAbertasDeOutrasPeladas (Parte 5)', () => {
     const rolandoHoje = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
 
     expect(await partidasAbertasDeOutrasPeladas(db, c.peladaId)).toEqual([
-      { id: aberta, data: '2026-11-04', corA: 'azul', corB: 'laranja', placar: { A: 1, B: 0 } },
+      {
+        id: aberta,
+        data: '2026-11-04',
+        corA: 'azul',
+        corB: 'laranja',
+        placar: { A: 1, B: 0 },
+      },
     ]);
     // Sem pelada atual (nenhuma até hoje): todas as abertas.
     expect((await partidasAbertasDeOutrasPeladas(db, null)).map((p) => p.id).sort()).toEqual([aberta, rolandoHoje].sort());
@@ -595,5 +657,30 @@ describe('cancelar pelada com partida (Parte 5, P5-c)', () => {
 
     await definirEstadoManual(db, c.peladaId, 'fechada');
     await definirEstadoManual(db, c.peladaId, null);
+  });
+});
+
+describe('sorteio novo depois de partidas (Parte 8)', () => {
+  it('filaDeTimes parte dos times novos na ordem 1..4 e moverJogador não mexe nos arquivados', async () => {
+    const c = await cenario();
+    const partidaId = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await encerrarPartida(db, partidaId, depois(MIN));
+
+    await salvarTimesDefinitivos(db, c.peladaId, [[c.a1], [c.l1], [c.v1], [c.p1, c.p2]], [], depois(2 * MIN));
+    const novos = (await timesDaPelada(db, c.peladaId)).map((t) => t.id);
+    expect(novos).toHaveLength(4);
+    expect(await filaDeTimes(db, c.peladaId)).toEqual(novos);
+
+    const antes = await db
+      .select()
+      .from(timeJogadores)
+      .where(inArray(timeJogadores.timeId, [c.azul, c.laranja, c.verde, c.preto]));
+    await moverJogador(db, c.a1, novos[0], novos[1]);
+    await moverJogador(db, c.p2, novos[3], null);
+    const depoisMover = await db
+      .select()
+      .from(timeJogadores)
+      .where(inArray(timeJogadores.timeId, [c.azul, c.laranja, c.verde, c.preto]));
+    expect(depoisMover).toEqual(antes);
   });
 });

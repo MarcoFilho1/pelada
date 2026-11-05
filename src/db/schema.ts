@@ -95,6 +95,16 @@ export const times = pgTable('times', {
     .references(() => peladas.id),
   cor: corTimeEnum('cor').notNull(),
   ordem: integer('ordem').notNull(),
+  // Preenchido quando um sorteio novo substitui o time depois de haver partidas (o time antigo fica para o histórico).
+  arquivadoEm: timestamptz('arquivado_em'),
+});
+
+export const timeCompletes = pgTable('time_completes', {
+  id: serial('id').primaryKey(),
+  timeId: integer('time_id')
+    .notNull()
+    .references(() => times.id),
+  nota: numeric('nota', { precision: 2, scale: 1 }).notNull(),
 });
 
 export const timeJogadores = pgTable(
