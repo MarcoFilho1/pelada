@@ -110,21 +110,26 @@ export const timeJogadores = pgTable(
   (t) => [primaryKey({ columns: [t.timeId, t.jogadorId] })],
 );
 
-export const partidas = pgTable('partidas', {
-  id: serial('id').primaryKey(),
-  peladaId: integer('pelada_id')
-    .notNull()
-    .references(() => peladas.id),
-  timeAId: integer('time_a_id')
-    .notNull()
-    .references(() => times.id),
-  timeBId: integer('time_b_id')
-    .notNull()
-    .references(() => times.id),
-  iniciadaEm: timestamptz('iniciada_em').notNull().defaultNow(),
-  encerradaEm: timestamptz('encerrada_em'),
-  resultado: resultadoEnum('resultado'),
-});
+export const partidas = pgTable(
+  'partidas',
+  {
+    id: serial('id').primaryKey(),
+    peladaId: integer('pelada_id')
+      .notNull()
+      .references(() => peladas.id),
+    timeAId: integer('time_a_id')
+      .notNull()
+      .references(() => times.id),
+    timeBId: integer('time_b_id')
+      .notNull()
+      .references(() => times.id),
+    iniciadaEm: timestamptz('iniciada_em').notNull().defaultNow(),
+    encerradaEm: timestamptz('encerrada_em'),
+    resultado: resultadoEnum('resultado'),
+  },
+  // Uma partida aberta por pelada, garantido pelo banco (o código também confere, travando a pelada).
+  (t) => [uniqueIndex('partidas_uma_aberta_por_pelada').on(t.peladaId).where(sql`${t.encerradaEm} is null`)],
+);
 
 export const partidaJogadores = pgTable(
   'partida_jogadores',

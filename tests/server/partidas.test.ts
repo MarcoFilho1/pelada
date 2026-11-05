@@ -16,6 +16,7 @@ import {
   partidaEmAndamento,
   partidasAbertasDeOutrasPeladas,
   registrarLance,
+  violouUmaAberta,
 } from '@/server/partidas';
 import { definirEstadoManual, ErroLista } from '@/server/pelada';
 import { moverJogador, salvarTimesDefinitivos, timesDaPelada } from '@/server/times';
@@ -123,6 +124,18 @@ describe('iniciarPartida', () => {
 
     await encerrarPartida(db, id, depois(8 * MIN));
     expect(await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN))).toBeGreaterThan(id);
+  });
+
+  it('o banco recusa uma segunda partida aberta na mesma pelada (índice único parcial)', async () => {
+    const c = await cenario();
+    await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const insere = (encerradaEm: Date | null) =>
+      db.insert(partidas).values({ peladaId: c.peladaId, timeAId: c.verde, timeBId: c.preto, encerradaEm });
+    const erro = await insere(null).then(() => null, (e: unknown) => e);
+    expect(erro).toMatchObject({ cause: { code: '23505', constraint: 'partidas_uma_aberta_por_pelada' } });
+    expect(violouUmaAberta(erro)).toBe(true); // é o que iniciarPartida traduz em 'partida_em_andamento'
+    expect(violouUmaAberta(new Error('outro'))).toBe(false);
+    await insere(NOITE); // encerrada não conta
   });
 
   it('duas partidas iniciadas ao mesmo tempo: só uma entra', async () => {

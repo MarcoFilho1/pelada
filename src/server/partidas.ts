@@ -96,6 +96,13 @@ async function placarDaPartida(db: DB | Tx, partidaId: number): Promise<Placar> 
   return placar(ls, await ladosDaPartida(db, partidaId));
 }
 
+/** Violação (23505) do índice `partidas_uma_aberta_por_pelada`; os drivers põem o erro do Postgres em `cause`. */
+export function violouUmaAberta(e: unknown): boolean {
+  const pg = (e as { cause?: unknown })?.cause ?? e;
+  const { code, constraint } = (pg ?? {}) as { code?: string; constraint?: string };
+  return code === '23505' && constraint === 'partidas_uma_aberta_por_pelada';
+}
+
 /**
  * Começa uma partida entre dois times da pelada de hoje e grava a foto do elenco (só os jogadores
  * ativos de cada time, com o lado). A foto não muda se os times forem editados depois.
@@ -130,10 +137,14 @@ export async function iniciarPartida(db: DB, peladaId: number, timeAId: number, 
     const ladoB = elenco.filter((j) => j.timeId === timeBId);
     if (!ladoA.length || !ladoB.length) throw new ErroPartida('time_vazio');
 
+    // A conferência acima já cobre quase tudo (a pelada está travada); o índice único é a rede de segurança.
     const [partida] = await tx
       .insert(partidas)
       .values({ peladaId, timeAId, timeBId, iniciadaEm: now })
-      .returning({ id: partidas.id });
+      .returning({ id: partidas.id })
+      .catch((e: unknown) => {
+        throw violouUmaAberta(e) ? new ErroPartida('partida_em_andamento') : e;
+      });
     await tx.insert(partidaJogadores).values([
       ...ladoA.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'A' as const })),
       ...ladoB.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'B' as const })),

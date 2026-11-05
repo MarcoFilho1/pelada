@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "partidas_uma_aberta_por_pelada" ON "partidas" USING btree ("pelada_id") WHERE "partidas"."encerrada_em" is null;
