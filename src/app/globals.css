@@ -33,6 +33,8 @@
   --text-subtitulo--line-height: 1.1;
   --text-numero: 2.75rem; /* 44px, número pintado */
   --text-numero--line-height: 1;
+  --text-placar: 4.5rem; /* 72px, o placar do anotador */
+  --text-placar--line-height: 1;
 
   --radius-placa: 10px;
   --radius-cartao: 20px;

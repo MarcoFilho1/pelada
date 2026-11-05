@@ -7,6 +7,7 @@ const ITENS = [
   { href: '/admin', rotulo: 'Painel' },
   { href: '/admin/pelada', rotulo: 'Pelada' },
   { href: '/admin/sorteio', rotulo: 'Sorteio' },
+  { href: '/admin/partidas', rotulo: 'Partidas' },
   { href: '/admin/jogadores', rotulo: 'Jogadores' },
   { href: '/admin/mensalistas', rotulo: 'Mensalistas' },
   { href: '/admin/admins', rotulo: 'Admins' },

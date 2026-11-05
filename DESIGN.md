@@ -31,6 +31,11 @@ typography:
     fontSize: "2.75rem"
     fontWeight: 600
     lineHeight: 1
+  placar:
+    fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
+    fontSize: "4.5rem"
+    fontWeight: 600
+    lineHeight: 1
   marca:
     fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
     fontSize: "1.5rem"
@@ -94,6 +99,18 @@ components:
   placa-pin-erro:
     backgroundColor: "{colors.erro-fundo}"
     textColor: "{colors.erro}"
+  botao-gol:
+    backgroundColor: "{colors.tinta}"
+    textColor: "{colors.chao}"
+    typography: "{typography.linha}"
+    rounded: "{rounded.placa}"
+    height: "56px–72px"
+  botao-ast:
+    backgroundColor: "{colors.placa-alta}"
+    textColor: "{colors.tinta}"
+    typography: "{typography.corpo}"
+    rounded: "{rounded.placa}"
+    height: "56px–72px"
 ---
 
 # Design System: Pelada
@@ -164,7 +181,8 @@ leitura sem chamar atenção. Duas letras, nunca três.
 - **Título** (Barlow Condensed 600, 32px, 1.05, -0.01em): o h1 de cada tela, uma frase curta ("Quem é você?").
 - **Subtítulo** (Barlow Condensed 600, 28px, 1.1): o h2 do bloco "sua vaga" ("Você vai?") e a contagem
   "x/16" ao lado do h2 das listas.
-- **Número** (Barlow Condensed 600, 44px, 1): o dígito pintado na placa do PIN; depois o placar e a contagem.
+- **Número** (Barlow Condensed 600, 44px, 1): o dígito pintado na placa do PIN, a contagem e o cronômetro do anotador.
+- **Placar** (Barlow Condensed 600, 72px, 1, tabular): só os gols do placar do anotador. O maior número do site.
 - **Marca** (Barlow Condensed 600, 24px): "Pelada" no topo.
 - **Linha** (Inter 500, 18px, 1.4): itens tocáveis (nomes sugeridos), texto de campo, rótulo do botão.
 - **Corpo** (Inter 400–500, 16px, 1.5): descrições, rótulos, mensagens. Nada abaixo de 16px em campo (evita o
@@ -225,10 +243,10 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   pílulas coloridas.
 
 ### Navegação do admin
-- Linha de texto logo abaixo da barra (Painel · Pelada · Sorteio · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
+- Linha de texto logo abaixo da barra (Painel · Pelada · Sorteio · Partidas · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
   48px de altura com 10px de folga lateral. Seção atual: texto branco sobre placa #111 (raio 10px) e
   `aria-current="page"`; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. Se não couber,
-  rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar não tem.
+  rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar e o anotador não têm.
 
 ### Linha de jogador recolhível (admin)
 - Placa #111, raio 10px, em lista com 8px de intervalo. Fechada: 56px, nome em Inter 500 18px (truncado), meta
@@ -331,8 +349,64 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   sombra para cima (ela flutua sobre os times; é a única sombra da tela). Na proposta: "Trocar Fulano" + "com
   alguém de outro time" e "Cancelar". Nos times definitivos: "Levar Fulano para" (ou "Pôr Fulano no"), os
   outros times como botões de 56px em placa alta com a bolinha, "Tirar do time" secundária e "Cancelar".
+- **Partida rolando:** logo abaixo do cabeçalho, placa #111 com "Partida em andamento — mudanças valem para a
+  próxima." em branco Inter 500 16px (`role="status"`, sem lima) e a ação de texto "Anotador" à direita.
 - **Resultado:** "Fulano agora é do Azul." em lima com `role="status"` na barra; erro em vermelho com
   `role="alert"`.
+
+### Noite das partidas (admin)
+- **Cabeçalho:** h1 "Partidas" e, abaixo, "Quarta, 04/11 · Hoje" (ou "A última pelada") em #b4b4b4, como no Sorteio.
+- **Em andamento:** placa #111 com "Em andamento" em #b4b4b4, o confronto e a pílula branca "Voltar ao anotador".
+  Enquanto uma partida roda não aparece Iniciar.
+- **Próxima partida:** h2 em Barlow 24px, a regra da fila em Giz e os times em grade 2×2 na ordem da fila
+  (botões `aria-pressed`, placa #111, raio 10px, ~96px): bolinha, nome em Inter 600 16px, posição na fila ("1º")
+  em Giz 14px à direita e os nomes dos jogadores em #b4b4b4 14px (até 2 linhas). Os dois da sugestão começam
+  escolhidos: placa alta com anel lima de 2px por dentro (como o Jogador escolhido). Com dois escolhidos, tocar um
+  terceiro troca o último escolhido (quem fica continua). Fora da sugestão: "Escolha livre. Toque para trocar." e o
+  link "Voltar para a sugerida". A pílula diz a conta: "Iniciar Azul × Laranja"; sem dois, "Escolha dois times"
+  desabilitada.
+- **Sem como iniciar** (não é o dia, pelada cancelada, menos de 2 times): uma placa #111 com o porquê em #b4b4b4 e o
+  link para onde resolver ("Pelada", "Sorteio") sublinhado em branco.
+- **Já jogadas:** `<ol>` de placas #111 (raio 10px, 8px entre elas): número da partida em Barlow 20px Giz, o
+  confronto "● Azul 3 × 1 Laranja ●" (nomes Inter 500 16px, placar Barlow 24px tabular) e, abaixo, "Azul venceu" ou
+  "Empate" em #b4b4b4 14px; "Corrigir" como ação de texto à direita. Vazia: "Nenhuma partida encerrada ainda." em Giz.
+
+### Anotador ao vivo ("Anotar A", admin)
+A tela mais importante do site: o admin segura o celular na beira da quadra e toca sem olhar direito.
+- **Tela inteira:** sem a barra do topo nem a navegação do admin; margens de 16px (a exceção aos 20px, para as
+  colunas caberem). Topo e barra de baixo presos; só o meio rola, e com 4 contra 4 em 390×844 nada rola (5 contra 5
+  rola pouco). Wake Lock enquanto a partida está aberta.
+- **Topo:** seta de voltar (48×48, "Voltar para partidas" para leitor de tela) à esquerda e o cronômetro regressivo
+  em Número (44px, tabular, `m:ss`) no centro; abaixo, a barra do tempo de 6px (trilho placa alta, preenchimento
+  branco, cresce com o tempo gasto). Depois o placar: bolinha e nome do time (Inter 600 16px, branco) por fora, os
+  gols em Placar (72px) por dentro e um "×" em Barlow 28px Giz no meio. O lado A fica à esquerda, como a coluna dele.
+- **Cartão do jogador:** duas colunas (8px), uma por time, na ordem do placar. Placa #111, raio 10px, 6px de respiro:
+  nome em Inter 500 16px (truncado) e, abaixo, "2 gols · 1 ast" em Giz 14px com os números em Inter 600 (brancos
+  quando passam de zero). Embaixo, lado a lado, os botões **GOL** (3/5, branco com texto preto, Inter 600 18px) e
+  **AST** (2/5, placa alta, Inter 600 16px), raio 10px, altura de 56px a 72px conforme a altura da tela. GOL e AST
+  ficam em maiúsculas como no placar (a única exceção à caixa normal; sem espaçamento). Leitor de tela ouve "GOL de
+  Pepe" e "AST (assistência) de Pepe".
+- **Toque:** conta na hora (otimista), vibra 30ms e o número entra com o passo de pendurar; enquanto o servidor não
+  confirma, os números do cartão ficam em lima (salvando, como os pontos do PIN) e voltam ao branco na resposta. Se o
+  servidor recusar, o número volta e o erro aparece em vermelho na barra de baixo por 4 s.
+- **Barra de baixo:** fundo #000. "Desfazer" (3/5, pílula placa alta de 56px em duas linhas: "Desfazer" em Inter 600
+  16px e o que vai sair em #b4b4b4 14px — "gol de Pepe"; sem lance, "nada para desfazer" e desabilitado) e "Encerrar"
+  (2/5, pílula secundária). Enquanto desfaz: "Desfazendo…".
+- **Pergunta de encerrar** (folha: placa #111, raio 20px só em cima, sombra para cima; o meio encolhe e continua
+  rolando): no 3º gol, "Azul venceu 3×1 — encerrar?"; aos 0:00 (com vibração longa), "Acabou o tempo. Empate 1×1 —
+  encerrar?", em Subtítulo. Abaixo, "Depois de encerrar, só dá para mudar em Corrigir." em #b4b4b4, a pílula branca
+  "Encerrar partida", e na mesma linha o Desfazer e "Continuar jogando" em texto. Nunca encerra sozinha; continuar
+  vale até o placar mudar. O botão Encerrar da barra abre a mesma folha como confirmação ("Encerrar com Azul 1×1
+  Laranja?") com "Voltar". Sem `alert`/`confirm`.
+- **Encerrada** (aqui ou por outro admin): o placar fica; no lugar dos cartões, "Partida encerrada" em Subtítulo, o
+  resultado em #b4b4b4 18px, "Ver partidas" (pílula branca) e "Corrigir" (secundária).
+
+### Corrigir partida (admin)
+- Link "‹ Partidas" de 48px, h1 "Corrigir partida", o confronto com o placar em Subtítulo e, em #b4b4b4,
+  "Azul venceu. Cada toque já fica salvo." (`role="status"`). Um bloco por time (h2 Barlow 24px com a bolinha) com uma
+  placa #111 por jogador: nome em Inter 500 18px e dois contadores lado a lado — menos e mais de 48×48 em placa alta,
+  o valor em Subtítulo tabular com "gols"/"ast" em #b4b4b4 14px embaixo. O menos fica em Giz sobre placa no zero.
+  Tudo trava enquanto um toque salva.
 
 ### Tela de erro
 - Para erro inesperado (`error.tsx`, `global-error.tsx`): título "Algo deu errado" a 80px do topo, uma frase

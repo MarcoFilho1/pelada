@@ -57,7 +57,7 @@ export default async function SorteioPage() {
       sugeridos={sugeridos}
       times={times}
       temPartida={jaTemPartida}
-      emAndamento={emAndamento !== null}
+      emAndamento={emAndamento}
     />
   );
 }
