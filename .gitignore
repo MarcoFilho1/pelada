@@ -22,3 +22,7 @@ next-env.d.ts
 # ferramentas de design (arquivos de trabalho)
 .taste-skill/
 .impeccable/review/
+
+# playwright
+/test-results/
+/playwright-report/
