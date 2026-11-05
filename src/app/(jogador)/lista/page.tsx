@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { textoWhatsApp } from '@/domain/copiarLista';
-import { situacaoDoJogador, travaDoJogador } from '@/domain/lista';
+import { situacaoDoJogador, travaDoJogador, travaParaSair } from '@/domain/lista';
 import { aberturaLista } from '@/domain/tempo';
 import { estadoDaSemana } from '@/server/presencas';
 import { lerSessaoJogador } from '@/server/sessao';
@@ -62,6 +62,7 @@ export default async function ListaPage() {
         vagas={estado.vagas}
         situacao={situacaoDoJogador(estado, sessao.jogadorId)}
         trava={travaTela}
+        podeSair={travaParaSair(estado, estado.data, estado.estadoManual, now) === null}
         texto={textoWhatsApp(estado, estado.data)}
       />
     </Tela>

@@ -30,7 +30,7 @@ const CAMPO =
 const OPCOES: { valor: EstadoEscolhido; rotulo: string; dica: string }[] = [
   { valor: 'automatico', rotulo: 'Automático', dica: 'Abre segunda 00:00 e fecha no fim do jogo.' },
   { valor: 'aberta', rotulo: 'Aberta', dica: 'Aberta até você mudar, mesmo fora do horário.' },
-  { valor: 'fechada', rotulo: 'Fechada', dica: 'Os jogadores não mexem mais. Aqui você ainda mexe.' },
+  { valor: 'fechada', rotulo: 'Fechada', dica: 'Ninguém entra nem confirma mais; os jogadores ainda podem sair. Aqui você mexe em tudo.' },
   { valor: 'cancelada', rotulo: 'Cancelada', dica: 'A lista e o texto do WhatsApp mostram a pelada cancelada.' },
 ];
 

@@ -18,6 +18,8 @@ type Props = {
   vagas: number;
   situacao: Situacao;
   trava: TravaTela;
+  /** Sair ainda vale com a lista fechada ou antes de abrir; só cancelada e jogo começado travam. */
+  podeSair: boolean;
   texto: string;
 };
 
@@ -37,7 +39,13 @@ export function ListaJogador(p: Props) {
       <h1 className="mt-6 font-placa text-titulo font-semibold">Quarta, {p.dataQuarta}</h1>
       <p className="mt-1 text-base text-apagado">{p.trava === 'cancelada' ? 'Cancelada' : '20:30 às 22:30'}</p>
 
-      <MeuBloco situacao={p.situacao} trava={p.trava} abertura={p.abertura} cheia={p.principal.length >= p.vagas} />
+      <MeuBloco
+        situacao={p.situacao}
+        trava={p.trava}
+        podeSair={p.podeSair}
+        abertura={p.abertura}
+        cheia={p.principal.length >= p.vagas}
+      />
 
       <section aria-labelledby="titulo-lista" className="mt-10">
         <div className="flex items-baseline justify-between gap-3">
@@ -123,7 +131,16 @@ type Acao = { rotulo: string; fazendo: string; fn: () => Promise<Resposta>; prim
 const SAIR_DA_LISTA = { frase: 'Você perde a vaga. Se voltar, entra no fim da fila.', verbo: 'Não vou' };
 const SAIR_DA_FILA = { frase: 'Você perde o lugar. Se voltar, entra no fim da fila.', verbo: 'Sair da fila' };
 
-function textos(s: Situacao, cheia: boolean): { titulo: string; linha: string; acoes: Acao[]; confirmado?: boolean } {
+type Textos = { titulo: string; linha: string; acoes: Acao[]; confirmado?: boolean; ondeEstou?: string };
+
+/** A única ação que sobra com a lista travada para entrar: sair. */
+function acaoDeSair(s: Situacao): Acao[] {
+  if (s.onde === 'principal') return [{ rotulo: 'Não vou', fazendo: 'Saindo…', fn: naoVou, primaria: false, confirmar: SAIR_DA_LISTA }];
+  if (s.onde === 'fila') return [{ rotulo: 'Sair da fila', fazendo: 'Saindo…', fn: naoVou, primaria: false, confirmar: SAIR_DA_FILA }];
+  return [];
+}
+
+function textos(s: Situacao, cheia: boolean): Textos {
   switch (s.onde) {
     case 'principal':
       if (s.confirmado) {
@@ -184,12 +201,24 @@ function ondeEstou(s: Situacao): string {
 
 const TRAVAS: Record<Exclude<TravaTela, null>, (abertura: string) => { titulo: string; linha: string }> = {
   antes: (abertura) => ({ titulo: 'A lista ainda não abriu', linha: `Abre ${abertura}, às 00:00.` }),
-  fechada: () => ({ titulo: 'Lista fechada', linha: 'O admin fechou a lista. Precisa mudar algo? Fale com ele.' }),
+  fechada: () => ({ titulo: 'Lista fechada', linha: 'Ninguém entra nem confirma mais por aqui. Sair ainda pode.' }),
   cancelada: () => ({ titulo: 'Pelada cancelada', linha: 'Não tem jogo nesta quarta.' }),
   comecou: () => ({ titulo: 'A pelada já começou', linha: 'A lista não muda mais pelo site. Fale com o admin.' }),
 };
 
-function MeuBloco({ situacao, trava, abertura, cheia }: { situacao: Situacao; trava: TravaTela; abertura: string; cheia: boolean }) {
+function MeuBloco({
+  situacao,
+  trava,
+  podeSair,
+  abertura,
+  cheia,
+}: {
+  situacao: Situacao;
+  trava: TravaTela;
+  podeSair: boolean;
+  abertura: string;
+  cheia: boolean;
+}) {
   const [erro, setErro] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<Acao | null>(null);
   const [emAndamento, setEmAndamento] = useState<string | null>(null);
@@ -217,20 +246,18 @@ function MeuBloco({ situacao, trava, abertura, cheia }: { situacao: Situacao; tr
     });
   }
 
+  let t: Textos;
   if (trava) {
-    const t = TRAVAS[trava](abertura);
-    return (
-      <section aria-labelledby="meu-titulo" className="mt-6 rounded-placa bg-placa p-5">
-        <h2 id="meu-titulo" className="font-placa text-subtitulo font-semibold">
-          {t.titulo}
-        </h2>
-        <p className="mt-2 text-base text-apagado">{t.linha}</p>
-        {trava !== 'antes' && <p className="mt-3 text-base font-medium text-tinta">{ondeEstou(situacao)}</p>}
-      </section>
-    );
+    const travada = TRAVAS[trava](abertura);
+    t = {
+      ...travada,
+      // antes de abrir, quem não tem presença não precisa ouvir "você não está na lista"
+      ondeEstou: trava !== 'antes' || situacao.onde !== 'fora' ? ondeEstou(situacao) : undefined,
+      acoes: podeSair ? acaoDeSair(situacao) : [],
+    };
+  } else {
+    t = textos(situacao, cheia);
   }
-
-  const t = textos(situacao, cheia);
   return (
     <section aria-labelledby="meu-titulo" className="mt-6 rounded-placa bg-placa p-5">
       <h2 id="meu-titulo" className="flex items-center gap-2 font-placa text-subtitulo font-semibold">
@@ -238,8 +265,9 @@ function MeuBloco({ situacao, trava, abertura, cheia }: { situacao: Situacao; tr
         {t.confirmado && <Marca className="size-7 shrink-0 text-lima" />}
       </h2>
       <p className="mt-2 text-base text-apagado">{t.linha}</p>
+      {t.ondeEstou && <p className="mt-3 text-base font-medium text-tinta">{t.ondeEstou}</p>}
 
-      {confirmando?.confirmar ? (
+      {t.acoes.length === 0 ? null : confirmando?.confirmar ? (
         <div className="mt-5 rounded-placa bg-placa-alta p-4">
           <p className="text-base text-tinta">{confirmando.confirmar.frase}</p>
           <div className="mt-4 flex flex-col gap-1">

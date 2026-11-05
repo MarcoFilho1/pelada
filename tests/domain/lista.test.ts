@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularLista, podeConfirmar, situacaoDoJogador, travaDoJogador, type EstadoManual, type Presenca } from '@/domain/lista';
+import { calcularLista, podeConfirmar, situacaoDoJogador, travaDoJogador, travaParaSair, type EstadoManual, type Presenca } from '@/domain/lista';
 
 const QUARTA = '2026-11-04';
 const ANTES_PRAZO = new Date('2026-11-04T13:00:00-03:00');
@@ -205,5 +205,23 @@ describe('situacaoDoJogador', () => {
   it('mensalista que perdeu o prazo, e quem não está', () => {
     expect(situacaoDoJogador(estado, 5)).toEqual({ onde: 'perdeu_prazo' });
     expect(situacaoDoJogador(estado, 6)).toEqual({ onde: 'fora' });
+  });
+});
+
+describe('travaParaSair', () => {
+  const JOGO = new Date('2026-11-04T20:30:00-03:00');
+  const ANTES = new Date('2026-11-04T10:00:00-03:00');
+  const trava = (estadoManual: EstadoManual, now: Date) =>
+    travaParaSair(calcularLista({ presencas: [], dataQuarta: QUARTA, estadoManual, now }), QUARTA, estadoManual, now);
+
+  it('fechada ou ainda não aberta: sair continua valendo', () => {
+    expect(trava('fechada', ANTES)).toBeNull();
+    expect(trava(null, new Date('2026-11-01T12:00:00-03:00'))).toBeNull();
+  });
+  it('cancelada ou jogo começado travam; aberta à mão não', () => {
+    expect(trava('cancelada', ANTES)).toBe('cancelada');
+    expect(trava(null, JOGO)).toBe('comecou');
+    expect(trava('fechada', JOGO)).toBe('comecou');
+    expect(trava('aberta', JOGO)).toBeNull();
   });
 });

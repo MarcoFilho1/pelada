@@ -203,6 +203,26 @@ describe('confirmar', () => {
 });
 
 describe('remover', () => {
+  it('com a lista fechada o jogador ainda consegue sair; cancelada, não', async () => {
+    const { ms } = await cenarioCheio(0);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await definirEstadoManual(db, p.id, 'fechada');
+    await expect(entrarNaFila(db, ms[0], SEGUNDA)).rejects.toMatchObject({ motivo: 'lista_fechada' });
+    await remover(db, ms[0], SEGUNDA);
+    await definirEstadoManual(db, p.id, 'cancelada');
+    await expect(remover(db, ms[1], SEGUNDA)).rejects.toMatchObject({ motivo: 'lista_cancelada' });
+    const linhas = await db.select().from(presencas).where(eq(presencas.status, 'removido'));
+    expect(linhas.map((l) => l.jogadorId)).toEqual([ms[0]]);
+  });
+
+  it('pelada criada antes de segunda (pelo admin): dá para sair antes de abrir', async () => {
+    const { ms } = await cenarioCheio(0);
+    await obterPeladaDaSemana(db, DOMINGO);
+    await remover(db, ms[0], DOMINGO);
+    const [linha] = await db.select().from(presencas).where(eq(presencas.jogadorId, ms[0]));
+    expect(linha.status).toBe('removido');
+  });
+
   it('marca removido (mensalista ou diarista) e é idempotente', async () => {
     const { ms, ds } = await cenarioCheio(1);
     await entrarNaFila(db, ds[0], SEGUNDA);
@@ -268,6 +288,45 @@ describe('entrarNaFila', () => {
 });
 
 describe('admin', () => {
+  it('mensalista que saiu e é re-adicionado volta como D no fim da fila: o diarista confirmado fica na vaga', async () => {
+    const { ms, ds } = await cenarioCheio(2);
+    await entrarNaFila(db, ds[0], SEGUNDA);
+    await entrarNaFila(db, ds[1], new Date(SEGUNDA.getTime() + 1000));
+    await remover(db, ms[0], SEGUNDA);
+    await confirmar(db, ds[0], SEGUNDA);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await adminAdicionar(db, p.id, ms[0], TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(estado.principal.find((i) => i.jogadorId === ds[0])).toMatchObject({ tipo: 'D', confirmado: true });
+    expect(estado.fila.at(-1)).toMatchObject({ jogadorId: ms[0], tipo: 'D' });
+    expect(idsDe(estado.fila)).toEqual([ds[1], ms[0]]);
+  });
+
+  it('mensalista sem presença, antes do prazo e com vaga livre, entra como M', async () => {
+    const ms = await criar(nomes('M', 10));
+    const [novo] = await criar(['Novo']);
+    await definirMensalistas(db, '2026-11', ms);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await db.insert(mensalistasMes).values({ mes: '2026-11', jogadorId: novo });
+    await adminAdicionar(db, p.id, novo, TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(estado.principal.find((i) => i.jogadorId === novo)).toMatchObject({ tipo: 'M', confirmado: false });
+  });
+
+  it('mensalista sem presença entra como D se como M tiraria um diarista confirmado da lista', async () => {
+    const ms = await criar(nomes('M', 15));
+    const [d, novo] = await criar(['Diarista', 'Novo']);
+    await definirMensalistas(db, '2026-11', ms);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await entrarNaFila(db, d, SEGUNDA);
+    await confirmar(db, d, SEGUNDA);
+    await db.insert(mensalistasMes).values({ mes: '2026-11', jogadorId: novo });
+    await adminAdicionar(db, p.id, novo, TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(estado.principal.find((i) => i.jogadorId === d)).toMatchObject({ confirmado: true });
+    expect(estado.fila).toEqual([expect.objectContaining({ jogadorId: novo, tipo: 'D' })]);
+  });
+
   it('adiciona qualquer ativo, recusa inativo e quem já está', async () => {
     const { ds } = await cenarioCheio(1);
     const [inativo] = await criar(['Parou'], { ativo: false });

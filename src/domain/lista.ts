@@ -103,3 +103,18 @@ export function situacaoDoJogador(
   if (estado.foraDoPrazo.some((x) => x.jogadorId === jogadorId)) return { onde: 'perdeu_prazo' };
   return { onde: 'fora' };
 }
+
+/**
+ * Sair (Não vou, Sair da fila) é mais solto que entrar: lista fechada pelo admin ou ainda não
+ * aberta não impede ninguém de sair. Só a pelada cancelada e o jogo já começado travam.
+ */
+export function travaParaSair(
+  estado: EstadoLista,
+  dataQuarta: string,
+  estadoManual: EstadoManual,
+  now: Date,
+): Extract<Trava, 'cancelada' | 'comecou'> | null {
+  if (estado.cancelada) return 'cancelada';
+  if (estadoManual !== 'aberta' && now >= inicioJogo(dataQuarta)) return 'comecou';
+  return null;
+}

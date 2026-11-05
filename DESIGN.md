@@ -273,8 +273,10 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - Confirmado: traço de check lima de 28px ao lado do h2. Lima só aí e nas linhas confirmadas.
 - Sair (Não vou, Sair da fila) pergunta antes, no lugar dos botões: placa alta com a consequência ("Você
   perde a vaga. Se voltar, entra no fim da fila."), pílula branca com o verbo e "Voltar" em texto.
-- Lista travada (antes de segunda 00:00, fechada pelo admin, cancelada, jogo começou): o mesmo bloco sem
-  botões, com o porquê e, em branco, onde a pessoa está ("Você está confirmado na vaga 3.").
+- Lista travada (antes de segunda 00:00, fechada pelo admin, cancelada, jogo começou): o mesmo bloco com o
+  porquê e, em branco, onde a pessoa está ("Você está confirmado na vaga 3."). Sem Vou nem Entrar na fila;
+  com a lista fechada ou ainda não aberta, quem está na lista ou na fila ainda vê "Não vou" / "Sair da fila".
+  Cancelada e jogo começado: sem botão nenhum.
 - Erro da ação: frase em vermelho com `role="alert"` logo abaixo dos botões.
 
 ### Linhas da lista (jogador)

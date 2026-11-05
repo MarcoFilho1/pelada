@@ -5,6 +5,7 @@ import {
   calcularLista,
   podeConfirmar,
   travaDoJogador,
+  travaParaSair,
   type EstadoLista,
   type EstadoManual,
   type ItemLista,
@@ -137,11 +138,16 @@ export async function confirmar(db: DB, jogadorId: number, now: Date): Promise<v
   });
 }
 
-/** Sai da lista ou da fila (mensalista ou diarista), até a hora do jogo. Sem presença: não faz nada. */
+/**
+ * Sai da lista ou da fila (mensalista ou diarista), até a hora do jogo, mesmo com a lista fechada.
+ * Só a pelada cancelada ou o jogo começado impedem. Sem presença: não faz nada.
+ */
 export async function remover(db: DB, jogadorId: number, now: Date): Promise<void> {
   const pelada = await peladaDoJogador(db, now);
   await mudarLista(db, pelada.id, jogadorId, now, async (c) => {
-    exigirListaDoJogador(c, now);
+    const trava = travaParaSair(c.estado, pelada.data, pelada.estadoManual, now);
+    if (trava === 'cancelada') throw new ErroLista('lista_cancelada');
+    if (trava === 'comecou') throw new ErroLista('jogo_comecou');
     if (c.minha && c.minha.status !== 'removido') await marcarStatus(c.tx, pelada.id, jogadorId, 'removido', now);
   });
 }
@@ -162,25 +168,38 @@ export async function entrarNaFila(db: DB, jogadorId: number, now: Date): Promis
 // ---- Admin (qualquer jogador, com a lista em qualquer estado) ---------------------
 
 /**
- * Põe um jogador ativo na lista. Mensalista do mês, antes do prazo, entra como M (caso de quem
- * foi marcado mensalista depois que a pelada da semana já existia); os outros entram como D,
- * no fim da fila (ou direto na lista, se houver vaga).
+ * Põe um jogador ativo na lista, por padrão como D no fim da fila (ou direto na lista, se houver
+ * vaga). Quem já teve presença nesta pelada (saiu, perdeu o prazo) volta sempre como D: "se voltar,
+ * entra no fim da fila". Só o mensalista do mês sem presença nenhuma (marcado depois que a pelada
+ * existia), antes do prazo, entra como M; e nem assim se, como M, tiraria da lista um diarista
+ * que já confirmou.
  */
 export async function adminAdicionar(db: DB, peladaId: number, jogadorId: number, now: Date): Promise<void> {
-  await mudarLista(db, peladaId, jogadorId, now, async ({ tx, pelada, minha }) => {
+  await mudarLista(db, peladaId, jogadorId, now, async ({ tx, pelada, ps, estado, minha }) => {
     const [j] = await tx
       .select({ id: jogadores.id })
       .from(jogadores)
       .where(and(eq(jogadores.id, jogadorId), eq(jogadores.ativo, true)));
     if (!j) throw new ErroLista('jogador_inativo');
     if (estaNaLista(minha, pelada.data, now)) throw new ErroLista('ja_na_lista');
-    const [mensalista] = await tx
-      .select({ id: mensalistasMes.jogadorId })
-      .from(mensalistasMes)
-      .where(and(eq(mensalistasMes.mes, mesDaQuarta(pelada.data)), eq(mensalistasMes.jogadorId, jogadorId)));
-    const tipo = mensalista && now < prazoMensalista(pelada.data) ? 'M' : 'D';
+    let tipo: 'M' | 'D' = 'D';
+    if (!minha && now < prazoMensalista(pelada.data)) {
+      const [mensalista] = await tx
+        .select({ id: mensalistasMes.jogadorId })
+        .from(mensalistasMes)
+        .where(and(eq(mensalistasMes.mes, mesDaQuarta(pelada.data)), eq(mensalistasMes.jogadorId, jogadorId)));
+      if (mensalista && !tiraDiaristaConfirmado(pelada, ps, estado, jogadorId, now)) tipo = 'M';
+    }
     await porNaLista(tx, peladaId, jogadorId, tipo, now);
   });
+}
+
+/** Entrar como M agora empurraria para a fila algum diarista que já confirmou? */
+function tiraDiaristaConfirmado(pelada: Pelada, ps: Presenca[], estado: EstadoLista, jogadorId: number, now: Date): boolean {
+  const novo: Presenca = { id: Number.MAX_SAFE_INTEGER, jogadorId, nome: '', tipo: 'M', status: 'pendente', entrouEm: now };
+  const depois = calcularLista({ presencas: [...ps, novo], dataQuarta: pelada.data, estadoManual: pelada.estadoManual, now });
+  const ficam = new Set(depois.principal.map((i) => i.jogadorId));
+  return estado.principal.some((i) => i.tipo === 'D' && i.confirmado && !ficam.has(i.jogadorId));
 }
 
 /** Confirma por alguém que está na lista principal (mesmo com a lista fechada). */
