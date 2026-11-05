@@ -8,15 +8,16 @@ type EnvSeed = Record<string, string | undefined>;
 
 /** Cria o primeiro admin a partir do ambiente. Se já existe algum admin, não faz nada. */
 export async function semearAdmin(db: DB, env: EnvSeed): Promise<'criado' | 'ja_existe'> {
+  // Primeiro de tudo: um deploy que roda o seed de novo (senha antiga curta, variável removida) não pode falhar.
+  const [existente] = await db.select({ id: admins.id }).from(admins).limit(1);
+  if (existente) return 'ja_existe';
+
   const usuario = env.ADMIN_USUARIO?.trim();
   const senha = env.ADMIN_SENHA;
   if (!usuario) throw new Error('Defina ADMIN_USUARIO para criar o primeiro admin');
   if (!senha) throw new Error('Defina ADMIN_SENHA para criar o primeiro admin');
 
   if (!senhaAdminValida(senha)) throw new Error(`ADMIN_SENHA: ${MSG_SENHA_CURTA}`);
-
-  const [existente] = await db.select({ id: admins.id }).from(admins).limit(1);
-  if (existente) return 'ja_existe';
 
   await db.insert(admins).values({ usuario, senhaHash: await hashSegredo(senha) });
   return 'criado';
