@@ -6,6 +6,25 @@ export function mesDe(data: Date): string {
   return new Date(data.getTime() + OFFSET_RECIFE_MS).toISOString().slice(0, 7);
 }
 
+/** Dia ('YYYY-MM-DD') do instante no fuso de Recife. */
+export function dataDe(instante: Date): string {
+  return new Date(instante.getTime() + OFFSET_RECIFE_MS).toISOString().slice(0, 10);
+}
+
+/** 'YYYY-MM-DD' → 'DD/MM'. */
+export function diaMes(data: string): string {
+  const [, mes, dia] = data.split('-');
+  return `${dia}/${mes}`;
+}
+
+const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+/** Dia da semana e data do instante em Recife: 'segunda, 09/11'. */
+export function diaDaSemana(instante: Date): string {
+  const local = new Date(instante.getTime() + OFFSET_RECIFE_MS);
+  return `${DIAS[local.getUTCDay()]}, ${diaMes(dataDe(instante))}`;
+}
+
 const HORA_MS = 60 * 60 * 1000;
 const DIA_MS = 24 * HORA_MS;
 const QUARTA = 3; // Date#getUTCDay

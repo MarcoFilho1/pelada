@@ -72,6 +72,16 @@ export async function estadoDaSemana(db: DB, now: Date): Promise<EstadoDaSemana>
   return montar(pelada, await lerPresencas(db, pelada.id, false), now);
 }
 
+/**
+ * A lista de uma pelada qualquer (pelo id), com as mesmas regras da lista da semana: só
+ * jogadores ativos, prazo dos mensalistas e limite de vagas. Só lê.
+ */
+export async function estadoDaPelada(db: DB, peladaId: number, now: Date): Promise<EstadoDaSemana> {
+  const [p] = await db.select().from(peladas).where(eq(peladas.id, peladaId));
+  if (!p) throw new ErroLista('pelada_inexistente');
+  return montar({ id: p.id, data: p.data, estadoManual: p.estadoManual }, await lerPresencas(db, p.id, false), now);
+}
+
 type Contexto = { tx: Tx; pelada: Pelada; ps: Presenca[]; estado: EstadoDaSemana; minha: Presenca | undefined };
 
 /**

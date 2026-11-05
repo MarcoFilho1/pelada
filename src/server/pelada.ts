@@ -1,9 +1,9 @@
-import { eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, peladas, presencas } from '@/db/schema';
 import type { EstadoManual } from '@/domain/lista';
 import { normalizarNome } from '@/domain/nome';
-import { aberturaLista, mesDaQuarta, proximaQuarta } from '@/domain/tempo';
+import { aberturaLista, dataDe, mesDaQuarta, proximaQuarta } from '@/domain/tempo';
 import { ErroDeValidacao } from './erros';
 import { mensalistasDoMes } from './mensalistas';
 
@@ -72,6 +72,15 @@ export async function obterPeladaDaSemana(db: DB, now: Date): Promise<Pelada> {
 /** A pelada da semana só se já existe (não cria). */
 export async function peladaExistenteDaSemana(db: DB, now: Date): Promise<Pelada | null> {
   const [p] = await db.select().from(peladas).where(eq(peladas.data, proximaQuarta(now)));
+  return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
+}
+
+/**
+ * A pelada da noite, para sorteio e partidas: a de hoje (Recife) ou, fora da quarta, a última
+ * até hoje. Nunca uma futura. Não usa `proximaQuarta`, que vira para a semana seguinte às 22:30.
+ */
+export async function peladaDoDia(db: DB, now: Date): Promise<Pelada | null> {
+  const [p] = await db.select().from(peladas).where(lte(peladas.data, dataDe(now))).orderBy(desc(peladas.data)).limit(1);
   return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
 }
 

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { aberturaLista, inicioJogo, mesDaQuarta, mesDe, prazoMensalista, proximaQuarta } from '@/domain/tempo';
+import {
+  aberturaLista,
+  dataDe,
+  diaDaSemana,
+  diaMes,
+  inicioJogo,
+  mesDaQuarta,
+  mesDe,
+  prazoMensalista,
+  proximaQuarta,
+} from '@/domain/tempo';
 
 describe('proximaQuarta', () => {
   it('segunda aponta para a quarta da semana', () => {
@@ -47,5 +57,19 @@ describe('mesDaQuarta', () => {
   });
   it('mantém mesDe', () => {
     expect(mesDe(new Date('2026-12-01T02:00:00Z'))).toBe('2026-11');
+  });
+});
+
+describe('rótulos de data (Recife)', () => {
+  it('dataDe dá o dia em Recife, não em UTC', () => {
+    expect(dataDe(new Date('2026-11-05T01:00:00Z'))).toBe('2026-11-04');
+    expect(dataDe(new Date('2026-11-05T03:00:00Z'))).toBe('2026-11-05');
+  });
+  it('diaMes vira DD/MM', () => {
+    expect(diaMes('2026-11-04')).toBe('04/11');
+  });
+  it('diaDaSemana dá o dia por extenso e a data, em Recife', () => {
+    expect(diaDaSemana(aberturaLista('2026-11-11'))).toBe('segunda, 09/11');
+    expect(diaDaSemana(new Date('2026-11-05T01:00:00Z'))).toBe('quarta, 04/11');
   });
 });

@@ -11,6 +11,9 @@ colors:
   lima: "#c6f24e"
   erro: "#ff6166"
   erro-fundo: "#2c1a1c"
+  colete-azul: "#4d8dff"
+  colete-laranja: "#ff9a3d"
+  colete-verde: "#2fbf6a"
 typography:
   titulo:
     fontFamily: "Barlow Condensed, Inter, system-ui, sans-serif"
@@ -137,6 +140,11 @@ Preto de refletor apagado, branco de tinta de placa, e duas cores de sinal usada
 - **Cartão vermelho** (#ff6166): mensagens de erro e marcas nas placas com erro (7:1 no chão).
 - **Fundo de erro** (#2c1a1c): placa que recebeu PIN errado.
 
+### Coletes (identidade dos times)
+- **Azul** (#4d8dff), **Laranja** (#ff9a3d), **Verde** (#2fbf6a) e **Preto** (o próprio chão #000 com contorno
+  #b4b4b4 de 2px, para aparecer no fundo preto). Só na bolinha de 16px que identifica o time; nunca em texto,
+  botão, fundo ou borda. O verde do colete é mais fechado que o lima, para não ser lido como "confirmado".
+
 ### Named Rules
 **A Regra do Sinal Raro.** Lima e vermelho só aparecem quando carregam significado: lima para algo pendurado
 ou confirmado, vermelho para erro. Uma tela em repouso é preto, branco e cinza.
@@ -217,7 +225,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   pílulas coloridas.
 
 ### Navegação do admin
-- Linha de texto logo abaixo da barra (Painel · Pelada · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
+- Linha de texto logo abaixo da barra (Painel · Pelada · Sorteio · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
   48px de altura com 10px de folga lateral. Seção atual: texto branco sobre placa #111 (raio 10px) e
   `aria-current="page"`; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. Se não couber,
   rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar não tem.
@@ -302,6 +310,29 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - Como a Linha de jogador recolhível: placa #111, 56px, número, nome, M/D, estado (check lima ou ampulheta) e
   seta que gira. Aberta: placa alta com as ações em pílulas ("Confirmar presença" branca; "Tirar da lista"
   secundária, que pede confirmação em linha; "Pôr no fim da fila" para quem perdeu o prazo).
+
+### Sorteio (admin)
+- **Cabeçalho:** h1 com a quarta ("Quarta, 11/11") e, abaixo, "Hoje" ou "A última pelada" em #b4b4b4; depois de
+  definir, " · Times definitivos" em branco com o check lima de 20px.
+- **Quem joga:** a Linha de marcar dos mensalistas com a nota em Giz 16px tabular antes da casinha; desmarcada,
+  o nome cai para #b4b4b4. Acima, a busca ("Pôr mais alguém") com a Lista tocável; sem nome igual, a última linha
+  é "Cadastrar “Fulano”" com "Jogador novo, nota 3,0" em Giz. Contagem "N marcados" como o "x/16".
+- **Diferença:** "Diferença: 0,5" em Subtítulo (Barlow 28px), à direita uma ação de texto opcional ("Mudar
+  quem joga"); embaixo, em Giz, o gesto da tela ("Toque em dois de times diferentes para trocar."). Times de
+  tamanhos diferentes ganham uma linha em #b4b4b4 com a diferença por jogador (2 casas).
+- **Cartão de time:** grade 2×2 com 8px de intervalo, placa #111 raio 10px, 6px de respiro. Cabeçalho de 48px:
+  bolinha do colete, nome da cor em Inter 600 16px, soma em Barlow 28px tabular à direita. Jogadores em linhas
+  de 48px: nome Inter 500 16px (truncado), nota em Giz tabular. Time vazio: "Ninguém." em Giz.
+- **Jogador escolhido:** placa alta com anel lima de 2px por dentro (`aria-pressed`). Tocar de novo cancela;
+  tocar outro do mesmo time troca a escolha. Os dois trocados entram com o passo de pendurar (90ms, 2 quadros).
+- **Barra de baixo:** fixa no rodapé, fundo #000 (como a dos mensalistas): "Sortear 16 em 4 times" (pílula
+  branca, conta o que vai fazer); na proposta, "Marcar como definitivo" em cima e "Sortear de novo" secundária.
+- **Folha do escolhido:** com um jogador escolhido, a barra vira folha: placa #111, raio 20px só em cima,
+  sombra para cima (ela flutua sobre os times; é a única sombra da tela). Na proposta: "Trocar Fulano" + "com
+  alguém de outro time" e "Cancelar". Nos times definitivos: "Levar Fulano para" (ou "Pôr Fulano no"), os
+  outros times como botões de 56px em placa alta com a bolinha, "Tirar do time" secundária e "Cancelar".
+- **Resultado:** "Fulano agora é do Azul." em lima com `role="status"` na barra; erro em vermelho com
+  `role="alert"`.
 
 ### Tela de erro
 - Para erro inesperado (`error.tsx`, `global-error.tsx`): título "Algo deu errado" a 80px do topo, uma frase
