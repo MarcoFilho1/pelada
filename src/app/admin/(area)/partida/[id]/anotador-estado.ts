@@ -6,7 +6,6 @@
 // ainda é o último lance. O que a tela mostra = os lances da última resposta + as escritas que
 // ainda estão na fila, aplicadas em ordem.
 
-import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import { placar as placarDe, tempoRestanteMs, type Lado, type Placar, type TipoLance } from '@/domain/partida';
 import type { LanceDaPartida } from '@/server/partidas';
 import type { EstadoDaPartida } from './estado';
@@ -44,7 +43,11 @@ export type Vista = {
   desfazendo: boolean;
 };
 
-const FALHA: Falha = { ok: false, erro: MSG_ALGO_DEU_ERRADO };
+/**
+ * A ação lançou no aparelho (rede caiu, 5xx): o pedido pode ter chegado e gravado. Mandar "tente de
+ * novo" faria a pessoa tocar outra vez e contar em dobro, então a mensagem manda conferir o placar.
+ */
+const SEM_RESPOSTA: Falha = { ok: false, erro: 'Sem resposta do servidor. Confira o placar (atualiza em 5 s) antes de tocar de novo.' };
 
 const idDoAlvo = (alvo: { toque: number } | { lanceId: number }) => ('toque' in alvo ? -alvo.toque : alvo.lanceId);
 
@@ -118,6 +121,8 @@ export class Anotacoes {
   constructor(
     estado: EstadoDaPartida,
     private readonly escritor: Escritor,
+    /** Chamado quando uma ação lança sem resposta: a tela pede já uma leitura nova da página. */
+    private readonly aoPerderResposta?: () => void,
   ) {
     this.base = estado;
     this.pagina = estado;
@@ -175,8 +180,9 @@ export class Anotacoes {
   }
 
   private async enviarToque(e: Extract<Escrita, { tipo: 'toque' }>) {
-    const r = await this.escritor.anotar(e.jogadorId, e.lance).catch(() => FALHA);
+    const r = await this.escritor.anotar(e.jogadorId, e.lance).catch(() => SEM_RESPOSTA);
     const desteToque = (x: Escrita) => x.tipo === 'desfazer' && 'toque' in x.alvo && x.alvo.toque === e.chave;
+    if (r === SEM_RESPOSTA) this.aoPerderResposta?.();
     this.escritas = this.escritas.filter((x) => x.chave !== e.chave);
     if (r.ok) {
       if (r.estado) {
@@ -201,7 +207,8 @@ export class Anotacoes {
     const e = this.escritas.find((x) => x.chave === chave);
     if (!e || e.tipo !== 'desfazer' || 'toque' in e.alvo) return; // caiu junto com um toque recusado
     const id = e.alvo.lanceId;
-    const r = await this.escritor.desfazer(id).catch(() => FALHA);
+    const r = await this.escritor.desfazer(id).catch(() => SEM_RESPOSTA);
+    if (r === SEM_RESPOSTA) this.aoPerderResposta?.();
     this.escritas = this.escritas.filter((x) => x.chave !== chave);
     if (r.ok) {
       if (r.estado) {

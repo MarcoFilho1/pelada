@@ -316,6 +316,34 @@ describe('fila de escritas (T12-1)', () => {
     expect(a.instantaneo().placar).toEqual({ A: 1, B: 0 });
     expect(a.instantaneo().aviso).toMatchObject({ tipo: 'erro' });
   });
+
+  it('a ação grava e depois lança (resposta perdida): não manda tocar de novo, pede recarga e a página traz o gol uma vez', async () => {
+    const real = escritorReal();
+    const inicial = await estado();
+    let recargas = 0;
+    const a = new Anotacoes(
+      inicial,
+      {
+        ...real,
+        anotar: async (j, t) => {
+          await real.anotar(j, t); // chegou ao servidor e gravou
+          throw new Error('rede caiu antes da resposta');
+        },
+      },
+      () => recargas++,
+    );
+    a.tocar(pepe, 'gol');
+    await a.ocioso();
+    const aviso = a.instantaneo().aviso;
+    expect(aviso?.texto).toBeDefined();
+    expect(aviso?.texto).not.toMatch(/tente de novo/i);
+    expect(aviso?.texto).toMatch(/confira o placar/i);
+    expect(recargas).toBe(1);
+    // A leitura seguinte da página já traz o gol: conta uma vez só.
+    a.receberDaPagina({ ...(await estado()), lidoEm: inicial.lidoEm + 1000 });
+    expect(gols(a, pepe)).toBe(1);
+    expect(await lancesNoBanco()).toEqual([{ jogadorId: pepe, tipo: 'gol' }]);
+  });
 });
 
 describe('a página recarregada (a cada 5 s) e a fila', () => {

@@ -29,10 +29,14 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
   const router = useRouter();
   const [fila] = useState(
     () =>
-      new Anotacoes(doServidor, {
-        anotar: (jogadorId, tipo) => anotar(doServidor.id, jogadorId, tipo),
-        desfazer: (esperadoId) => desfazer(doServidor.id, esperadoId),
-      }),
+      new Anotacoes(
+        doServidor,
+        {
+          anotar: (jogadorId, tipo) => anotar(doServidor.id, jogadorId, tipo),
+          desfazer: (esperadoId) => desfazer(doServidor.id, esperadoId),
+        },
+        () => router.refresh(), // resposta perdida: o lance pode ter gravado, confere já na base
+      ),
   );
   useEffect(() => fila.receberDaPagina(doServidor), [fila, doServidor]);
   const v = useSyncExternalStore(fila.assinar, fila.instantaneo, fila.instantaneo);

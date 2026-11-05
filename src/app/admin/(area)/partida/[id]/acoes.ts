@@ -33,7 +33,10 @@ async function eDepoisLer(partidaId: number, fn: () => Promise<unknown>): Promis
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }
-  const estado = await lerEstado(getDb(), partidaId).catch(() => null);
+  const estado = await lerEstado(getDb(), partidaId).catch((e: unknown) => {
+    console.error(e);
+    return null;
+  });
   return { ok: true, estado };
 }
 
