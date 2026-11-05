@@ -9,6 +9,7 @@ import {
   criarJogadores,
   listarJogadores,
   NomeEmUsoError,
+  notaDoJogador,
   parseNomesColados,
   zerarPin,
 } from '@/server/jogadores';
@@ -25,6 +26,16 @@ async function ler(id: number) {
 
 beforeEach(async () => {
   db = await createTestDb();
+});
+
+describe('notaDoJogador', () => {
+  it('devolve a nota como número; null para quem não existe', async () => {
+    const [caio] = await db.insert(jogadores).values({ nome: 'Caio', nota: '4.5' }).returning();
+    const [novo] = await db.insert(jogadores).values({ nome: 'Novo' }).returning();
+    expect(await notaDoJogador(db, caio.id)).toBe(4.5);
+    expect(await notaDoJogador(db, novo.id)).toBe(3);
+    expect(await notaDoJogador(db, 9999)).toBeNull();
+  });
 });
 
 describe('parseNomesColados', () => {

@@ -41,6 +41,40 @@ export type ResultadoEntrada =
   | { ok: false; motivo: 'pin_errado' }
   | { ok: false; motivo: 'bloqueado'; bloqueadoAte: Date };
 
+type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
+type LinhaJogador = typeof jogadores.$inferSelect;
+type Conferencia = { ok: true } | { ok: false; motivo: 'pin_errado' } | { ok: false; motivo: 'bloqueado'; bloqueadoAte: Date };
+
+/**
+ * Regra única do PIN (entrada e troca): bloqueado responde `bloqueado` sem olhar o PIN;
+ * certo zera a contagem; errado conta, e o 5º seguido bloqueia por 15 min.
+ * `pin_hash` nulo vale como PIN padrão. Rodar dentro da transação que travou a linha.
+ */
+async function conferirPin(tx: Tx, j: LinhaJogador, pin: string, now: Date): Promise<Conferencia> {
+  if (j.bloqueadoAte && estaBloqueado(j.bloqueadoAte, now)) {
+    return { ok: false, motivo: 'bloqueado', bloqueadoAte: j.bloqueadoAte };
+  }
+
+  const certo = pinValido(pin) && (j.pinHash === null ? pin === PIN_PADRAO : await conferirSegredo(pin, j.pinHash));
+
+  if (certo) {
+    if (j.pinErros !== 0 || j.bloqueadoAte !== null) {
+      await tx.update(jogadores).set({ pinErros: 0, bloqueadoAte: null }).where(eq(jogadores.id, j.id));
+    }
+    return { ok: true };
+  }
+
+  const erro = registrarErro(j.pinErros, now);
+  await tx.update(jogadores).set({ pinErros: erro.erros, bloqueadoAte: erro.bloqueadoAte }).where(eq(jogadores.id, j.id));
+  return erro.bloqueadoAte ? { ok: false, motivo: 'bloqueado', bloqueadoAte: erro.bloqueadoAte } : { ok: false, motivo: 'pin_errado' };
+}
+
+/** Linha do jogador travada para a conferência do PIN (tentativas simultâneas contam uma de cada vez). */
+async function jogadorTravado(tx: Tx, jogadorId: number): Promise<LinhaJogador | undefined> {
+  const [j] = await tx.select().from(jogadores).where(eq(jogadores.id, jogadorId)).for('update');
+  return j;
+}
+
 /**
  * Confere o PIN do jogador. Bloqueado: responde `bloqueado` sem olhar o PIN.
  * Até o bloqueio começar, erro é sempre `pin_errado` (não avisa quantas tentativas restam).
@@ -48,31 +82,45 @@ export type ResultadoEntrada =
  */
 export async function entrarJogador(db: DB, jogadorId: number, pin: string, now: Date): Promise<ResultadoEntrada> {
   return db.transaction(async (tx) => {
-    // FOR UPDATE: tentativas simultâneas no mesmo perfil contam uma de cada vez.
-    const [j] = await tx.select().from(jogadores).where(eq(jogadores.id, jogadorId)).for('update');
+    const j = await jogadorTravado(tx, jogadorId);
     if (!j || !j.ativo) return { ok: false, motivo: 'pin_errado' };
-    if (j.bloqueadoAte && estaBloqueado(j.bloqueadoAte, now)) {
-      return { ok: false, motivo: 'bloqueado', bloqueadoAte: j.bloqueadoAte };
-    }
+    const r = await conferirPin(tx, j, pin, now);
+    return r.ok ? { ok: true, precisaTrocar: precisaTrocarPin(j) } : r;
+  });
+}
 
-    const certo =
-      pinValido(pin) && (j.pinHash === null ? pin === PIN_PADRAO : await conferirSegredo(pin, j.pinHash));
+export type ResultadoTrocaPin = Conferencia | { ok: false; motivo: 'pin_invalido' };
 
-    if (certo) {
-      if (j.pinErros !== 0 || j.bloqueadoAte !== null) {
-        await tx.update(jogadores).set({ pinErros: 0, bloqueadoAte: null }).where(eq(jogadores.id, j.id));
-      }
-      return { ok: true, precisaTrocar: precisaTrocarPin(j) };
-    }
-
-    const erro = registrarErro(j.pinErros, now);
+/**
+ * Troca pedida pelo perfil: confere o PIN atual com a mesma regra da entrada (o erro conta
+ * para o bloqueio de 5 erros / 15 min) e só então grava o novo, como `trocarPin`
+ * (derruba as outras sessões; quem chamou reemite o cookie deste aparelho).
+ * PIN novo inválido é recusado antes, sem conferir nem contar erro.
+ */
+export async function trocarPinComAtual(
+  db: DB,
+  jogadorId: number,
+  atual: string,
+  novo: string,
+  now: Date,
+): Promise<ResultadoTrocaPin> {
+  if (!pinNovoValido(novo)) return { ok: false, motivo: 'pin_invalido' };
+  return db.transaction(async (tx) => {
+    const j = await jogadorTravado(tx, jogadorId);
+    if (!j || !j.ativo) return { ok: false, motivo: 'pin_errado' };
+    const r = await conferirPin(tx, j, atual, now);
+    if (!r.ok) return r;
     await tx
       .update(jogadores)
-      .set({ pinErros: erro.erros, bloqueadoAte: erro.bloqueadoAte })
+      .set({
+        pinHash: await hashSegredo(novo),
+        pinPrecisaTrocar: false,
+        pinErros: 0,
+        bloqueadoAte: null,
+        sessaoVersao: sql`${jogadores.sessaoVersao} + 1`,
+      })
       .where(eq(jogadores.id, j.id));
-    return erro.bloqueadoAte
-      ? { ok: false, motivo: 'bloqueado', bloqueadoAte: erro.bloqueadoAte }
-      : { ok: false, motivo: 'pin_errado' };
+    return { ok: true };
   });
 }
 

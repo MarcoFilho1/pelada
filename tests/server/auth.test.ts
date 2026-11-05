@@ -7,6 +7,7 @@ import {
   entrarAdmin,
   entrarJogador,
   trocarPin,
+  trocarPinComAtual,
 } from '@/server/auth';
 import { hashSegredo } from '@/server/senha';
 import { createTestDb } from '../helpers/db';
@@ -97,6 +98,64 @@ describe('trocarPin', () => {
 
   it('lança erro para jogador inexistente', async () => {
     await expect(trocarPin(db, 9999, '7788')).rejects.toThrow();
+  });
+});
+
+describe('trocarPinComAtual', () => {
+  async function comPin(nome: string, pin: string, extra: Partial<typeof jogadores.$inferInsert> = {}) {
+    return criarJogador(nome, { pinHash: await hashSegredo(pin), pinPrecisaTrocar: false, ...extra });
+  }
+
+  it('com o PIN atual certo grava o novo, zera erros e derruba as outras sessões', async () => {
+    const caio = await comPin('Caio', '4321', { pinErros: 3 });
+    expect(await trocarPinComAtual(db, caio.id, '4321', '5678', now)).toEqual({ ok: true });
+    const depois = await lerJogador(caio.id);
+    expect(depois.sessaoVersao).toBe(caio.sessaoVersao + 1);
+    expect(depois.pinErros).toBe(0);
+    expect(await entrarJogador(db, caio.id, '5678', now)).toEqual({ ok: true, precisaTrocar: false });
+    expect(await entrarJogador(db, caio.id, '4321', now)).toEqual({ ok: false, motivo: 'pin_errado' });
+  });
+
+  it('PIN atual errado não troca, conta erro e não mexe na sessão', async () => {
+    const caio = await comPin('Caio', '4321');
+    expect(await trocarPinComAtual(db, caio.id, '0000', '5678', now)).toEqual({ ok: false, motivo: 'pin_errado' });
+    const depois = await lerJogador(caio.id);
+    expect(depois.pinErros).toBe(1);
+    expect(depois.sessaoVersao).toBe(caio.sessaoVersao);
+    expect(depois.pinHash).toBe(caio.pinHash);
+  });
+
+  it('erros na troca e na entrada somam para o mesmo bloqueio de 15 min', async () => {
+    const caio = await comPin('Caio', '4321');
+    for (let i = 0; i < 2; i++) await entrarJogador(db, caio.id, '0000', now);
+    for (let i = 0; i < 2; i++) {
+      expect(await trocarPinComAtual(db, caio.id, '0000', '5678', now)).toEqual({ ok: false, motivo: 'pin_errado' });
+    }
+    const ate = minutos(15);
+    expect(await trocarPinComAtual(db, caio.id, '0000', '5678', now)).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
+    expect(await entrarJogador(db, caio.id, '4321', minutos(1))).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
+  });
+
+  it('bloqueado responde bloqueado mesmo com o PIN certo e não troca', async () => {
+    const ate = minutos(10);
+    const caio = await comPin('Caio', '4321', { bloqueadoAte: ate });
+    expect(await trocarPinComAtual(db, caio.id, '4321', '5678', now)).toEqual({ ok: false, motivo: 'bloqueado', bloqueadoAte: ate });
+    expect((await lerJogador(caio.id)).pinHash).toBe(caio.pinHash);
+    expect(await trocarPinComAtual(db, caio.id, '4321', '5678', minutos(11))).toEqual({ ok: true });
+  });
+
+  it('PIN novo inválido (1234, letras, curto) é recusado sem conferir nem contar erro', async () => {
+    const caio = await comPin('Caio', '4321');
+    for (const novo of ['1234', 'abcd', '123']) {
+      expect(await trocarPinComAtual(db, caio.id, '0000', novo, now)).toEqual({ ok: false, motivo: 'pin_invalido' });
+    }
+    expect((await lerJogador(caio.id)).pinErros).toBe(0);
+  });
+
+  it('jogador inativo ou inexistente não troca', async () => {
+    const caio = await comPin('Caio', '4321', { ativo: false });
+    expect(await trocarPinComAtual(db, caio.id, '4321', '5678', now)).toEqual({ ok: false, motivo: 'pin_errado' });
+    expect(await trocarPinComAtual(db, 9999, '4321', '5678', now)).toEqual({ ok: false, motivo: 'pin_errado' });
   });
 });
 

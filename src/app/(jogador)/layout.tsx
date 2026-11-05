@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { NavJogador } from '@/components/nav-jogador';
 import { getDb } from '@/db/client';
 import { lerSessaoJogador } from '@/server/sessao';
 
@@ -8,5 +9,10 @@ export default async function AreaJogadorLayout({ children }: LayoutProps<'/'>) 
   const sessao = await lerSessaoJogador(getDb());
   if (!sessao) redirect('/entrar');
   if (sessao.precisaTrocar) redirect('/trocar-pin');
-  return children;
+  return (
+    <>
+      {children}
+      <NavJogador />
+    </>
+  );
 }

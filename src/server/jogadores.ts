@@ -115,3 +115,9 @@ export async function listarJogadores(db: DB, { incluirInativos }: { incluirInat
     .map((j) => ({ id: j.id, nome: j.nome, nota: Number(j.nota), ativo: j.ativo, pinPadrao: j.pinHash === null }))
     .sort((a, b) => normalizarNome(a.nome).localeCompare(normalizarNome(b.nome), 'pt-BR'));
 }
+
+/** Nota do jogador (0 a 5, passo 0,5); `null` se ele não existe. */
+export async function notaDoJogador(db: DB, id: number): Promise<number | null> {
+  const [j] = await db.select({ nota: jogadores.nota }).from(jogadores).where(eq(jogadores.id, id));
+  return j ? Number(j.nota) : null;
+}
