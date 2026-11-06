@@ -49,7 +49,8 @@ export function Correcao({ estado: inicial }: { estado: EstadoDaPartida }) {
         <Colete cor={estado.lados.B.cor} />
       </p>
       <p role="status" className="mt-1 text-base text-apagado">
-        {A === B ? 'Empate' : `${nome(A > B ? 'A' : 'B')} venceu`}. Cada toque já fica salvo.
+        {A === B ? 'Empate' : `${nome(A > B ? 'A' : 'B')} venceu`}. Cada <span className="lg:hidden">toque</span>
+        <span className="hidden lg:inline">clique</span> já fica salvo.
       </p>
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
