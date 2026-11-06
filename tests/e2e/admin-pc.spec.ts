@@ -116,3 +116,59 @@ test('jogadores no PC: a nota muda pela própria linha e continua depois de reca
   await page.reload();
   await expect(page.getByRole('group', { name: `Nota de ${nome}` }).locator('output')).toHaveText(antes);
 });
+
+test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido abre o painel ao lado', async ({ page }) => {
+  // Só a proposta (não grava nada): a pelada de hoje continua com os times da semente para os testes seguintes.
+  await entrar(page);
+  await page.goto('/admin/sorteio', { waitUntil: 'networkidle' });
+
+  // Times salvos: a busca e o "Sortear de novo" ficam na coluna da esquerda, ao lado dos cartões.
+  const sortearDeNovo = page.getByRole('button', { name: 'Sortear de novo' });
+  const azul = page.getByRole('region', { name: 'Azul', exact: true });
+  const [esquerda, cartao] = [await sortearDeNovo.boundingBox(), await azul.boundingBox()];
+  expect(esquerda!.x + esquerda!.width).toBeLessThan(cartao!.x);
+  expect(esquerda!.y).toBeLessThan(cartao!.y + cartao!.height);
+
+  await sortearDeNovo.click();
+  const busca = page.getByRole('textbox', { name: 'Pôr mais alguém' });
+  for (const nome of E2E.sorteio) {
+    await busca.fill(nome);
+    await page.getByRole('button', { name: nome, exact: true }).click();
+  }
+  await expect(page.getByRole('checkbox', { checked: true })).toHaveCount(14);
+  // A pílula fica no alto, à direita da lista (não presa no rodapé).
+  const sortear = page.getByRole('button', { name: 'Sortear 14 em 4 times' });
+  const [pilula, campo] = [await sortear.boundingBox(), await busca.boundingBox()];
+  expect(pilula!.x).toBeGreaterThan(campo!.x + campo!.width);
+  expect(pilula!.y).toBeLessThan(campo!.y + campo!.height);
+  await sortear.click();
+
+  // Os 4 cartões na mesma linha, à direita de "Quem joga", que continua à vista.
+  const cartoes = page.getByRole('region', { name: /^(Azul|Laranja|Verde|Preto)$/ });
+  await expect(cartoes).toHaveCount(4);
+  const caixas = await Promise.all((await cartoes.all()).map((c) => c.boundingBox()));
+  expect(new Set(caixas.map((c) => Math.round(c!.y))).size).toBe(1);
+  const quemJoga = await page.getByRole('heading', { name: 'Quem joga' }).boundingBox();
+  expect(quemJoga!.x + quemJoga!.width).toBeLessThan(caixas[0]!.x);
+  await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toBeVisible();
+
+  // Escolher um jogador do Azul abre o painel ao lado dos cartões (sem cobrir nenhum), no lugar de "Quem joga".
+  const laranja = page.getByRole('region', { name: 'Laranja', exact: true });
+  const doAzul = azul.locator('button[aria-pressed]').first();
+  const doLaranja = laranja.locator('button[aria-pressed]').first();
+  const [nomeAzul, nomeLaranja] = [(await doAzul.innerText()).split('\n')[0], (await doLaranja.innerText()).split('\n')[0]];
+  await doAzul.click();
+  await expect(doAzul).toHaveAttribute('aria-pressed', 'true');
+  const painel = page.getByText(`Trocar ${nomeAzul}`, { exact: true });
+  await expect(painel).toBeVisible();
+  expect((await painel.boundingBox())!.x).toBeLessThan(caixas[0]!.x);
+  await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeHidden();
+
+  // Clicar em alguém do Laranja troca os dois de time e fecha o painel; "Quem joga" volta.
+  await doLaranja.click();
+  await expect(azul.getByRole('button', { name: new RegExp(`^${nomeLaranja} nota`) })).toBeVisible();
+  await expect(laranja.getByRole('button', { name: new RegExp(`^${nomeAzul} nota`) })).toBeVisible();
+  await expect(painel).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
