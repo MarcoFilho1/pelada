@@ -1,12 +1,10 @@
 import type { Periodo } from './ranking';
-import { mesDe } from './tempo';
+import { mesDe, nomeDoMes } from './tempo';
 
 /** Anos e meses ('YYYY-MM') com partida encerrada, mais recentes primeiro (`periodosDisponiveis`). */
 export type PeriodosDisponiveis = { anos: number[]; meses: string[] };
 
 export type Aba = Periodo['tipo'];
-
-const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 const doMes = (yyyymm: string): Periodo => ({ tipo: 'mes', ano: Number(yyyymm.slice(0, 4)), mes: Number(yyyymm.slice(5, 7)) });
 
@@ -37,7 +35,8 @@ export function periodoDaUrl(param: string | string[] | undefined, disp: Periodo
 export function nomeDoPeriodo(p: Periodo): string {
   if (p.tipo === 'geral') return 'Geral';
   if (p.tipo === 'ano') return String(p.ano);
-  return `${MESES[p.mes - 1]} de ${p.ano}`;
+  const nome = nomeDoMes(parametroDoPeriodo(p));
+  return nome[0].toUpperCase() + nome.slice(1);
 }
 
 /** Ano ou mês disponível logo antes (mais antigo) e logo depois do escolhido. */
