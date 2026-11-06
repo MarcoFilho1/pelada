@@ -41,7 +41,7 @@ type Esquecida = { id: number; data: string; corA: Cor; corB: Cor; placar: Placa
 export function PartidasAdmin(p: Props) {
   useAutoRefresh(5000);
   return (
-    <main className="flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] lg:content-start lg:items-start lg:gap-x-10">
+    <main className="flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_min(22rem,45%)] lg:content-start lg:items-start lg:gap-x-10">
       <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-2">Partidas</h1>
       <p className="mt-2 text-base text-apagado lg:col-span-2">
         Quarta, {p.data} · {p.hoje ? 'Hoje' : 'A última pelada'}
