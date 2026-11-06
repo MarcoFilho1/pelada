@@ -60,6 +60,34 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
     });
   }
 
+  // Desfazer e Salvar: no celular, na barra presa no rodapé; no PC, na linha de cima, ao lado do mês
+  // (duas cópias, uma escondida em cada largura, para o Tab seguir a ordem que se vê).
+  const acoes = (
+    <>
+      {mudou && (
+        <button
+          type="button"
+          onClick={() => {
+            setEscolhidos(new Set(salvos));
+            setAviso(null);
+          }}
+          disabled={salvando}
+          className="flex h-12 shrink-0 items-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta"
+        >
+          Desfazer
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={salvar}
+        disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
+        className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado lg:w-auto lg:px-8"
+      >
+        {salvando ? 'Salvando…' : 'Salvar mensalistas'}
+      </button>
+    </>
+  );
+
   return (
     // No PC (lg) vira grade: o mês e o Salvar dividem a linha de cima, o contador e os avisos logo
     // abaixo, e os nomes em colunas (sem a barra presa no rodapé).
@@ -89,6 +117,8 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
           </Link>
         )}
       </div>
+
+      <div className="hidden lg:col-start-3 lg:row-start-2 lg:mt-4 lg:flex lg:items-center lg:justify-end lg:gap-3">{acoes}</div>
 
       <p className="mt-6 flex items-baseline gap-3 lg:col-span-3 lg:row-start-3">
         <span className="font-placa text-numero font-semibold tabular-nums" aria-label={`${total} de ${MAX} vagas`}>
@@ -150,29 +180,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         {aviso?.texto}
       </p>
 
-      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4 lg:static lg:col-start-3 lg:row-start-2 lg:mx-0 lg:justify-end lg:p-0">
-        {mudou && (
-          <button
-            type="button"
-            onClick={() => {
-              setEscolhidos(new Set(salvos));
-              setAviso(null);
-            }}
-            disabled={salvando}
-            className="flex h-12 shrink-0 items-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta"
-          >
-            Desfazer
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={salvar}
-          disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
-          className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado lg:w-auto lg:px-8"
-        >
-          {salvando ? 'Salvando…' : 'Salvar mensalistas'}
-        </button>
-      </div>
+      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4 lg:hidden">{acoes}</div>
     </main>
   );
 }
