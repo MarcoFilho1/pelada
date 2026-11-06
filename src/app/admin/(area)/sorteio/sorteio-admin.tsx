@@ -58,8 +58,12 @@ function resumoDoTime(times: TimeNaTela[], indice: number) {
  */
 const COLUNAS = 'contents lg:mt-8 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start lg:gap-x-10';
 const ESQUERDA = 'contents lg:block lg:self-stretch';
-/** Os times ficam presos no alto enquanto a lista de quem joga (22+ nomes) rola ao lado. */
-const DIREITA = 'lg:sticky lg:top-6 lg:block lg:@container';
+/**
+ * Os times ficam presos no alto enquanto a lista de quem joga (22+ nomes) rola ao lado, mas só com os 4 cartões numa
+ * linha (a partir de 84rem, ~1344px) e a tela alta o bastante: em 2×2 a coluna passa da altura da tela e a parte de
+ * baixo dos cartões só apareceria no fim da lista.
+ */
+const DIREITA = 'lg:block lg:@container [@media(min-width:84rem)_and_(min-height:40rem)]:sticky [@media(min-width:84rem)_and_(min-height:40rem)]:top-6';
 
 export function SorteioAdmin(p: Props) {
   const [refazendo, setRefazendo] = useState(false);
@@ -119,18 +123,23 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, startAcao] = useTransition();
   const [acao, setAcao] = useState<'sortear' | 'definir' | null>(null);
+  /** O admin mexeu nas marcas com a proposta na tela (só dá no PC, onde "Quem joga" fica à vista). */
+  const [marcouDepois, setMarcouDepois] = useState(false);
   const proximaChave = useRef(1);
 
   const visiveis = linhas.filter((id) => porId.has(id));
   const escolhidos = visiveis.filter((id) => marcados.has(id));
   const nTimes = Math.min(CORES.length, escolhidos.length);
   const viramComplete = Math.max(0, nTimes * VAGAS - escolhidos.length);
-  // No PC "Quem joga" fica à vista com os times: mexeu nas marcas depois de sortear, a proposta não vale mais.
+  // No PC "Quem joga" fica à vista com os times: mexeu nas marcas depois de sortear, a proposta não vale mais. Só conta
+  // a marca mexida à mão (a lista que se atualiza sozinha não muda nada, como no celular).
   const naProposta = useMemo(() => proposta && new Set(proposta.flatMap((t) => t.jogadores.map((j) => j.id))), [proposta]);
-  const quemJogaMudou = !!naProposta && (naProposta.size !== escolhidos.length || escolhidos.some((id) => !naProposta.has(id)));
+  const quemJogaMudou =
+    marcouDepois && !!naProposta && (naProposta.size !== escolhidos.length || escolhidos.some((id) => !naProposta.has(id)));
 
   function alternar(id: number) {
     setConfirmando(false);
+    if (proposta) setMarcouDepois(true);
     setMarcados((m) => {
       const novo = new Set(m);
       if (novo.has(id)) novo.delete(id);
@@ -141,6 +150,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
 
   function incluir(j: JogadorNota) {
     setConfirmando(false);
+    if (proposta) setMarcouDepois(true);
     setLinhas((ls) => (ls.includes(j.id) ? ls : [...ls, j.id]));
     setMarcados((m) => new Set(m).add(j.id));
   }
@@ -153,6 +163,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
 
   function rodarSorteio() {
     setErro(null);
+    setMarcouDepois(false);
     fecharFolhas();
     setAcao('sortear');
     startAcao(async () => {
@@ -243,6 +254,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
     ) : null;
   const temPainel = !!aberto || !!selecionado;
 
+  // No PC "Voltar aos times salvos" fica na coluna da esquerda, logo abaixo do aviso dos times salvos.
   const acoes = (pc: boolean) => (
     <AcoesDoSorteio
       pc={pc}
@@ -258,7 +270,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
       onSortear={rodarSorteio}
       onDefinir={definir}
       onVoltarDaConfirmacao={() => setConfirmando(false)}
-      onVoltarAosSalvos={proposta ? undefined : p.onVoltar}
+      onVoltarAosSalvos={proposta || pc ? undefined : p.onVoltar}
     />
   );
 
@@ -276,6 +288,14 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
           <div className={!proposta ? 'contents lg:block' : temPainel ? 'hidden' : 'hidden lg:block'}>
             {p.onVoltar && (
               <p className="mt-4 text-base text-apagado lg:mt-0">Os times salvos continuam valendo até você marcar um sorteio novo como definitivo.</p>
+            )}
+            {p.onVoltar && (
+              // No celular fica na barra de baixo antes de sortear (e, na proposta, depois de "Mudar quem joga").
+              <SoNo pc>
+                <button type="button" className={`-ml-3 hidden lg:flex ${TEXTO}`} disabled={pendente} onClick={p.onVoltar}>
+                  Voltar aos times salvos
+                </button>
+              </SoNo>
             )}
             <BuscaDeJogador
               id="busca-sorteio"

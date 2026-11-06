@@ -171,4 +171,10 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
   await expect(painel).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  // Desistir da proposta: "Voltar aos times salvos" fica na coluna da esquerda, também com a proposta na tela.
+  await page.getByRole('button', { name: 'Voltar aos times salvos' }).click();
+  await expect(page.getByText('Times definitivos')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sortear de novo' })).toBeVisible();
 });

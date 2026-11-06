@@ -596,13 +596,17 @@ muda; as telas do jogador continuam na coluna de 448px.
   - **Antes de sortear:** à esquerda "Pôr mais alguém" e "Quem joga" (as mesmas linhas de marcar); à direita, no
     alto, a pílula "Sortear 14 em 4 times" do tamanho do texto com "2 vagas viram COMPLETE." em Giz ao lado e, abaixo,
     em #b4b4b4, "Os times aparecem aqui, equilibrados pela nota. Antes de marcar como definitivo, dá para trocar quem
-    quiser." A coluna dos times fica presa no alto (`sticky`) enquanto a lista de 22+ nomes rola ao lado.
+    quiser." Refazendo com times salvos, o aviso "Os times salvos continuam valendo…" e logo abaixo "Voltar aos times
+    salvos" (texto) ficam no alto da coluna da esquerda, antes e depois de sortear. Com os 4 cartões numa linha (a
+    partir de ~1344px) e a tela com pelo menos 640px de altura, a coluna dos times fica presa no alto (`sticky`)
+    enquanto a lista de 22+ nomes rola ao lado; em 2×2 ela rola com a página, para nenhuma linha dos cartões ficar
+    abaixo da dobra.
   - **Proposta:** "Quem joga" continua à vista à esquerda (sem o "Mudar quem joga"). À direita, numa linha,
     "Diferença: 0,5" e as pílulas "Marcar como definitivo" (branca) e "Sortear de novo" (secundária), do tamanho do
     texto; se não cabem, descem para a linha de baixo. A diferença fica no meio da altura das pílulas (56px). A
     confirmação com partidas jogadas toma o lugar das pílulas (placa alta até 448px: a frase, "Usar os times novos" e
     "Voltar" na mesma linha). Embaixo, o gesto em Giz ("Clique em dois de times diferentes para trocar.") e os cartões.
-    Mexer nas marcas depois de sortear invalida a proposta: o gesto vira "Quem joga mudou. Sorteie de novo para os
+    Mexer nas marcas à mão depois de sortear invalida a proposta: o gesto vira "Quem joga mudou. Sorteie de novo para os
     times terem quem está marcado." e a pílula volta a ser "Sortear N em M times".
   - **Cartões:** lado a lado quando a coluna tem ao menos 672px (container query: 4 colunas a partir de ~1340px de
     tela, cada cartão com a largura do celular, ~170px); abaixo disso, 2×2 como no celular. Times de 5 crescem para
