@@ -11,6 +11,7 @@ export function SeletorDeNota({
   onPasso,
   desabilitado = false,
   dica = true,
+  nomeNoBotao,
 }: {
   valor: number;
   /** Nome do grupo para o leitor de tela ("Nota de Fulano"). */
@@ -20,12 +21,18 @@ export function SeletorDeNota({
   desabilitado?: boolean;
   /** "de 0 a 5" ao lado. Sem ela na linha da tabela de jogadores no PC (o limite fica nos botões apagados). */
   dica?: boolean;
+  /**
+   * Nome que vai no rótulo de − e + ("Aumentar nota em 0,5 (Bruno)"). Para quando vários seletores ficam na tela ao
+   * mesmo tempo (a tabela de jogadores no PC): fora do grupo, o leitor de tela e o controle por voz distinguem cada um.
+   */
+  nomeNoBotao?: string;
 }) {
+  const quem = nomeNoBotao ? ` (${nomeNoBotao})` : '';
   return (
     <div role="group" aria-label={rotulo} className="flex items-center gap-2">
       <button
         type="button"
-        aria-label="Diminuir nota em 0,5"
+        aria-label={`Diminuir nota em 0,5${quem}`}
         onClick={() => onPasso(-0.5)}
         disabled={desabilitado || valor <= 0}
         className="grid size-14 place-items-center rounded-placa bg-placa-alta transition-colors hover:bg-chao active:bg-chao disabled:text-meta"
@@ -40,7 +47,7 @@ export function SeletorDeNota({
       </output>
       <button
         type="button"
-        aria-label="Aumentar nota em 0,5"
+        aria-label={`Aumentar nota em 0,5${quem}`}
         onClick={() => onPasso(0.5)}
         disabled={desabilitado || valor >= 5}
         className="grid size-14 place-items-center rounded-placa bg-placa-alta transition-colors hover:bg-chao active:bg-chao disabled:text-meta"

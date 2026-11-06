@@ -329,7 +329,13 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
 
                 {/* No PC a nota se ajusta na própria linha (o mesmo seletor e a mesma regra de salvar). */}
                 <div className="hidden lg:flex lg:justify-center lg:py-1.5">
-                  <SeletorDeNota valor={nota(j)} rotulo={`Nota de ${j.nome}`} onPasso={(passo) => ajustarNota(j, passo)} dica={false} />
+                  <SeletorDeNota
+                    valor={nota(j)}
+                    rotulo={`Nota de ${j.nome}`}
+                    onPasso={(passo) => ajustarNota(j, passo)}
+                    dica={false}
+                    nomeNoBotao={j.nome}
+                  />
                 </div>
                 <span className="hidden text-base text-meta lg:block">
                   <span className="sr-only">PIN: </span>

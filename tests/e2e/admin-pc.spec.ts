@@ -89,7 +89,12 @@ test('jogadores no PC: a nota muda pela própria linha e continua depois de reca
   const antes = (await nota.locator('output').textContent())!;
   const valor = (t: string) => Number(t.replace(',', '.'));
 
-  await nota.getByRole('button', { name: 'Aumentar nota em 0,5' }).click();
+  // Com 20+ seletores na tela, cada − e + diz de quem é a nota, mesmo fora do grupo (rotor, controle por voz).
+  const mais = page.getByRole('button', { name: `Aumentar nota em 0,5 (${nome})`, exact: true });
+  await expect(mais).toHaveCount(1);
+  await expect(page.getByRole('button', { name: `Diminuir nota em 0,5 (${nome})`, exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Aumentar nota em 0,5', exact: true })).toHaveCount(0);
+  await mais.click();
   const nova = (valor(antes) + 0.5).toFixed(1).replace('.', ',');
   await expect(nota.locator('output')).toHaveText(nova);
   // Salva sozinho 500 ms depois do último toque.
