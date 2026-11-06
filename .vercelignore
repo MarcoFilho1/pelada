@@ -1,0 +1,11 @@
+# Fica fora do envio pra Vercel (o .gitignore não vale para `vercel deploy` direto da pasta).
+.env*
+!.env.example
+.pglite*
+.superpowers
+.taste-skill
+.playwright*
+playwright-report
+test-results
+node_modules
+.next
