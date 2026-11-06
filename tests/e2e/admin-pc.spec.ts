@@ -75,7 +75,7 @@ test('pelada no PC: a fila fica à direita da lista, com a busca no alto da colu
 });
 
 test('jogadores no PC: a nota muda pela própria linha e continua depois de recarregar', async ({ page }) => {
-  const nome = E2E.novatos.lista;
+  const nome = E2E.novatos.adminPc;
   await entrar(page);
   await page.goto('/admin/jogadores');
   // O cabeçalho da tabela (Nome · Nota · PIN) só existe no PC.
@@ -88,33 +88,47 @@ test('jogadores no PC: a nota muda pela própria linha e continua depois de reca
   await expect(linha.getByText('PIN: Ainda é 1234', { exact: true })).toBeVisible();
   const antes = (await nota.locator('output').textContent())!;
   const valor = (t: string) => Number(t.replace(',', '.'));
+  const salvou = () => page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/admin/jogadores'));
+  const saida = () => page.getByRole('group', { name: `Nota de ${nome}` }).locator('output');
 
-  // Com 20+ seletores na tela, cada − e + diz de quem é a nota, mesmo fora do grupo (rotor, controle por voz).
-  const mais = page.getByRole('button', { name: `Aumentar nota em 0,5 (${nome})`, exact: true });
-  await expect(mais).toHaveCount(1);
-  await expect(page.getByRole('button', { name: `Diminuir nota em 0,5 (${nome})`, exact: true })).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'Aumentar nota em 0,5', exact: true })).toHaveCount(0);
-  await mais.click();
-  const nova = (valor(antes) + 0.5).toFixed(1).replace('.', ',');
-  await expect(nota.locator('output')).toHaveText(nova);
-  // Salva sozinho 500 ms depois do último toque.
-  await page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/admin/jogadores'));
-  await page.reload();
-  await expect(page.getByRole('group', { name: `Nota de ${nome}` }).locator('output')).toHaveText(nova);
+  try {
+    // Com 20+ seletores na tela, cada − e + diz de quem é a nota, mesmo fora do grupo (rotor, controle por voz).
+    const mais = page.getByRole('button', { name: `Aumentar nota em 0,5 (${nome})`, exact: true });
+    await expect(mais).toHaveCount(1);
+    await expect(page.getByRole('button', { name: `Diminuir nota em 0,5 (${nome})`, exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Aumentar nota em 0,5', exact: true })).toHaveCount(0);
+    const salvouMais = salvou();
+    await mais.click();
+    const nova = (valor(antes) + 0.5).toFixed(1).replace('.', ',');
+    await expect(nota.locator('output')).toHaveText(nova);
+    // Salva sozinho 500 ms depois do último toque.
+    await salvouMais;
+    await page.reload();
+    await expect(saida()).toHaveText(nova);
 
-  // Clicar no nome abre o editor logo abaixo da linha, sem o seletor repetido.
-  await page.getByRole('button', { name: new RegExp(`^${nome}`) }).click();
-  const nomeCampo = page.getByLabel('Nome', { exact: true });
-  await expect(nomeCampo).toHaveValue(nome);
-  await expect(page.getByRole('group', { name: `Nota de ${nome}` })).toHaveCount(1);
-  const linhaBox = await page.getByRole('button', { name: new RegExp(`^${nome}`) }).boundingBox();
-  expect((await nomeCampo.boundingBox())!.y).toBeGreaterThan(linhaBox!.y + linhaBox!.height - 1);
+    // Clicar no nome abre o editor logo abaixo da linha, sem o seletor repetido.
+    await page.getByRole('button', { name: new RegExp(`^${nome}`) }).click();
+    const nomeCampo = page.getByLabel('Nome', { exact: true });
+    await expect(nomeCampo).toHaveValue(nome);
+    await expect(page.getByRole('group', { name: `Nota de ${nome}` })).toHaveCount(1);
+    const linhaBox = await page.getByRole('button', { name: new RegExp(`^${nome}`) }).boundingBox();
+    expect((await nomeCampo.boundingBox())!.y).toBeGreaterThan(linhaBox!.y + linhaBox!.height - 1);
 
-  // Volta a nota de antes.
-  await page.getByRole('group', { name: `Nota de ${nome}` }).getByRole('button', { name: 'Diminuir nota em 0,5' }).click();
-  await page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/admin/jogadores'));
-  await page.reload();
-  await expect(page.getByRole('group', { name: `Nota de ${nome}` }).locator('output')).toHaveText(antes);
+    // Volta a nota de antes.
+    const salvouMenos = salvou();
+    await page.getByRole('group', { name: `Nota de ${nome}` }).getByRole('button', { name: 'Diminuir nota em 0,5' }).click();
+    await salvouMenos;
+    await page.reload();
+    await expect(saida()).toHaveText(antes);
+  } finally {
+    // Falha no meio do teste não deixa a nota mudada (o sorteio dos outros testes depende das notas).
+    await page.goto('/admin/jogadores');
+    if ((await saida().textContent()) !== antes) {
+      const salvouVolta = salvou();
+      await page.getByRole('button', { name: `Diminuir nota em 0,5 (${nome})`, exact: true }).click();
+      await salvouVolta;
+    }
+  }
 });
 
 test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido abre o painel ao lado', async ({ page }) => {
