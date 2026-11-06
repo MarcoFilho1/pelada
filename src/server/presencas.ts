@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, mensalistasMes, peladas, presencas } from '@/db/schema';
 import {
@@ -11,7 +11,9 @@ import {
   type ItemLista,
   type Presenca,
 } from '@/domain/lista';
+import { normalizarNome } from '@/domain/nome';
 import { aberturaLista, mesDaQuarta, prazoMensalista, proximaQuarta } from '@/domain/tempo';
+import { previaMensalistasDoMes } from './mensalistas';
 import { ErroLista, obterPeladaDaSemana, peladaExistenteDaSemana, type Pelada } from './pelada';
 
 type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
@@ -61,14 +63,32 @@ function montar(pelada: Pelada, ps: Presenca[], now: Date): EstadoDaSemana {
 }
 
 /**
+ * Antes de a pelada existir: os mensalistas do mês da quarta como seriam criados na abertura
+ * (M/pendente, `entrou_em` = abertura, em ordem de nome). Só leitura; ids negativos e crescentes
+ * (desempatam o mesmo `entrou_em` na ordem dos nomes) porque ainda não há linha em `presencas`.
+ */
+async function previaDasPresencas(db: DB, data: string): Promise<Presenca[]> {
+  const { ids } = await previaMensalistasDoMes(db, mesDaQuarta(data));
+  if (!ids.length) return [];
+  const linhas = await db
+    .select({ id: jogadores.id, nome: jogadores.nome })
+    .from(jogadores)
+    .where(and(inArray(jogadores.id, ids), eq(jogadores.ativo, true)));
+  const entrouEm = aberturaLista(data);
+  return linhas
+    .sort((a, b) => normalizarNome(a.nome).localeCompare(normalizarNome(b.nome), 'pt-BR'))
+    .map((j, i, todas) => ({ id: i - todas.length, jogadorId: j.id, nome: j.nome, tipo: 'M' as const, status: 'pendente' as const, entrouEm }));
+}
+
+/**
  * A lista da semana como os jogadores veem. A partir de segunda 00:00 cria a pelada (e as
  * presenças dos mensalistas) se preciso; antes disso só lê, para que mensalistas salvos até a
- * abertura ainda valham para esta quarta.
+ * abertura ainda valham para esta quarta, e mostra a prévia com os mensalistas do mês.
  */
 export async function estadoDaSemana(db: DB, now: Date): Promise<EstadoDaSemana> {
   const data = proximaQuarta(now);
   const pelada = now >= aberturaLista(data) ? await obterPeladaDaSemana(db, now) : await peladaExistenteDaSemana(db, now);
-  if (!pelada) return { ...montar({ id: 0, data, estadoManual: null }, [], now), peladaId: null };
+  if (!pelada) return { ...montar({ id: 0, data, estadoManual: null }, await previaDasPresencas(db, data), now), peladaId: null };
   return montar(pelada, await lerPresencas(db, pelada.id, false), now);
 }
 
@@ -153,7 +173,8 @@ export async function confirmar(db: DB, jogadorId: number, now: Date): Promise<v
  * Só a pelada cancelada ou o jogo começado impedem. Sem presença: não faz nada.
  */
 export async function remover(db: DB, jogadorId: number, now: Date): Promise<void> {
-  const pelada = await peladaDoJogador(db, now);
+  // Sair vale antes da abertura: quem está na prévia (mensalista) sai e a pelada nasce aqui.
+  const pelada = await obterPeladaDaSemana(db, now);
   await mudarLista(db, pelada.id, jogadorId, now, async (c) => {
     const trava = travaParaSair(c.estado, pelada.data, pelada.estadoManual, now);
     if (trava === 'cancelada') throw new ErroLista('lista_cancelada');
