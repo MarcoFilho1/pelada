@@ -47,4 +47,7 @@ test('admin no PC: menu lateral com as 7 seções, marca a atual e nada rola de 
   await expect(page.getByRole('heading', { name: 'Partida não encontrada' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Admin' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sair' })).toHaveCount(0);
+  // Sem o menu, a coluna volta a ficar centrada na tela (sem a calha vazia do menu).
+  const coluna = await page.locator('main').boundingBox();
+  expect(Math.abs(coluna!.x + coluna!.width / 2 - 720)).toBeLessThanOrEqual(1);
 });

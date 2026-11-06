@@ -33,6 +33,18 @@
   }
 }
 
+/*
+ * Admin no PC: a partir de 1024px (`lg`), mas só quando a moldura tem o menu lateral. O anotador (e a tela de
+ * partida que não existe, na mesma rota) não tem menu e fica na coluna centrada, como antes.
+ */
+@custom-variant admin-pc {
+  @media (width >= 64rem) {
+    &:has(> [data-menu-lateral]) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   --color-chao: #000000; /* fundo */
   --color-placa: #111111; /* superfície, placa */
