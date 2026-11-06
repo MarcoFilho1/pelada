@@ -55,19 +55,22 @@ export function Correcao({ estado: inicial }: { estado: EstadoDaPartida }) {
         {erro}
       </p>
 
-      {LADOS.map((l) => (
-        <section key={l} aria-labelledby={`lado-${l}`} className="mt-8">
-          <h2 id={`lado-${l}`} className="flex items-center gap-2 font-placa text-2xl font-semibold">
-            <Colete cor={estado.lados[l].cor} />
-            {nome(l)}
-          </h2>
-          <ul className="mt-3 flex flex-col gap-2">
-            {estado.lados[l].jogadores.map((j) => (
-              <LinhaDoJogador key={j.id} jogador={j} desabilitado={salvando} onMudar={(tipo, delta) => mudar(j.id, tipo, delta)} />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {/* No PC, os dois times lado a lado. */}
+      <div className="contents lg:grid lg:max-w-4xl lg:grid-cols-2 lg:gap-x-10">
+        {LADOS.map((l) => (
+          <section key={l} aria-labelledby={`lado-${l}`} className="mt-8">
+            <h2 id={`lado-${l}`} className="flex items-center gap-2 font-placa text-2xl font-semibold">
+              <Colete cor={estado.lados[l].cor} />
+              {nome(l)}
+            </h2>
+            <ul className="mt-3 flex flex-col gap-2">
+              {estado.lados[l].jogadores.map((j) => (
+                <LinhaDoJogador key={j.id} jogador={j} desabilitado={salvando} onMudar={(tipo, delta) => mudar(j.id, tipo, delta)} />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </main>
   );
 }

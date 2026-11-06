@@ -103,7 +103,7 @@ export function QuemCompleta({
       />
 
       <div className="mt-8">
-        <button type="button" className={PILULA_SEGUNDA} onClick={onJogarSem}>
+        <button type="button" className={`${PILULA_SEGUNDA} lg:w-auto lg:px-8`} onClick={onJogarSem}>
           Jogar sem
         </button>
         <p className="mt-2 text-base text-meta">
@@ -174,7 +174,7 @@ export function ConferirQuemCompleta({
         ))}
       </ul>
       <Erro texto={erro} />
-      <button type="button" className={`mt-4 ${PILULA}`} disabled={iniciando} onClick={onIniciar}>
+      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={iniciando} onClick={onIniciar}>
         {iniciando ? 'Iniciando…' : `Iniciar ${confronto}`}
       </button>
     </section>
