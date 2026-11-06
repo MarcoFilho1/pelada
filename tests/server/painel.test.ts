@@ -46,7 +46,7 @@ describe('resumoDoPainel', () => {
   });
 
   it('não copia os mensalistas do mês anterior: mostra a prévia sem gravar', async () => {
-    // Segunda 30/11 → quarta 02/12: o mês dos mensalistas é dezembro, que ainda não tem registro.
+    // Domingo 29/11 → quarta 02/12: o mês dos mensalistas é dezembro, que ainda não tem registro.
     await definirMensalistas(db, '2026-11', await criar(nomes('M', 4)));
 
     const r = await resumoDoPainel(db, new Date('2026-11-29T12:00:00-03:00'));
@@ -105,14 +105,14 @@ describe('resumoDoPainel', () => {
 
     const r = await resumoDoPainel(db, QUARTA_NOITE);
 
-    expect(r.sorteio).toEqual({ data: QUARTA, hoje: true, definidos: true });
+    expect(r.sorteio).toEqual({ data: QUARTA, hoje: true, definidos: true, cancelada: false });
     expect(r.partidas).toEqual({ jogadas: 2, emAndamentoId: aberta.id });
   });
 
   it('quarta sem pelada criada: sorteio e partidas do dia, vazios, sem gravar nada', async () => {
     const r = await resumoDoPainel(db, QUARTA_NOITE);
 
-    expect(r.sorteio).toEqual({ data: QUARTA, hoje: true, definidos: false });
+    expect(r.sorteio).toEqual({ data: QUARTA, hoje: true, definidos: false, cancelada: false });
     expect(r.partidas).toEqual({ jogadas: 0, emAndamentoId: null });
     expect(await db.select().from(peladas)).toHaveLength(0);
   });
@@ -122,7 +122,17 @@ describe('resumoDoPainel', () => {
 
     const r = await resumoDoPainel(db, DOMINGO);
 
-    expect(r.sorteio).toEqual({ data: '2026-11-04', hoje: false, definidos: false });
+    expect(r.sorteio).toEqual({ data: '2026-11-04', hoje: false, definidos: false, cancelada: false });
+    expect(r.partidas).toEqual({ jogadas: 0, emAndamentoId: null });
+  });
+
+  it('pelada do dia cancelada: o sorteio diz que foi cancelada', async () => {
+    const [pelada] = await db.insert(peladas).values({ data: QUARTA }).returning({ id: peladas.id });
+    await definirEstadoManual(db, pelada.id, 'cancelada');
+
+    const r = await resumoDoPainel(db, QUARTA_NOITE);
+
+    expect(r.sorteio).toEqual({ data: QUARTA, hoje: true, definidos: false, cancelada: true });
     expect(r.partidas).toEqual({ jogadas: 0, emAndamentoId: null });
   });
 

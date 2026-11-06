@@ -4,13 +4,11 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Marca, SetaDireita } from '@/components/icones';
 import { getDb } from '@/db/client';
-import { diaDaSemana, diaMes } from '@/domain/tempo';
+import { diaDaSemana, diaMes, nomeDoMes } from '@/domain/tempo';
 import { resumoDoPainel, type ResumoPainel } from '@/server/painel';
 import { lerSessaoAdmin } from '@/server/sessao';
 
 export const metadata: Metadata = { title: 'Painel · Pelada' };
-
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
@@ -19,6 +17,30 @@ function fraseDaLista({ estado, abertura, naFila }: ResumoPainel['lista']): stri
   if (estado === 'antes') return `Abre segunda, ${diaMes(abertura)}, à meia-noite.`;
   if (estado === 'cancelada') return 'Cancelada. Não tem pelada essa semana.';
   return `${estado === 'aberta' ? 'Aberta' : 'Fechada'}, ${fila}.`;
+}
+
+/** Fora do dia, o sorteio e as partidas são da última pelada: a frase diz isso, para não parecer desta semana. */
+function fraseDoSorteio(sorteio: ResumoPainel['sorteio']): ReactNode {
+  if (!sorteio) return 'Aparece no dia da pelada, depois que a lista abrir.';
+  if (!sorteio.hoje) {
+    const como = sorteio.cancelada ? 'foi cancelada' : sorteio.definidos ? 'teve times definitivos' : 'ficou sem times definitivos';
+    return `Na última pelada, ${diaMes(sorteio.data)}, ${como}. O próximo aparece no dia da pelada.`;
+  }
+  if (sorteio.cancelada) return 'A pelada de hoje foi cancelada.';
+  if (!sorteio.definidos) return 'Times ainda não definidos.';
+  return (
+    <span className="flex items-center gap-1">
+      Times definitivos
+      <Marca className="size-5 shrink-0 text-lima" />
+    </span>
+  );
+}
+
+function fraseDasPartidas(partidas: ResumoPainel['partidas'], sorteio: ResumoPainel['sorteio']): string {
+  if (!partidas || !sorteio) return 'Aparecem no dia, depois do sorteio.';
+  if (partidas.emAndamentoId) return 'Uma em andamento: voltar ao anotador.';
+  if (!sorteio.hoje) return `Na última pelada, ${diaMes(sorteio.data)}${sorteio.cancelada ? ', que foi cancelada' : ''}.`;
+  return sorteio.cancelada ? 'A pelada de hoje foi cancelada.' : 'Nenhuma em andamento.';
 }
 
 /** Um assunto da semana: a placa inteira leva à seção, com o número pintado e uma frase. */
@@ -76,7 +98,6 @@ export default async function AdminPage() {
   if (!(await lerSessaoAdmin(db))) redirect('/admin/entrar');
   const now = new Date();
   const { lista, sorteio, partidas, jogadores, mensalistas } = await resumoDoPainel(db, now);
-  const nomeDoMes = MESES[Number(mensalistas.mes.slice(5)) - 1];
   const livres = mensalistas.vagas - mensalistas.marcados;
 
   return (
@@ -95,33 +116,14 @@ export default async function AdminPage() {
         <Bloco
           href="/admin/sorteio"
           titulo="Sorteio"
-          numero={sorteio && (sorteio.hoje ? 'Hoje' : diaMes(sorteio.data))}
-          frase={
-            !sorteio ? (
-              'Aparece no dia da pelada, depois que a lista abrir.'
-            ) : sorteio.definidos ? (
-              <span className="flex items-center gap-1">
-                Times definitivos
-                <Marca className="size-5 shrink-0 text-lima" />
-              </span>
-            ) : (
-              'Times ainda não definidos.'
-            )
-          }
+          numero={sorteio?.hoje && 'Hoje'}
+          frase={fraseDoSorteio(sorteio)}
         />
         <Bloco
           href={partidas?.emAndamentoId ? `/admin/partida/${partidas.emAndamentoId}` : '/admin/partidas'}
           titulo="Partidas"
           numero={partidas && <Conta valor={partidas.jogadas} rotulo={partidas.jogadas === 1 ? 'jogada' : 'jogadas'} />}
-          frase={
-            !partidas
-              ? 'Aparecem no dia, depois do sorteio.'
-              : partidas.emAndamentoId
-                ? 'Uma em andamento. Toque para voltar ao anotador.'
-                : sorteio?.hoje
-                  ? 'Nenhuma em andamento.'
-                  : `Na última pelada, ${diaMes(sorteio?.data ?? '')}.`
-          }
+          frase={fraseDasPartidas(partidas, sorteio)}
         />
         <Bloco
           href="/admin/jogadores"
@@ -137,7 +139,7 @@ export default async function AdminPage() {
           href="/admin/mensalistas"
           titulo="Mensalistas"
           numero={<Conta valor={mensalistas.marcados} de={mensalistas.vagas} rotulo="marcados" />}
-          frase={`De ${nomeDoMes}: ${livres === 0 ? 'vagas cheias' : plural(livres, 'vaga livre', 'vagas livres')}.`}
+          frase={`De ${nomeDoMes(mensalistas.mes)}: ${livres === 0 ? 'vagas cheias' : plural(livres, 'vaga livre', 'vagas livres')}.`}
         />
       </ul>
     </main>

@@ -14,8 +14,8 @@ export type EstadoDaLista = 'antes' | 'aberta' | 'fechada' | 'cancelada';
 
 export type ResumoPainel = {
   lista: { data: string; abertura: string; estado: EstadoDaLista; confirmados: number; vagas: number; naFila: number };
-  /** `null` = ainda não teve pelada nenhuma até hoje. */
-  sorteio: { data: string; hoje: boolean; definidos: boolean } | null;
+  /** `null` = ainda não teve pelada nenhuma até hoje. `cancelada` vale também para as partidas (é a mesma pelada). */
+  sorteio: { data: string; hoje: boolean; definidos: boolean; cancelada: boolean } | null;
   /** `null` = ainda não teve pelada nenhuma até hoje. */
   partidas: { jogadas: number; emAndamentoId: number | null } | null;
   jogadores: { ativos: number; pinPadrao: number };
@@ -36,7 +36,7 @@ export async function resumoDoPainel(db: DB, now: Date): Promise<ResumoPainel> {
 
   const [daSemana, [ultima], ativos, previa] = await Promise.all([
     peladaExistenteDaSemana(db, now),
-    db.select({ id: peladas.id, data: peladas.data }).from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1),
+    db.select({ id: peladas.id, data: peladas.data, estadoManual: peladas.estadoManual }).from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1),
     listarJogadores(db, { incluirInativos: false }),
     previaMensalistasDoMes(db, mes),
   ]);
@@ -55,7 +55,7 @@ export async function resumoDoPainel(db: DB, now: Date): Promise<ResumoPainel> {
 
   // A pelada da noite, como em `peladaDoDia`, mas sem criar: na quarta, sem a de hoje no banco,
   // vale a de hoje vazia (é o que o sorteio e as partidas vão mostrar ao abrir).
-  const doDia = ultima?.data !== hoje && data === hoje ? { id: null, data: hoje } : (ultima ?? null);
+  const doDia = ultima?.data !== hoje && data === hoje ? { id: null, data: hoje, estadoManual: null } : (ultima ?? null);
   const [times, jogadas, emAndamentoId] =
     doDia?.id != null
       ? await Promise.all([timesDaPelada(db, doDia.id), partidasJogadas(db, doDia.id), partidaEmAndamento(db, doDia.id)])
@@ -70,7 +70,12 @@ export async function resumoDoPainel(db: DB, now: Date): Promise<ResumoPainel> {
       vagas: lista.vagas,
       naFila: lista.fila.length,
     },
-    sorteio: doDia && { data: doDia.data, hoje: doDia.data === hoje, definidos: times.length > 0 },
+    sorteio: doDia && {
+      data: doDia.data,
+      hoje: doDia.data === hoje,
+      definidos: times.length > 0,
+      cancelada: doDia.estadoManual === 'cancelada',
+    },
     partidas: doDia && { jogadas: jogadas.jogadas, emAndamentoId },
     jogadores: { ativos: ativos.length, pinPadrao: ativos.filter((j) => j.pinPadrao).length },
     mensalistas: { mes, marcados: previa.ids.length, vagas: MAX_MENSALISTAS },
