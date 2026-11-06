@@ -10,6 +10,7 @@ export function SeletorDeNota({
   rotulo,
   onPasso,
   desabilitado = false,
+  dica = true,
 }: {
   valor: number;
   /** Nome do grupo para o leitor de tela ("Nota de Fulano"). */
@@ -17,6 +18,8 @@ export function SeletorDeNota({
   /** -0,5 ou +0,5; quem usa limita e salva. */
   onPasso: (passo: number) => void;
   desabilitado?: boolean;
+  /** "de 0 a 5" ao lado. Sem ela na linha da tabela de jogadores no PC (o limite fica nos botões apagados). */
+  dica?: boolean;
 }) {
   return (
     <div role="group" aria-label={rotulo} className="flex items-center gap-2">
@@ -44,7 +47,7 @@ export function SeletorDeNota({
       >
         <Mais />
       </button>
-      <span className="ml-1 text-base text-meta">de 0 a 5</span>
+      {dica && <span className="ml-1 text-base text-meta">de 0 a 5</span>}
     </div>
   );
 }
