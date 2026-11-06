@@ -73,7 +73,7 @@ export function FormsAdmins() {
             aria-describedby="novo-dica novo-msg"
             className={CAMPO}
           />
-          <p id="novo-dica" className="mt-2 text-base text-meta">
+          <p id="novo-dica" className="mt-2 text-base text-meta lg:min-h-12">
             Pelo menos 10 caracteres.
           </p>
           <Mensagem id="novo-msg" estado={novo} />
@@ -115,7 +115,7 @@ export function FormsAdmins() {
             aria-describedby="troca-dica troca-msg"
             className={CAMPO}
           />
-          <p id="troca-dica" className="mt-2 text-base text-meta">
+          <p id="troca-dica" className="mt-2 text-base text-meta lg:min-h-12">
             Pelo menos 10 caracteres. Os outros aparelhos saem da conta.
           </p>
           <Mensagem id="troca-msg" estado={troca} />

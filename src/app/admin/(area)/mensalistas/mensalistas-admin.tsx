@@ -2,21 +2,14 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
-import { MAX_MENSALISTAS as MAX } from '@/domain/tempo';
+import { MAX_MENSALISTAS as MAX, nomeDoMes } from '@/domain/tempo';
 import { Marca, SetaDireita, SetaEsquerda } from '@/components/icones';
 import { salvarMensalistas } from './actions';
-
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function deslocar(mes: string, delta: number): string {
   const [a, m] = mes.split('-').map(Number);
   const i = a * 12 + (m - 1) + delta;
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
-}
-
-function nomeDoMes(mes: string): string {
-  const [a, m] = mes.split('-').map(Number);
-  return `${MESES[m - 1]} de ${a}`;
 }
 
 const BOTAO_MES =
@@ -125,7 +118,17 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
           {total}/{MAX}
         </span>
         <span className="text-base text-apagado">
-          {cheio ? 'Vagas cheias. Tire alguém para pôr outro.' : total === 0 ? 'Marque pelo menos 1 mensalista.' : 'Toque no nome para marcar.'}
+          {cheio ? (
+            'Vagas cheias. Tire alguém para pôr outro.'
+          ) : total === 0 ? (
+            'Marque pelo menos 1 mensalista.'
+          ) : (
+            <>
+              {/* No PC é com o mouse. */}
+              <span className="lg:hidden">Toque</span>
+              <span className="hidden lg:inline">Clique</span> no nome para marcar.
+            </>
+          )}
         </span>
       </p>
 

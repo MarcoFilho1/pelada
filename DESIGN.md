@@ -264,8 +264,11 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   #b4b4b4 ao lado ("10/16 confirmados", "22 ativos") e uma frase em #b4b4b4 com o estado ("Aberta, 2 na fila.",
   "Abre segunda, 09/11, à meia-noite.", "1 ainda está com o PIN 1234."). O número da lista é o maior (Número,
   44px); os outros em Subtítulo (28px). Sem ícone, sem cor: só o check lima de 20px em "Times definitivos".
-- Sem pelada até hoje, sorteio e partidas dizem quando aparecem, sem número. Com partida em andamento, o bloco
-  das partidas leva direto ao anotador ("Uma em andamento. Toque para voltar ao anotador.").
+- Sem pelada até hoje, sorteio e partidas dizem quando aparecem, sem número. Fora do dia, os dois falam da última
+  pelada com a data ("Na última pelada, 04/11, teve times definitivos. O próximo aparece no dia da pelada."; o
+  sorteio fica sem número e sem o check lima, para ninguém achar que os times da semana já saíram). Pelada do dia
+  cancelada: "A pelada de hoje foi cancelada.". Com partida em andamento, o bloco das partidas leva direto ao
+  anotador ("Uma em andamento: voltar ao anotador.").
 - O resumo só lê o banco: abrir o painel nunca cria a pelada da semana nem copia os mensalistas.
 
 ### Linha de jogador recolhível (admin)
@@ -557,14 +560,17 @@ muda; as telas do jogador continuam na coluna de 448px.
 - **Conteúdo:** o `main` ocupa a coluna da direita, alinhado no alto (o h1 a 40px do topo), com 40px de margem
   dos lados e até 1152px de largura, centrado no espaço ao lado do menu. Cada tela decide as próprias colunas;
   o que ainda não foi pensado para o PC fica numa coluna larga.
-- **Anotador:** continua a tela cheia do celular, sem menu lateral.
+- **Anotador:** continua a tela cheia do celular, sem menu lateral. As duas colunas só existem quando o menu está
+  na tela (variante `admin-pc` no globals.css); sem ele (anotador, partida que não existe) a coluna de 448px
+  continua centrada, como antes.
 - **Painel:** os blocos numa grade de 3 colunas (8px); a lista ocupa 2, os outros 1, sem sobra na grade.
 - **Mensalistas:** a linha de cima traz o seletor de mês (320px) à esquerda e "Desfazer" + "Salvar mensalistas"
   (pílula do tamanho do texto) à direita; logo abaixo o contador "x/16" com a instrução, o aviso de que muda a
   partir da próxima pelada e a mensagem de salvo/erro. Os nomes vêm em colunas de pelo menos 224px (3 em 1024px,
-  4 em 1440px). Sem a barra presa no rodapé.
+  4 em 1440px). Sem a barra presa no rodapé. A instrução diz "Clique no nome para marcar." (no celular,
+  "Toque…").
 - **Admins:** a lista de admins na coluna da esquerda e, abaixo, "Novo admin" e "Trocar minha senha" lado a lado
-  (duas colunas, 40px entre elas), com o mesmo topo.
+  (duas colunas, 40px entre elas), com o mesmo topo; as dicas reservam duas linhas para as pílulas alinharem.
 
 ## Do's and Don'ts
 
