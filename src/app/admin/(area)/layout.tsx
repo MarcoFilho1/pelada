@@ -19,6 +19,7 @@ export default async function AreaAdminLayout({ children }: LayoutProps<'/admin'
         <div className="contents lg:hidden">
           <Topo
             inicio="/admin"
+            rotulo="Pelada, início"
             direita={
               <form action={sairDoAdmin}>
                 <button type="submit" className={`-mx-3 px-3 ${SAIR}`}>
@@ -30,7 +31,7 @@ export default async function AreaAdminLayout({ children }: LayoutProps<'/admin'
           <NavAdmin />
         </div>
         <div data-menu-lateral className="hidden lg:sticky lg:top-0 lg:col-start-1 lg:flex lg:h-dvh lg:flex-col lg:px-5 lg:pb-4">
-          <Topo inicio="/admin" />
+          <Topo inicio="/admin" rotulo="Pelada, início" />
           {/* Itens com 12px de folga: o texto alinha com a marca e a placa do atual sai um pouco para fora. */}
           <div className="-mx-3 mt-4 flex flex-1 flex-col justify-between">
             <NavAdmin lateral />

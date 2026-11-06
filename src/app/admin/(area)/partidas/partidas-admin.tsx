@@ -33,42 +33,48 @@ type Props = {
 
 type Esquecida = { id: number; data: string; corA: Cor; corB: Cor; placar: Placar };
 
-/** A noite das partidas: a que está rolando, a próxima (sugerida pela fila, escolha livre) e as já jogadas. */
+/**
+ * A noite das partidas: a que está rolando, a próxima (sugerida pela fila, escolha livre) e as já jogadas. No PC, duas
+ * colunas: a noite à esquerda (o que ficou aberto, a partida rolando ou a próxima, e os passos de quem completa) e as
+ * já jogadas à direita.
+ */
 export function PartidasAdmin(p: Props) {
   useAutoRefresh(5000);
   return (
-    <main className="flex flex-1 flex-col">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Partidas</h1>
-      <p className="mt-2 text-base text-apagado">
+    <main className="flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_min(22rem,45%)] lg:content-start lg:items-start lg:gap-x-10">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-2">Partidas</h1>
+      <p className="mt-2 text-base text-apagado lg:col-span-2">
         Quarta, {p.data} · {p.hoje ? 'Hoje' : 'A última pelada'}
         {p.cancelada && <span className="font-medium text-tinta"> · Cancelada</span>}
       </p>
 
-      <Esquecidas partidas={p.esquecidas} />
+      <div className="contents lg:col-start-1 lg:row-start-3 lg:block lg:@container">
+        <Esquecidas partidas={p.esquecidas} />
 
-      {p.emAndamento ? (
-        <EmAndamento partida={p.emAndamento} />
-      ) : !p.hoje ? (
-        <Aviso>Partida só se inicia no dia da pelada.</Aviso>
-      ) : p.cancelada ? (
-        <Aviso>
-          A pelada de hoje foi cancelada. Para jogar, tire o cancelamento em{' '}
-          <Link href="/admin/pelada" className="font-medium text-tinta underline underline-offset-4">
-            Pelada
-          </Link>
-          .
-        </Aviso>
-      ) : p.times.length < 2 ? (
-        <Aviso>
-          Primeiro defina os times no{' '}
-          <Link href="/admin/sorteio" className="font-medium text-tinta underline underline-offset-4">
-            Sorteio
-          </Link>
-          .
-        </Aviso>
-      ) : (
-        <ProximaPartida key={p.fila.join(',')} {...p} />
-      )}
+        {p.emAndamento ? (
+          <EmAndamento partida={p.emAndamento} />
+        ) : !p.hoje ? (
+          <Aviso>Partida só se inicia no dia da pelada.</Aviso>
+        ) : p.cancelada ? (
+          <Aviso>
+            A pelada de hoje foi cancelada. Para jogar, tire o cancelamento em{' '}
+            <Link href="/admin/pelada" className="font-medium text-tinta underline underline-offset-4">
+              Pelada
+            </Link>
+            .
+          </Aviso>
+        ) : p.times.length < 2 ? (
+          <Aviso>
+            Primeiro defina os times no{' '}
+            <Link href="/admin/sorteio" className="font-medium text-tinta underline underline-offset-4">
+              Sorteio
+            </Link>
+            .
+          </Aviso>
+        ) : (
+          <ProximaPartida key={p.fila.join(',')} {...p} />
+        )}
+      </div>
 
       <Historico jogadas={p.historico} />
     </main>
@@ -197,10 +203,16 @@ function ProximaPartida(p: Props) {
       <h2 id="proxima" className="font-placa text-2xl font-semibold">
         Próxima partida
       </h2>
-      <p className="mt-1 text-base text-meta">
-        {ehSugestao ? 'Sugerida pela fila: quem perde sai; empate, saem os dois.' : 'Escolha livre. Toque para trocar.'}
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      {ehSugestao ? (
+        <p className="mt-1 text-base text-meta">Sugerida pela fila: quem perde sai; empate, saem os dois.</p>
+      ) : (
+        <>
+          <p className="mt-1 text-base text-meta lg:hidden">Escolha livre. Toque para trocar.</p>
+          <p className="mt-1 hidden text-base text-meta lg:block">Escolha livre. Clique para trocar.</p>
+        </>
+      )}
+      {/* No PC, os times da fila numa linha só quando a coluna tem largura para quatro. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4">
         {times.map((t, i) => {
           const marcado = escolhidos.includes(t.id);
           return (
@@ -237,7 +249,7 @@ function ProximaPartida(p: Props) {
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
       </p>
-      <button type="button" className={`mt-4 ${PILULA}`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
+      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
         {iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
       </button>
       {a && b && comComplete.length > 0 && (
@@ -332,7 +344,7 @@ function PassosDeQuemCompleta({
 
 function Historico({ jogadas }: { jogadas: Jogada[] }) {
   return (
-    <section aria-labelledby="historico" className="mt-10 pb-8">
+    <section aria-labelledby="historico" className="mt-10 pb-8 lg:col-start-2 lg:row-start-3 lg:mt-6">
       <h2 id="historico" className="font-placa text-2xl font-semibold">
         Já jogadas
       </h2>

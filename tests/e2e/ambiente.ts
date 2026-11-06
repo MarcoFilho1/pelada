@@ -14,5 +14,5 @@ export const E2E = {
   sorteio: ['Caio', 'Enzo', 'Fábio', 'Gui', 'Hugo', 'Ivo'],
   semTime: 'Juca',
   // Jogadores de PIN padrão (1234) que cada teste de jogador usa só para si.
-  novatos: { lista: 'Bruno Lista', perfil: 'Carla Perfil', ranking: 'Diego Ranking' },
+  novatos: { lista: 'Bruno Lista', perfil: 'Carla Perfil', ranking: 'Diego Ranking', adminPc: 'Elias AdminPc' },
 } as const;

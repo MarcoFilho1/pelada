@@ -395,6 +395,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   próxima." em branco Inter 500 16px (`role="status"`, sem lima) e a ação de texto "Anotador" à direita.
 - **Resultado:** "Fulano agora é do Azul." em lima com `role="status"` na barra; erro em vermelho com
   `role="alert"`.
+- A partir de 1024px a barra e as folhas somem: ações acima dos times e Painel ao lado (ver "No PC").
 
 ### Noite das partidas (admin)
 - **Cabeçalho:** h1 "Partidas" e, abaixo, "Quarta, 04/11 · Hoje" (ou "A última pelada") em #b4b4b4, como no Sorteio.
@@ -429,6 +430,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 - **Já jogadas:** `<ol>` de placas #111 (raio 10px, 8px entre elas): número da partida em Barlow 20px Giz, o
   confronto "● Azul 3 × 1 Laranja ●" (nomes Inter 500 16px, placar Barlow 24px tabular) e, abaixo, "Azul venceu" ou
   "Empate" em #b4b4b4 14px; "Corrigir" como ação de texto à direita. Vazia: "Nenhuma partida encerrada ainda." em Giz.
+- A partir de 1024px, duas colunas (ver "No PC").
 
 ### Anotador ao vivo ("Anotar A", admin)
 A tela mais importante do site: o admin segura o celular na beira da quadra e toca sem olhar direito.
@@ -589,6 +591,46 @@ muda; as telas do jogador continuam na coluna de 448px.
   com a pílula e "Cancelar" lado a lado). Uma linha aberta por vez. O Painel de colar nomes abre no lugar do botão,
   acima da tabela, sem cobrir nada: a área de texto à esquerda e a prévia ao lado, na mesma altura; "Criar N
   jogadores" e "Cancelar" numa linha embaixo.
+- **Sorteio:** abaixo do h1 (e da faixa de partida rolando), duas colunas: à esquerda uma de 304px (19rem), à direita
+  os times, 40px entre elas. Sem a barra do rodapé e sem folha que sobe.
+  - **Antes de sortear:** à esquerda "Pôr mais alguém" e "Quem joga" (as mesmas linhas de marcar); à direita, no
+    alto, a pílula "Sortear 14 em 4 times" do tamanho do texto com "2 vagas viram COMPLETE." em Giz ao lado e, abaixo,
+    em #b4b4b4, "Os times aparecem aqui, equilibrados pela nota. Antes de marcar como definitivo, dá para trocar quem
+    quiser." Refazendo com times salvos, o aviso "Os times salvos continuam valendo…" e logo abaixo "Voltar aos times
+    salvos" (texto) ficam no alto da coluna da esquerda, antes e depois de sortear. Com os 4 cartões numa linha (a
+    partir de ~1344px) e a tela com pelo menos 640px de altura, a coluna dos times fica presa no alto (`sticky`)
+    enquanto a lista de 22+ nomes rola ao lado; em 2×2 ela rola com a página, para nenhuma linha dos cartões ficar
+    abaixo da dobra.
+  - **Proposta:** "Quem joga" continua à vista à esquerda (sem o "Mudar quem joga"). À direita, numa linha,
+    "Diferença: 0,5" e as pílulas "Marcar como definitivo" (branca) e "Sortear de novo" (secundária), do tamanho do
+    texto; se não cabem, descem para a linha de baixo. A diferença fica no meio da altura das pílulas (56px). A
+    confirmação com partidas jogadas toma o lugar das pílulas (placa alta até 448px: a frase, "Usar os times novos" e
+    "Voltar" na mesma linha). Embaixo, o gesto em Giz ("Clique em dois de times diferentes para trocar.") e os cartões.
+    Mexer nas marcas à mão depois de sortear invalida a proposta: o gesto vira "Quem joga mudou. Sorteie de novo para os
+    times terem quem está marcado." e a pílula volta a ser "Sortear N em M times".
+  - **Cartões:** lado a lado quando a coluna tem ao menos 672px (container query: 4 colunas a partir de ~1340px de
+    tela, cada cartão com a largura do celular, ~170px); abaixo disso, 2×2 como no celular. Times de 5 crescem para
+    baixo, sem cortar.
+  - **Painel ao lado:** escolher um jogador ou um COMPLETE abre, no lugar do conteúdo da coluna da esquerda, uma placa
+    #111 (raio 10px, 16px de respiro, sem sombra: não flutua) presa no alto, com o mesmo conteúdo da folha do celular:
+    "Trocar Fulano / com alguém de outro time" e "Cancelar"; "Levar Fulano para" com os times e "Tirar do time"; ou a
+    folha do COMPLETE (o seletor sem o "de 0 a 5", que não cabe; o limite fica nos botões apagados). O time escolhido
+    nunca fica coberto. Fechar, cancelar ou trocar devolve a coluna como estava.
+  - **Times definitivos:** à esquerda "Pôr alguém num time" e "Sortear de novo" com a explicação (o que no celular fica
+    abaixo dos times; a coluna nunca fica vazia); o aviso ("Fulano agora é do Azul.", "Clique nele para mudar") em
+    lima acima da busca ou no Painel. "Quem entra no Azul?" também toma a coluna da esquerda, com os times à vista
+    (clicar num time cancela a escolha).
+  - **Duas larguras, um estado:** o que muda de lugar (a barra × o alto dos times, a folha × o Painel, a busca dos
+    times salvos) existe numa cópia por largura que lê o mesmo estado; depois de hidratar só fica no DOM a da largura
+    atual (sem texto, id ou anúncio em dobro). Girar o tablet com alguém escolhido mantém a escolha. No teclado: menu →
+    coluna da esquerda → pílulas → cartões.
+- **Partidas:** duas colunas, a da direita com 352px (22rem), 40px entre elas, os topos na mesma altura. À esquerda,
+  de cima para baixo, "Ficou aberta", "Em andamento" (ou o porquê de não dar para iniciar) e "Próxima partida": os
+  times da fila numa linha de 4 quando a coluna tem 640px (a partir de ~1350px de tela; 2×2 abaixo) e a pílula
+  "Iniciar Azul × Laranja" do tamanho do texto. "Quem completa o Azul?" e a conferência tomam essa mesma coluna
+  ("Jogar sem" e "Iniciar" também do tamanho do texto). À direita, "Já jogadas". "Escolha livre. Clique para trocar."
+- **Corrigir partida:** os dois times lado a lado (duas colunas iguais até 896px, 40px entre elas), abaixo do
+  confronto; as linhas e os contadores como no celular.
 
 ## Do's and Don'ts
 
