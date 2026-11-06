@@ -35,3 +35,16 @@ export function Tela({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/**
+ * Moldura da área admin. Abaixo de 1024px é a mesma coluna da `Tela`. A partir de 1024px vira duas
+ * colunas: o menu lateral fixo (o primeiro filho visível) e o conteúdo (`main`), alinhado no alto,
+ * com largura de até 1152px no espaço ao lado do menu. Cada página decide as próprias colunas.
+ */
+export function TelaAdmin({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pb-8 md:pb-24 md:[&>main]:my-auto md:[&>main]:flex-none lg:grid lg:max-w-none lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-0 lg:pb-0 lg:[&>main]:col-start-2 lg:[&>main]:my-0 lg:[&>main]:w-full lg:[&>main]:max-w-6xl lg:[&>main]:justify-self-center lg:[&>main]:px-10 lg:[&>main]:pt-4 lg:[&>main]:pb-16">
+      {children}
+    </div>
+  );
+}
