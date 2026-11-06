@@ -13,8 +13,9 @@ export default async function AdminsPage() {
   if (!sessao) redirect('/admin/entrar');
   const admins = await listarAdmins(db);
   return (
-    <main className="flex flex-1 flex-col pb-10">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Admins</h1>
+    // No PC (lg): a lista na coluna da esquerda e, abaixo, as duas seções do formulário lado a lado.
+    <main className="flex flex-1 flex-col pb-10 lg:grid lg:grid-cols-2 lg:content-start lg:gap-x-10">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-2">Admins</h1>
       <ul className="mt-4 flex flex-col gap-2">
         {admins.map((a) => (
           <li key={a.id} className="flex h-toque items-center justify-between gap-3 rounded-placa bg-placa px-4">

@@ -37,7 +37,7 @@ export function FormsAdmins() {
 
   return (
     <>
-      <section className="mt-10" aria-labelledby="h-novo">
+      <section className="mt-10 lg:col-start-1" aria-labelledby="h-novo">
         <h2 id="h-novo" className="font-placa text-2xl font-semibold">
           Novo admin
         </h2>
@@ -83,7 +83,7 @@ export function FormsAdmins() {
         </form>
       </section>
 
-      <section className="mt-12" aria-labelledby="h-troca">
+      <section className="mt-12 lg:mt-10" aria-labelledby="h-troca">
         <h2 id="h-troca" className="font-placa text-2xl font-semibold">
           Trocar minha senha
         </h2>

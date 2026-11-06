@@ -61,10 +61,12 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
   }
 
   return (
-    <main className="flex flex-1 flex-col pb-8">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Mensalistas</h1>
+    // No PC (lg) vira grade: o mês e o Salvar dividem a linha de cima, o contador e os avisos logo
+    // abaixo, e os nomes em colunas (sem a barra presa no rodapé).
+    <main className="flex flex-1 flex-col pb-8 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)_auto] lg:content-start lg:gap-x-6">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-3">Mensalistas</h1>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex items-center gap-3 lg:col-start-1 lg:row-start-2">
         {mudou ? (
           <span className={BOTAO_MES_OFF} aria-hidden="true">
             <SetaEsquerda />
@@ -88,7 +90,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         )}
       </div>
 
-      <p className="mt-6 flex items-baseline gap-3">
+      <p className="mt-6 flex items-baseline gap-3 lg:col-span-3 lg:row-start-3">
         <span className="font-placa text-numero font-semibold tabular-nums" aria-label={`${total} de ${MAX} vagas`}>
           {total}/{MAX}
         </span>
@@ -97,7 +99,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         </span>
       </p>
 
-      <p className="mt-2 text-base text-apagado">
+      <p className="mt-2 text-base text-apagado lg:col-span-3 lg:row-start-4">
         Mudanças valem a partir da próxima pelada. Para esta semana, ajuste em{' '}
         <Link href="/admin/pelada" className="-my-3 inline-block py-3 font-medium text-tinta underline underline-offset-4">
           Pelada
@@ -106,15 +108,15 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
       </p>
 
       {pendenteDeGravar && (
-        <p className="mt-2 text-base text-apagado">
+        <p className="mt-2 text-base text-apagado lg:col-span-3 lg:row-start-5">
           Copiado de {nomeDoMes(copiadoDe ?? mes)}, ainda não salvo.
         </p>
       )}
 
       {jogadores.length === 0 ? (
-        <p className="mt-6 text-base text-apagado">Nenhum jogador ativo. Cadastre em Jogadores.</p>
+        <p className="mt-6 text-base text-apagado lg:col-span-3 lg:row-start-7">Nenhum jogador ativo. Cadastre em Jogadores.</p>
       ) : (
-        <ul className="mt-4 flex flex-col gap-2">
+        <ul className="mt-4 flex flex-col gap-2 lg:col-span-3 lg:row-start-7 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
           {jogadores.map((j) => {
             const marcado = escolhidos.has(j.id);
             const travado = cheio && !marcado;
@@ -143,12 +145,12 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
 
       <p
         role={aviso?.tipo === 'erro' ? 'alert' : 'status'}
-        className={`mt-4 text-base font-medium break-words ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
+        className={`mt-4 text-base font-medium break-words lg:col-span-3 lg:row-start-6 ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
       >
         {aviso?.texto}
       </p>
 
-      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4">
+      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4 lg:static lg:col-start-3 lg:row-start-2 lg:mx-0 lg:justify-end lg:p-0">
         {mudou && (
           <button
             type="button"
@@ -166,7 +168,7 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
           type="button"
           onClick={salvar}
           disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
-          className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado"
+          className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado lg:w-auto lg:px-8"
         >
           {salvando ? 'Salvando…' : 'Salvar mensalistas'}
         </button>
