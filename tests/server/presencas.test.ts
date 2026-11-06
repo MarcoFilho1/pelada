@@ -104,11 +104,41 @@ describe('obterPeladaDaSemana', () => {
 });
 
 describe('estadoDaSemana', () => {
-  it('antes de segunda 00:00 não cria a pelada e mostra a lista fechada e vazia', async () => {
-    await cenarioCheio(0);
+  it('antes de segunda 00:00 não cria a pelada e mostra a lista fechada e vazia sem mensalistas', async () => {
     const estado = await estadoDaSemana(db, DOMINGO);
     expect(estado).toMatchObject({ peladaId: null, data: QUARTA, aberta: false, cancelada: false, principal: [], fila: [] });
     expect(await db.select().from(peladas)).toHaveLength(0);
+  });
+
+  it('antes de segunda 00:00 já mostra os mensalistas do mês como M pendentes, em ordem de nome, sem gravar nada', async () => {
+    const [bia, ana, caio] = await criar(['Bia', 'Ana', 'Caio']);
+    await definirMensalistas(db, '2026-11', [bia, ana, caio]);
+    const estado = await estadoDaSemana(db, DOMINGO);
+    expect(estado).toMatchObject({ peladaId: null, aberta: false, fila: [], foraDoPrazo: [] });
+    expect(estado.principal).toEqual([
+      { jogadorId: ana, nome: 'Ana', tipo: 'M', confirmado: false },
+      { jogadorId: bia, nome: 'Bia', tipo: 'M', confirmado: false },
+      { jogadorId: caio, nome: 'Caio', tipo: 'M', confirmado: false },
+    ]);
+    expect(await db.select().from(peladas)).toHaveLength(0);
+    expect(await db.select().from(presencas)).toHaveLength(0);
+  });
+
+  it('antes de abrir, a prévia acompanha mudanças nos mensalistas e ignora desativados', async () => {
+    const [ana, bia, caio] = await criar(['Ana', 'Bia', 'Caio']);
+    await definirMensalistas(db, '2026-11', [ana, bia]);
+    expect(idsDe((await estadoDaSemana(db, DOMINGO)).principal)).toEqual([ana, bia]);
+    await definirMensalistas(db, '2026-11', [bia, caio]);
+    await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, caio));
+    expect(idsDe((await estadoDaSemana(db, DOMINGO)).principal)).toEqual([bia]);
+  });
+
+  it('antes de abrir, mês sem mensalistas salvos mostra os do mês anterior sem copiar nada', async () => {
+    const [ana] = await criar(['Ana']);
+    await definirMensalistas(db, '2026-10', [ana]);
+    expect(idsDe((await estadoDaSemana(db, DOMINGO)).principal)).toEqual([ana]);
+    const nov = await db.select().from(mensalistasMes).where(eq(mensalistasMes.mes, '2026-11'));
+    expect(nov).toHaveLength(0);
   });
 
   it('jogador desativado some da lista e da fila', async () => {
@@ -221,6 +251,17 @@ describe('remover', () => {
     await remover(db, ms[0], DOMINGO);
     const [linha] = await db.select().from(presencas).where(eq(presencas.jogadorId, ms[0]));
     expect(linha.status).toBe('removido');
+  });
+
+  it('sem pelada criada, antes de abrir: o mensalista da prévia consegue sair (a pelada nasce e ele fica removido)', async () => {
+    const { ms } = await cenarioCheio(0);
+    await remover(db, ms[0], DOMINGO);
+    expect(await db.select().from(peladas)).toHaveLength(1);
+    const [linha] = await db.select().from(presencas).where(eq(presencas.jogadorId, ms[0]));
+    expect(linha.status).toBe('removido');
+    const estado = await estadoDaSemana(db, DOMINGO);
+    expect(estado.principal).toHaveLength(15);
+    expect(idsDe(estado.principal)).not.toContain(ms[0]);
   });
 
   it('marca removido (mensalista ou diarista) e é idempotente', async () => {
