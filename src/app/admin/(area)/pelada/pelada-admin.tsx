@@ -40,6 +40,7 @@ export function PeladaAdmin(p: Props) {
   const atual = estadoLocal ?? escolhido;
   const confirmados = p.principal.filter((i) => i.confirmado).length;
   const naLista = new Set([...p.principal, ...p.fila].map((i) => i.jogadorId));
+  const busca = useBusca(p.peladaId);
 
   function escolher(valor: EstadoEscolhido) {
     if (valor === atual || mudando) return;
@@ -54,16 +55,18 @@ export function PeladaAdmin(p: Props) {
 
   const resumo = p.estadoManual === 'cancelada' ? 'Cancelada' : p.aberta ? 'Lista aberta' : p.estadoManual === 'fechada' ? 'Lista fechada' : `Abre segunda, ${p.abertura}`;
 
+  // No PC (lg), duas colunas: a lista à esquerda; a busca, a fila, quem perdeu o prazo e o estado à direita.
+  // A busca existe em duas cópias (uma por largura, com o mesmo estado) para o Tab seguir a ordem da tela.
   return (
-    <main className="flex flex-1 flex-col pb-8">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Pelada</h1>
-      <p className="mt-2 text-base text-apagado">
+    <main className="flex flex-1 flex-col pb-8 lg:grid lg:grid-cols-2 lg:content-start lg:items-start lg:gap-x-10">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-2">Pelada</h1>
+      <p className="mt-2 text-base text-apagado lg:col-span-2">
         Quarta, {p.dataQuarta} · <span className="font-medium text-tinta">{resumo}</span>
       </p>
 
-      <Adicionar peladaId={p.peladaId} naLista={naLista} />
+      <Adicionar busca={busca} naLista={naLista} idCampo="busca-jogador" className="mt-6 lg:hidden" />
 
-      <section aria-labelledby="titulo-principal" className="mt-10">
+      <section aria-labelledby="titulo-principal" className="mt-10 lg:col-start-1 lg:row-start-3 lg:mt-8">
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="titulo-principal" className="font-placa text-2xl font-semibold">
             Lista
@@ -86,66 +89,70 @@ export function PeladaAdmin(p: Props) {
         )}
       </section>
 
-      <section aria-labelledby="titulo-fila" className="mt-10">
-        <h2 id="titulo-fila" className="font-placa text-2xl font-semibold">
-          Fila
-        </h2>
-        {p.fila.length === 0 ? (
-          <p className="mt-3 text-base text-meta">Ninguém na fila.</p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {p.fila.map((item, i) => (
-              <LinhaAdmin key={item.jogadorId} grupo="fila" numero={i + 1} item={item} peladaId={p.peladaId} aberto={aberto} setAberto={setAberto} />
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="contents lg:col-start-2 lg:row-start-3 lg:mt-8 lg:flex lg:flex-col">
+        <Adicionar busca={busca} naLista={naLista} idCampo="busca-jogador-pc" className="hidden lg:block" />
 
-      {p.foraDoPrazo.length > 0 && (
-        <section aria-labelledby="titulo-prazo" className="mt-10">
-          <h2 id="titulo-prazo" className="font-placa text-2xl font-semibold">
-            Perderam o prazo
+        <section aria-labelledby="titulo-fila" className="mt-10">
+          <h2 id="titulo-fila" className="font-placa text-2xl font-semibold">
+            Fila
           </h2>
-          <p className="mt-1 text-base text-apagado">Mensalistas que não confirmaram até 14h.</p>
-          <ul className="mt-3 flex flex-col gap-2">
-            {p.foraDoPrazo.map((item) => (
-              <LinhaAdmin key={item.jogadorId} grupo="prazo" item={item} peladaId={p.peladaId} aberto={aberto} setAberto={setAberto} />
-            ))}
-          </ul>
+          {p.fila.length === 0 ? (
+            <p className="mt-3 text-base text-meta">Ninguém na fila.</p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-2">
+              {p.fila.map((item, i) => (
+                <LinhaAdmin key={item.jogadorId} grupo="fila" numero={i + 1} item={item} peladaId={p.peladaId} aberto={aberto} setAberto={setAberto} />
+              ))}
+            </ul>
+          )}
         </section>
-      )}
-      <section aria-labelledby="titulo-estado" className="mt-12">
-        <h2 id="titulo-estado" className="font-placa text-2xl font-semibold">
-          Estado da lista
-        </h2>
-        <div role="radiogroup" aria-labelledby="titulo-estado" className="mt-3 grid grid-cols-2 gap-2">
-          {OPCOES.map((o) => {
-            const marcado = atual === o.valor;
-            return (
-              <button
-                key={o.valor}
-                type="button"
-                role="radio"
-                aria-checked={marcado}
-                onClick={() => escolher(o.valor)}
-                className={`flex h-toque items-center justify-between gap-2 rounded-placa px-4 text-left text-linha font-medium transition-colors ${
-                  marcado ? 'bg-placa-alta text-tinta' : 'bg-placa text-tinta hover:bg-placa-alta/60 active:bg-placa-alta'
-                }`}
-              >
-                <span className="truncate">{o.rotulo}</span>
-                <span className="flex size-6 shrink-0 items-center justify-center text-lima">
-                  {marcado && <Marca className="size-6" />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 text-base text-apagado">{OPCOES.find((o) => o.valor === atual)?.dica}</p>
-        <p role="alert" className={`text-base font-medium text-erro ${erroEstado ? 'mt-2' : 'sr-only'}`}>
-          {erroEstado}
-        </p>
-      </section>
 
+        {p.foraDoPrazo.length > 0 && (
+          <section aria-labelledby="titulo-prazo" className="mt-10">
+            <h2 id="titulo-prazo" className="font-placa text-2xl font-semibold">
+              Perderam o prazo
+            </h2>
+            <p className="mt-1 text-base text-apagado">Mensalistas que não confirmaram até 14h.</p>
+            <ul className="mt-3 flex flex-col gap-2">
+              {p.foraDoPrazo.map((item) => (
+                <LinhaAdmin key={item.jogadorId} grupo="prazo" item={item} peladaId={p.peladaId} aberto={aberto} setAberto={setAberto} />
+              ))}
+            </ul>
+          </section>
+        )}
+        <section aria-labelledby="titulo-estado" className="mt-12">
+          <h2 id="titulo-estado" className="font-placa text-2xl font-semibold">
+            Estado da lista
+          </h2>
+          {/* No PC, duas colunas só quando "Automático" cabe inteiro; na coluna estreita (1024px), uma. */}
+          <div role="radiogroup" aria-labelledby="titulo-estado" className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-[repeat(auto-fit,minmax(max(10.5rem,calc(50%-0.25rem)),1fr))]">
+            {OPCOES.map((o) => {
+              const marcado = atual === o.valor;
+              return (
+                <button
+                  key={o.valor}
+                  type="button"
+                  role="radio"
+                  aria-checked={marcado}
+                  onClick={() => escolher(o.valor)}
+                  className={`flex h-toque items-center justify-between gap-2 rounded-placa px-4 text-left text-linha font-medium transition-colors ${
+                    marcado ? 'bg-placa-alta text-tinta' : 'bg-placa text-tinta hover:bg-placa-alta/60 active:bg-placa-alta'
+                  }`}
+                >
+                  <span className="truncate">{o.rotulo}</span>
+                  <span className="flex size-6 shrink-0 items-center justify-center text-lima">
+                    {marcado && <Marca className="size-6" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-base text-apagado">{OPCOES.find((o) => o.valor === atual)?.dica}</p>
+          <p role="alert" className={`text-base font-medium text-erro ${erroEstado ? 'mt-2' : 'sr-only'}`}>
+            {erroEstado}
+          </p>
+        </section>
+      </div>
     </main>
   );
 }
@@ -258,7 +265,10 @@ function LinhaAdmin({
   );
 }
 
-function Adicionar({ peladaId, naLista }: { peladaId: number | null; naLista: Set<number> }) {
+type Busca = ReturnType<typeof useBusca>;
+
+/** Estado da busca "Pôr alguém na lista", dividido pelas duas cópias da busca (celular e PC). */
+function useBusca(peladaId: number | null) {
   const [termo, setTermo] = useState('');
   const [sugestoes, setSugestoes] = useState<{ id: number; nome: string }[] | null>(null);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
@@ -276,6 +286,12 @@ function Adicionar({ peladaId, naLista }: { peladaId: number | null; naLista: Se
     return () => clearTimeout(timer);
   }, [termo]);
 
+  function digitar(valor: string) {
+    setTermo(valor);
+    setAviso(null);
+    if (!valor.trim()) setSugestoes(null);
+  }
+
   function por(j: { id: number; nome: string }) {
     setAviso(null);
     startAcao(async () => {
@@ -290,21 +306,21 @@ function Adicionar({ peladaId, naLista }: { peladaId: number | null; naLista: Se
     });
   }
 
-  const lista = termo.trim() ? sugestoes : null;
+  return { termo, lista: termo.trim() ? sugestoes : null, aviso, pendente, digitar, por };
+}
+
+function Adicionar({ busca, naLista, idCampo, className }: { busca: Busca; naLista: Set<number>; idCampo: string; className: string }) {
+  const { termo, lista, aviso, pendente, digitar, por } = busca;
 
   return (
-    <section aria-label="Pôr alguém na lista" className="mt-6">
-      <label htmlFor="busca-jogador" className="block text-base font-medium text-apagado">
+    <section aria-label="Pôr alguém na lista" className={className}>
+      <label htmlFor={idCampo} className="block text-base font-medium text-apagado">
         Pôr alguém na lista
       </label>
       <input
-        id="busca-jogador"
+        id={idCampo}
         value={termo}
-        onChange={(e) => {
-          setTermo(e.target.value);
-          setAviso(null);
-          if (!e.target.value.trim()) setSugestoes(null);
-        }}
+        onChange={(e) => digitar(e.target.value)}
         autoComplete="off"
         enterKeyHint="search"
         placeholder="Digite o nome"

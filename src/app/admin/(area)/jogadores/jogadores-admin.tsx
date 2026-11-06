@@ -19,6 +19,9 @@ const TEXTO =
 
 type Confirmando = { id: number; tipo: 'zerar' | 'desativar' } | null;
 
+// No PC (lg), as linhas viram uma tabela: nome (abre o editor), nota com o seletor na própria linha e o PIN.
+const COLUNAS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_14rem_8rem] lg:gap-x-6';
+
 export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
   const [busca, setBusca] = useState('');
   const [verInativos, setVerInativos] = useState(false);
@@ -155,241 +158,291 @@ export function JogadoresAdmin({ jogadores }: { jogadores: JogadorListado[] }) {
 
   return (
     <main className="flex flex-1 flex-col">
-      <h1 className="mt-4 font-placa text-titulo font-semibold">Jogadores</h1>
-      <p className="mt-2 text-base text-apagado">
-        {ativos} {ativos === 1 ? 'ativo' : 'ativos'}
-        {inativos > 0 && ` · ${inativos} ${inativos === 1 ? 'inativo' : 'inativos'}`}
-      </p>
+      {/* No PC: uma coluna de até 768px (uma tabela de 3 colunas não precisa da tela toda), com "Adicionar
+          jogadores" na linha do título. No celular o `contents` some e tudo fica como antes. */}
+      <div className="contents lg:grid lg:max-w-3xl lg:grid-cols-[minmax(0,1fr)_auto] lg:content-start lg:gap-x-6">
+        <h1 className="mt-4 font-placa text-titulo font-semibold lg:col-start-1 lg:row-start-1">Jogadores</h1>
+        <p className="mt-2 text-base text-apagado lg:col-start-1 lg:row-start-2">
+          {ativos} {ativos === 1 ? 'ativo' : 'ativos'}
+          {inativos > 0 && ` · ${inativos} ${inativos === 1 ? 'inativo' : 'inativos'}`}
+        </p>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className={`mt-4 text-base font-medium break-words ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
-      >
-        {aviso?.texto}
-      </p>
+        <p
+          role="status"
+          aria-live="polite"
+          className={`mt-4 text-base font-medium break-words lg:col-span-2 ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
+        >
+          {aviso?.texto}
+        </p>
 
-      {colando ? (
-        <section className="mt-4 rounded-placa bg-placa p-4" aria-labelledby="colar-titulo">
-          <h2 id="colar-titulo" className="text-linha font-semibold">
-            Colar nomes
-          </h2>
-          <label htmlFor="colar" className="mt-1 block text-base text-apagado">
-            Um nome por linha. Numeração, (M), (D) e ✅ saem sozinhos.
-          </label>
-          <textarea
-            id="colar"
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            rows={6}
-            autoFocus
-            autoCapitalize="words"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder={'1. Pepe (M) ✅\n2. Caio\n3. Manoel ⏳'}
-            aria-describedby="previa"
-            className="mt-3 w-full resize-y rounded-placa bg-chao p-4 text-linha leading-relaxed text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta"
-          />
-          <div id="previa" className="mt-4" aria-live="polite">
-            {previa.criar.length + previa.ignorar.length === 0 ? (
-              <p className="text-base text-meta">A prévia aparece aqui.</p>
-            ) : (
-              <>
-                <p className="text-base font-medium text-tinta">
-                  {previa.criar.length === 1 ? 'Vai entrar 1 jogador' : `Vão entrar ${previa.criar.length} jogadores`}
-                </p>
-                {previa.criar.length > 0 && (
-                  <ul className="mt-2 rounded-placa bg-placa-alta px-4 py-2">
-                    {previa.criar.map((n) => (
-                      <li key={n} className="py-1 text-base break-words">
-                        {n}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {previa.ignorar.length > 0 && (
-                  <>
-                    <p className="mt-4 text-base font-medium text-apagado">
-                      Ficam de fora ({previa.ignorar.length}): já existem ou repetem
-                    </p>
-                    <p className="mt-1 text-base break-words text-meta">{previa.ignorar.join(', ')}</p>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-          <button type="button" onClick={criar} disabled={ocupado || previa.criar.length === 0} className={`${PILULA} mt-4`}>
-            {ocupado
-              ? 'Criando…'
-              : previa.criar.length === 0
-                ? 'Criar jogadores'
-                : previa.criar.length === 1
-                  ? 'Criar 1 jogador'
-                  : `Criar ${previa.criar.length} jogadores`}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setColando(false);
-              setTexto('');
-            }}
-            className={`${TEXTO} mx-auto mt-1`}
+        {colando ? (
+          <section
+            className="mt-4 rounded-placa bg-placa p-4 lg:col-span-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6"
+            aria-labelledby="colar-titulo"
           >
-            Cancelar
-          </button>
-        </section>
-      ) : (
-        <button type="button" onClick={() => setColando(true)} className={`${PILULA} mt-4`}>
-          Adicionar jogadores
-        </button>
-      )}
-
-      <label htmlFor="busca" className="mt-6 block text-base font-medium text-apagado">
-        Buscar jogador
-      </label>
-      <input
-        id="busca"
-        type="search"
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-        enterKeyHint="search"
-        placeholder="Nome"
-        className={`${CAMPO} mt-2`}
-      />
-
-      {inativos > 0 && (
-        <label className="-mx-3 mt-1 flex h-12 w-fit cursor-pointer items-center gap-3 px-3 text-base text-apagado">
-          <input
-            type="checkbox"
-            checked={verInativos}
-            onChange={(e) => setVerInativos(e.target.checked)}
-            className="size-5 accent-white"
-          />
-          Mostrar inativos
-        </label>
-      )}
-
-      <ul className="mt-3 flex flex-col gap-2">
-        {visiveis.map((j) => {
-          const expandido = aberto === j.id;
-          const conf = confirmando?.id === j.id ? confirmando.tipo : null;
-          return (
-            <li key={j.id} className="rounded-placa bg-placa">
+            <h2 id="colar-titulo" className="text-linha font-semibold lg:col-span-2">
+              Colar nomes
+            </h2>
+            <label htmlFor="colar" className="mt-1 block text-base text-apagado lg:col-span-2">
+              Um nome por linha. Numeração, (M), (D) e ✅ saem sozinhos.
+            </label>
+            <textarea
+              id="colar"
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              rows={6}
+              autoFocus
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder={'1. Pepe (M) ✅\n2. Caio\n3. Manoel ⏳'}
+              aria-describedby="previa"
+              className="mt-3 w-full resize-y rounded-placa bg-chao p-4 text-linha leading-relaxed text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta lg:col-start-1 lg:row-start-3"
+            />
+            {/* No PC a prévia fica ao lado da área de texto, na mesma altura. */}
+            <div id="previa" className="mt-4 lg:col-start-2 lg:row-start-3 lg:mt-3" aria-live="polite">
+              {previa.criar.length + previa.ignorar.length === 0 ? (
+                <p className="text-base text-meta">A prévia aparece aqui.</p>
+              ) : (
+                <>
+                  <p className="text-base font-medium text-tinta">
+                    {previa.criar.length === 1 ? 'Vai entrar 1 jogador' : `Vão entrar ${previa.criar.length} jogadores`}
+                  </p>
+                  {previa.criar.length > 0 && (
+                    <ul className="mt-2 rounded-placa bg-placa-alta px-4 py-2">
+                      {previa.criar.map((n) => (
+                        <li key={n} className="py-1 text-base break-words">
+                          {n}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {previa.ignorar.length > 0 && (
+                    <>
+                      <p className="mt-4 text-base font-medium text-apagado">
+                        Ficam de fora ({previa.ignorar.length}): já existem ou repetem
+                      </p>
+                      <p className="mt-1 text-base break-words text-meta">{previa.ignorar.join(', ')}</p>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="lg:col-span-2 lg:mt-4 lg:flex lg:items-center lg:gap-3">
+              <button type="button" onClick={criar} disabled={ocupado || previa.criar.length === 0} className={`${PILULA} mt-4 lg:mt-0 lg:w-auto lg:px-8`}>
+                {ocupado
+                  ? 'Criando…'
+                  : previa.criar.length === 0
+                    ? 'Criar jogadores'
+                    : previa.criar.length === 1
+                      ? 'Criar 1 jogador'
+                      : `Criar ${previa.criar.length} jogadores`}
+              </button>
               <button
                 type="button"
-                aria-expanded={expandido}
-                aria-controls={`jogador-${j.id}`}
                 onClick={() => {
-                  setAberto(expandido ? null : j.id);
-                  setConfirmando(null);
-                  setRascunho(null);
+                  setColando(false);
+                  setTexto('');
                 }}
-                className="flex min-h-toque w-full items-center justify-between gap-3 rounded-placa px-4 py-2 text-left transition-colors active:bg-placa-alta"
+                className={`${TEXTO} mx-auto mt-1 lg:mx-0 lg:mt-0`}
               >
-                <span className="min-w-0">
-                  <span className={`block truncate text-linha font-medium ${j.ativo ? 'text-tinta' : 'text-apagado'}`}>{j.nome}</span>
-                  {(!j.ativo || j.pinPadrao) && (
-                    <span className="block text-base text-meta">{!j.ativo ? 'Inativo' : 'PIN ainda é 1234'}</span>
-                  )}
-                </span>
-                <span className="flex shrink-0 items-center gap-3">
-                  <span className="font-placa text-[1.75rem] leading-none font-semibold tabular-nums">{formatarNota(nota(j))}</span>
-                  <SetaDireita className={`size-5 text-meta transition-transform ${expandido ? 'rotate-90' : ''}`} />
-                </span>
+                Cancelar
               </button>
+            </div>
+          </section>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setColando(true)}
+            className={`${PILULA} mt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:w-auto lg:self-end lg:px-8`}
+          >
+            Adicionar jogadores
+          </button>
+        )}
 
-              {expandido && (
-                <div id={`jogador-${j.id}`} className="px-4 pb-3">
-                  <SeletorDeNota valor={nota(j)} rotulo={`Nota de ${j.nome}`} onPasso={(passo) => ajustarNota(j, passo)} />
+        <label htmlFor="busca" className="mt-6 block text-base font-medium text-apagado lg:col-span-2">
+          Buscar jogador
+        </label>
+        <input
+          id="busca"
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          placeholder="Nome"
+          className={`${CAMPO} mt-2 lg:col-span-2`}
+        />
 
-                  {(() => {
-                    const r = rascunho?.id === j.id ? rascunho : null;
-                    const texto = r?.texto ?? j.nome;
-                    const mudou = texto.trim().replace(/\s+/g, ' ') !== j.nome;
-                    return (
-                      <form
-                        className="mt-3"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (mudou) salvarNome(j);
-                        }}
-                      >
-                        <label htmlFor={`nome-${j.id}`} className="block text-base font-medium text-apagado">
-                          Nome
-                        </label>
-                        <input
-                          id={`nome-${j.id}`}
-                          value={texto}
-                          onChange={(e) => setRascunho({ id: j.id, texto: e.target.value, erro: null })}
-                          maxLength={60}
-                          autoComplete="off"
-                          autoCorrect="off"
-                          autoCapitalize="words"
-                          spellCheck={false}
-                          enterKeyHint="done"
-                          aria-invalid={r?.erro ? true : undefined}
-                          aria-describedby={`nome-erro-${j.id}`}
-                          className="mt-2 h-toque w-full rounded-placa bg-chao px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta aria-invalid:ring-2 aria-invalid:ring-erro"
-                        />
-                        <p id={`nome-erro-${j.id}`} role="alert" className="text-base font-medium text-erro empty:hidden">
-                          {r?.erro ? <span className="mt-2 block">{r.erro}</span> : null}
+        {inativos > 0 && (
+          <label className="-mx-3 mt-1 flex h-12 w-fit cursor-pointer items-center gap-3 px-3 text-base text-apagado lg:col-span-2">
+            <input
+              type="checkbox"
+              checked={verInativos}
+              onChange={(e) => setVerInativos(e.target.checked)}
+              className="size-5 accent-white"
+            />
+            Mostrar inativos
+          </label>
+        )}
+
+        {/* Cabeçalho da tabela no PC; para o leitor de tela, cada célula já diz o que é (grupo "Nota de…", "PIN:"). */}
+        {visiveis.length > 0 && (
+          <div aria-hidden="true" className={`hidden lg:col-span-2 lg:mt-4 lg:h-10 lg:items-end lg:pr-4 lg:text-sm lg:text-meta ${COLUNAS}`}>
+            <span className="pl-4">Nome</span>
+            <span className="text-center">Nota</span>
+            <span>PIN</span>
+          </div>
+        )}
+
+        <ul className="mt-3 flex flex-col gap-2 lg:col-span-2 lg:mt-1">
+          {visiveis.map((j) => {
+            const expandido = aberto === j.id;
+            const conf = confirmando?.id === j.id ? confirmando.tipo : null;
+            return (
+              <li key={j.id} className={`rounded-placa bg-placa lg:items-center lg:pr-4 ${COLUNAS}`}>
+                <button
+                  type="button"
+                  aria-expanded={expandido}
+                  aria-controls={`jogador-${j.id}`}
+                  onClick={() => {
+                    setAberto(expandido ? null : j.id);
+                    setConfirmando(null);
+                    setRascunho(null);
+                  }}
+                  className="flex min-h-toque w-full items-center justify-between gap-3 rounded-placa px-4 py-2 text-left transition-colors active:bg-placa-alta lg:self-stretch lg:hover:bg-placa-alta/60 lg:active:bg-placa-alta"
+                >
+                  <span className="min-w-0">
+                    <span className={`block truncate text-linha font-medium ${j.ativo ? 'text-tinta' : 'text-apagado'}`}>{j.nome}</span>
+                    {(!j.ativo || j.pinPadrao) && (
+                      // No PC o PIN tem coluna própria: embaixo do nome fica só o "Inativo".
+                      <span className={`block text-base text-meta${j.ativo ? ' lg:hidden' : ''}`}>{!j.ativo ? 'Inativo' : 'PIN ainda é 1234'}</span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="font-placa text-[1.75rem] leading-none font-semibold tabular-nums lg:hidden">{formatarNota(nota(j))}</span>
+                    <SetaDireita className={`size-5 text-meta transition-transform ${expandido ? 'rotate-90' : ''}`} />
+                  </span>
+                </button>
+
+                {/* No PC a nota se ajusta na própria linha (o mesmo seletor e a mesma regra de salvar). */}
+                <div className="hidden lg:flex lg:justify-center lg:py-1.5">
+                  <SeletorDeNota
+                    valor={nota(j)}
+                    rotulo={`Nota de ${j.nome}`}
+                    onPasso={(passo) => ajustarNota(j, passo)}
+                    dica={false}
+                    nomeNoBotao={j.nome}
+                  />
+                </div>
+                <span className="hidden text-base text-meta lg:block">
+                  <span className="sr-only">PIN: </span>
+                  {j.pinPadrao ? 'Ainda é 1234' : 'Trocado'}
+                </span>
+
+                {expandido && (
+                  <div id={`jogador-${j.id}`} className="px-4 pb-3 lg:col-span-3 lg:pt-1 lg:pb-4">
+                    <div className="lg:hidden">
+                      <SeletorDeNota valor={nota(j)} rotulo={`Nota de ${j.nome}`} onPasso={(passo) => ajustarNota(j, passo)} />
+                    </div>
+
+                    {(() => {
+                      const r = rascunho?.id === j.id ? rascunho : null;
+                      const texto = r?.texto ?? j.nome;
+                      const mudou = texto.trim().replace(/\s+/g, ' ') !== j.nome;
+                      return (
+                        <form
+                          className="mt-3 lg:mt-0 lg:max-w-md"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (mudou) salvarNome(j);
+                          }}
+                        >
+                          <label htmlFor={`nome-${j.id}`} className="block text-base font-medium text-apagado">
+                            Nome
+                          </label>
+                          <input
+                            id={`nome-${j.id}`}
+                            value={texto}
+                            onChange={(e) => setRascunho({ id: j.id, texto: e.target.value, erro: null })}
+                            maxLength={60}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoCapitalize="words"
+                            spellCheck={false}
+                            enterKeyHint="done"
+                            aria-invalid={r?.erro ? true : undefined}
+                            aria-describedby={`nome-erro-${j.id}`}
+                            className="mt-2 h-toque w-full rounded-placa bg-chao px-4 text-linha text-tinta outline-none transition-shadow focus:ring-2 focus:ring-tinta aria-invalid:ring-2 aria-invalid:ring-erro"
+                          />
+                          <p id={`nome-erro-${j.id}`} role="alert" className="text-base font-medium text-erro empty:hidden">
+                            {r?.erro ? <span className="mt-2 block">{r.erro}</span> : null}
+                          </p>
+                          {mudou && (
+                            <button type="submit" disabled={ocupado || !texto.trim()} className={`${PILULA} mt-3 lg:w-auto lg:px-8`}>
+                              {ocupado ? 'Salvando…' : 'Salvar nome'}
+                            </button>
+                          )}
+                        </form>
+                      );
+                    })()}
+
+                    {conf ? (
+                      <div className="mt-3 rounded-placa bg-placa-alta p-4 lg:max-w-md">
+                        <p className="text-base break-words">
+                          {conf === 'zerar'
+                            ? `Zerar o PIN de ${j.nome}? Ele volta para 1234, precisa criar outro e sai de todos os aparelhos.`
+                            : `Desativar ${j.nome}? Ele sai da busca e de todos os aparelhos. Dá para reativar depois.`}
                         </p>
-                        {mudou && (
-                          <button type="submit" disabled={ocupado || !texto.trim()} className={`${PILULA} mt-3`}>
-                            {ocupado ? 'Salvando…' : 'Salvar nome'}
+                        <div className="lg:mt-3 lg:flex lg:items-center lg:gap-3">
+                          <button type="button" onClick={() => confirmar(j, conf)} disabled={ocupado} className={`${PILULA} mt-3 lg:mt-0 lg:w-auto lg:px-8`}>
+                            {ocupado ? 'Aplicando…' : conf === 'zerar' ? 'Zerar PIN' : 'Desativar'}
+                          </button>
+                          <button type="button" onClick={() => setConfirmando(null)} className={`${TEXTO} mx-auto mt-1 lg:mx-0 lg:mt-0`}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-x-2">
+                        {j.ativo ? (
+                          <>
+                            <button type="button" onClick={() => setConfirmando({ id: j.id, tipo: 'zerar' })} className={`${TEXTO} -ml-3`}>
+                              Zerar PIN
+                            </button>
+                            <button type="button" onClick={() => setConfirmando({ id: j.id, tipo: 'desativar' })} className={TEXTO}>
+                              Desativar
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => reativar(j)} disabled={ocupado} className={`${TEXTO} -ml-3`}>
+                            Reativar
                           </button>
                         )}
-                      </form>
-                    );
-                  })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
 
-                  {conf ? (
-                    <div className="mt-3 rounded-placa bg-placa-alta p-4">
-                      <p className="text-base break-words">
-                        {conf === 'zerar'
-                          ? `Zerar o PIN de ${j.nome}? Ele volta para 1234, precisa criar outro e sai de todos os aparelhos.`
-                          : `Desativar ${j.nome}? Ele sai da busca e de todos os aparelhos. Dá para reativar depois.`}
-                      </p>
-                      <button type="button" onClick={() => confirmar(j, conf)} disabled={ocupado} className={`${PILULA} mt-3`}>
-                        {ocupado ? 'Aplicando…' : conf === 'zerar' ? 'Zerar PIN' : 'Desativar'}
-                      </button>
-                      <button type="button" onClick={() => setConfirmando(null)} className={`${TEXTO} mx-auto mt-1`}>
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-x-2">
-                      {j.ativo ? (
-                        <>
-                          <button type="button" onClick={() => setConfirmando({ id: j.id, tipo: 'zerar' })} className={`${TEXTO} -ml-3`}>
-                            Zerar PIN
-                          </button>
-                          <button type="button" onClick={() => setConfirmando({ id: j.id, tipo: 'desativar' })} className={TEXTO}>
-                            Desativar
-                          </button>
-                        </>
-                      ) : (
-                        <button type="button" onClick={() => reativar(j)} disabled={ocupado} className={`${TEXTO} -ml-3`}>
-                          Reativar
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-
-      {visiveis.length === 0 && (
-        <p className="mt-3 text-base text-meta">
-          {jogadores.length === 0 ? 'Nenhum jogador ainda. Toque em Adicionar jogadores.' : `Ninguém chamado “${busca.trim()}”.`}
-        </p>
-      )}
+        {visiveis.length === 0 && (
+          <p className="mt-3 text-base text-meta lg:col-span-2">
+            {jogadores.length === 0 ? (
+              <>
+                Nenhum jogador ainda. <span className="lg:hidden">Toque</span>
+                <span className="hidden lg:inline">Clique</span> em Adicionar jogadores.
+              </>
+            ) : (
+              `Ninguém chamado “${busca.trim()}”.`
+            )}
+          </p>
+        )}
+      </div>
     </main>
   );
 }

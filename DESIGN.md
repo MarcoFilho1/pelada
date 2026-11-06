@@ -274,7 +274,8 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 ### Linha de jogador recolhível (admin)
 - Placa #111, raio 10px, em lista com 8px de intervalo. Fechada: 56px, nome em Inter 500 18px (truncado), meta
   em Giz 16px abaixo ("Inativo", "PIN ainda é 1234"), nota em Barlow 28px à direita e seta que gira 90° ao
-  abrir. Só uma linha aberta por vez; a aberta mostra o seletor de nota e as ações.
+  abrir. Só uma linha aberta por vez; a aberta mostra o seletor de nota e as ações. A partir de 1024px vira a
+  tabela de Jogadores (ver "No PC").
 
 ### Seletor de nota (stepper)
 - Menos, valor, mais: botões 56×56 em placa alta #2a2a2a (raio 10px), valor em Barlow 44px sobre #000, 96px de
@@ -571,6 +572,23 @@ muda; as telas do jogador continuam na coluna de 448px.
   "Toque…").
 - **Admins:** a lista de admins na coluna da esquerda e, abaixo, "Novo admin" e "Trocar minha senha" lado a lado
   (duas colunas, 40px entre elas), com o mesmo topo; as dicas reservam duas linhas para as pílulas alinharem.
+- **Pelada:** duas colunas iguais com 40px entre elas, abaixo do h1 e da linha "Quarta, 11/11 · Lista aberta". À
+  esquerda a "Lista" com o "x/16" e as linhas (abrem no lugar, como no celular); à direita, de cima para baixo,
+  "Pôr alguém na lista" (a busca com a Lista tocável), "Fila", "Perderam o prazo" e "Estado da lista". Os dois
+  topos ficam na mesma altura. A busca existe em duas cópias com o mesmo estado (uma por largura) para o Tab
+  seguir a tela: menu → linhas da lista → busca → fila → estado. O rádio do estado fica 2×2 quando "Automático"
+  cabe inteiro (a partir de ~1050px) e numa coluna só a 1024px.
+- **Jogadores:** uma coluna de até 768px, alinhada à esquerda (uma tabela de 3 colunas não atravessa a tela). Na
+  linha do título, à direita, "Adicionar jogadores" (pílula do tamanho do texto); abaixo, a busca e "Mostrar
+  inativos". A tabela: cabeçalho em Giz 14px (Nome · Nota · PIN; "Nota" centrado sobre o seletor) e uma placa #111
+  por jogador (8px entre elas, 68px de altura) com as mesmas colunas: o nome (o botão que abre o editor, com a seta
+  de 20px no fim da coluna; realce placa alta a 60% no hover; "Inativo" em Giz embaixo), o Seletor de nota na
+  própria linha sem o "de 0 a 5" (o limite fica nos botões apagados), salvando com a mesma regra, e a situação do
+  PIN em Giz 16px ("Ainda é 1234" / "Trocado"; o leitor de tela ouve "PIN: …"). Clicar no nome abre logo abaixo, na
+  mesma placa, o editor de hoje sem o seletor repetido (Nome até 448px, Zerar PIN, Desativar/Reativar; a confirmação
+  com a pílula e "Cancelar" lado a lado). Uma linha aberta por vez. O Painel de colar nomes abre no lugar do botão,
+  acima da tabela, sem cobrir nada: a área de texto à esquerda e a prévia ao lado, na mesma altura; "Criar N
+  jogadores" e "Cancelar" numa linha embaixo.
 
 ## Do's and Don'ts
 
