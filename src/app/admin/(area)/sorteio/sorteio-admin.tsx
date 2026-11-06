@@ -1,16 +1,30 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
-import { Colete, NOME_DA_COR } from '@/components/colete';
-import { Marca, Mais } from '@/components/icones';
-import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import { CORES, formatarNota, rotuloDaDiferenca, type Cor, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
+import { useMemo, useRef, useState, useTransition } from 'react';
+import { NOME_DA_COR } from '@/components/colete';
+import { Marca } from '@/components/icones';
+import { TEXTO } from '@/components/pilula';
+import { CORES, formatarNota, rotuloDaDiferenca, type JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { TimeDaPelada } from '@/server/times';
 import { marcarDefinitivo, mover, porComplete, preencher, sortear, tirarComplete } from './acoes';
-import { BuscaDeJogador, Erro } from './busca-de-jogador';
+import { BuscaDeJogador, Erro, useTermoDaBusca } from './busca-de-jogador';
 import { EscolherQuemEntra, FolhaDoComplete, NOTA_DO_COMPLETE_NOVO, useNotasDosCompletes } from './complete';
+import { AcoesDoSorteio, AvisoDoSorteio, LevarEscolhido, SortearDeNovo, TrocarEscolhido, type Aviso } from './folhas';
+import {
+  Barra,
+  Equilibrio,
+  GradeDeTimes,
+  PainelAoLado,
+  paraSorteado,
+  SoNo,
+  somar,
+  VAGAS,
+  type CompleteEscolhido,
+  type CompleteNaTela,
+  type TimeNaTela,
+} from './times-na-tela';
 
 type Props = {
   peladaId: number;
@@ -31,16 +45,6 @@ type Props = {
   emAndamento: number | null;
 };
 
-/** Vagas por time: o sorteio completa até aqui com COMPLETE. */
-const VAGAS = 4;
-
-/** Um COMPLETE no cartão: `chave` é o id salvo (definitivo) ou um número local (proposta). */
-type CompleteNaTela = { chave: number; nota: number };
-type TimeNaTela = { jogadores: JogadorNota[]; completes: CompleteNaTela[] };
-
-const somar = (t: TimeNaTela) => t.jogadores.reduce((s, j) => s + j.nota, 0) + t.completes.reduce((s, c) => s + c.nota, 0);
-const paraSorteado = (t: TimeNaTela): TimeSorteado => ({ jogadores: t.jogadores, completes: t.completes.map((c) => c.nota), soma: somar(t) });
-const vagas = (t: TimeNaTela) => t.jogadores.length + t.completes.length;
 const passoDeNota = (nota: number, passo: number) => Math.min(5, Math.max(0, nota + passo));
 
 /** O que a nota do COMPLETE muda, dito na folha (ela cobre os cartões e a diferença no celular). */
@@ -48,12 +52,14 @@ function resumoDoTime(times: TimeNaTela[], indice: number) {
   return `Soma ${formatarNota(somar(times[indice]))} · ${rotuloDaDiferenca(times.map(paraSorteado))}`;
 }
 
-/** A consequência de marcar um sorteio novo depois de partidas jogadas. */
-function fraseDasJogadas(n: number) {
-  return n === 1
-    ? 'A partida já jogada fica como está. Os times novos valem daqui pra frente.'
-    : `As ${n} partidas já jogadas ficam como estão. Os times novos valem daqui pra frente.`;
-}
+/**
+ * No PC (DESIGN.md › No PC): a coluna estreita da esquerda (quem joga, a busca, o Painel ao lado) e os times à
+ * direita, com a diferença e as ações em cima. No celular os dois lados somem (`contents`) e tudo fica numa coluna.
+ */
+const COLUNAS = 'contents lg:mt-8 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start lg:gap-x-10';
+const ESQUERDA = 'contents lg:block lg:self-stretch';
+/** Os times ficam presos no alto enquanto a lista de quem joga (22+ nomes) rola ao lado. */
+const DIREITA = 'lg:sticky lg:top-6 lg:block lg:@container';
 
 export function SorteioAdmin(p: Props) {
   const [refazendo, setRefazendo] = useState(false);
@@ -92,7 +98,6 @@ export function SorteioAdmin(p: Props) {
 // ---- Antes de definir: quem joga, sortear, trocar --------------------------------------
 
 type Selecao = { time: number; id: number };
-type CompleteEscolhido = { time: number; chave: number };
 
 /** Com times salvos a noite já começou: partidas abrem e fecham enquanto o admin refaz o sorteio. */
 function AtualizarSozinho() {
@@ -120,8 +125,12 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   const escolhidos = visiveis.filter((id) => marcados.has(id));
   const nTimes = Math.min(CORES.length, escolhidos.length);
   const viramComplete = Math.max(0, nTimes * VAGAS - escolhidos.length);
+  // No PC "Quem joga" fica à vista com os times: mexeu nas marcas depois de sortear, a proposta não vale mais.
+  const naProposta = useMemo(() => proposta && new Set(proposta.flatMap((t) => t.jogadores.map((j) => j.id))), [proposta]);
+  const quemJogaMudou = !!naProposta && (naProposta.size !== escolhidos.length || escolhidos.some((id) => !naProposta.has(id)));
 
   function alternar(id: number) {
+    setConfirmando(false);
     setMarcados((m) => {
       const novo = new Set(m);
       if (novo.has(id)) novo.delete(id);
@@ -131,6 +140,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   }
 
   function incluir(j: JogadorNota) {
+    setConfirmando(false);
     setLinhas((ls) => (ls.includes(j.id) ? ls : [...ls, j.id]));
     setMarcados((m) => new Set(m).add(j.id));
   }
@@ -206,217 +216,205 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
     setProposta((ps) => ps && ps.map((t, i) => (i === time ? { ...t, completes: f(t.completes) } : t)));
   }
 
-  if (proposta) {
-    const aberto = completeAberto && proposta[completeAberto.time]?.completes.find((c) => c.chave === completeAberto.chave);
-    const selecionado = selecao ? porId.get(selecao.id) : undefined;
-    const motivoTravado = p.emAndamento !== null ? 'Tem partida em andamento. Encerre no anotador para marcar os times novos.' : null;
-    return (
-      <>
-        {p.times.length > 0 && <AtualizarSozinho />}
-        <Equilibrio
-          times={proposta.map(paraSorteado)}
-          dica={
-            proposta.some((t) => t.completes.length)
-              ? 'Toque em dois de times diferentes para trocar, ou num COMPLETE para mudar a nota.'
-              : 'Toque em dois de times diferentes para trocar.'
-          }
-          acao={
-            <button
-              type="button"
-              className={`-mr-3 ${TEXTO}`}
-              disabled={pendente}
-              onClick={() => {
-                setProposta(null);
-                fecharFolhas();
-                setErro(null);
-              }}
-            >
-              Mudar quem joga
-            </button>
-          }
-        />
-        <GradeDeTimes
-          times={proposta}
-          selecionado={selecao?.id ?? null}
-          completeAberto={aberto ? completeAberto : null}
-          animados={troca}
-          onToque={(t, j) => tocar(t, j.id)}
-          onToqueComplete={(time, chave) => {
-            if (pendente) return;
-            setSelecao(null);
-            setConfirmando(false);
-            setCompleteAberto(completeAberto?.chave === chave ? null : { time, chave });
-          }}
-          onPorComplete={(time) => {
-            if (pendente) return;
-            const chave = proximaChave.current++;
-            mudarCompletes(time, (cs) => [...cs, { chave, nota: NOTA_DO_COMPLETE_NOVO }]);
-            setSelecao(null);
-            setConfirmando(false);
-            setCompleteAberto({ time, chave });
-          }}
-        />
-        <Barra folha={!!selecionado || !!aberto}>
-          {aberto && completeAberto ? (
-            <FolhaDoComplete
-              cor={CORES[completeAberto.time]}
-              nota={aberto.nota}
-              resumo={resumoDoTime(proposta, completeAberto.time)}
-              pendente={pendente}
-              onPasso={(passo) =>
-                mudarCompletes(completeAberto.time, (cs) =>
-                  cs.map((c) => (c.chave === aberto.chave ? { ...c, nota: passoDeNota(c.nota, passo) } : c)),
-                )
-              }
-              onTirar={() => {
-                mudarCompletes(completeAberto.time, (cs) => cs.filter((c) => c.chave !== aberto.chave));
-                setCompleteAberto(null);
-              }}
-              onFechar={() => setCompleteAberto(null)}
-            />
-          ) : selecionado ? (
-            <div className="flex items-center gap-3">
-              <p className="min-w-0 flex-1 text-base text-apagado">
-                <span className="block truncate text-linha font-medium text-tinta">Trocar {selecionado.nome}</span>
-                com alguém de outro time
-              </p>
-              <button type="button" className={`-mr-3 ${TEXTO}`} onClick={() => setSelecao(null)}>
-                Cancelar
-              </button>
-            </div>
-          ) : confirmando ? (
-            <div className="rounded-placa bg-placa-alta p-4">
-              <p className="text-base font-medium text-tinta">{fraseDasJogadas(p.jogadas)}</p>
-              <button
-                type="button"
-                className={`mt-4 ${PILULA}`}
-                disabled={pendente || motivoTravado !== null}
-                aria-describedby={motivoTravado ? 'motivo-travado' : undefined}
-                onClick={definir}
-              >
-                {acao === 'definir' ? 'Salvando…' : 'Usar os times novos'}
-              </button>
-              {motivoTravado && (
-                <p id="motivo-travado" className="mt-2 text-base text-apagado">
-                  {motivoTravado}
-                </p>
-              )}
-              <button type="button" className={`mx-auto mt-1 ${TEXTO}`} disabled={pendente} onClick={() => setConfirmando(false)}>
-                Voltar
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                className={PILULA}
-                disabled={pendente || motivoTravado !== null}
-                aria-describedby={motivoTravado ? 'motivo-travado' : undefined}
-                onClick={definir}
-              >
-                {acao === 'definir' ? 'Salvando…' : 'Marcar como definitivo'}
-              </button>
-              {motivoTravado && (
-                <p id="motivo-travado" className="text-base text-apagado">
-                  {motivoTravado}
-                </p>
-              )}
-              <button type="button" className={PILULA_SEGUNDA} disabled={pendente} onClick={rodarSorteio}>
-                {acao === 'sortear' ? 'Sorteando…' : 'Sortear de novo'}
-              </button>
-            </div>
-          )}
-          <Erro texto={erro} />
-        </Barra>
-      </>
-    );
-  }
+  const aberto = proposta && completeAberto ? proposta[completeAberto.time]?.completes.find((c) => c.chave === completeAberto.chave) : undefined;
+  const selecionado = proposta && selecao ? porId.get(selecao.id) : undefined;
+  const motivoTravado = p.emAndamento !== null ? 'Tem partida em andamento. Encerre no anotador para marcar os times novos.' : null;
+
+  // A folha do celular e o Painel ao lado do PC mostram a mesma coisa, do mesmo estado.
+  const painel = (pc: boolean) =>
+    proposta && aberto && completeAberto ? (
+      <FolhaDoComplete
+        pc={pc}
+        cor={CORES[completeAberto.time]}
+        nota={aberto.nota}
+        resumo={resumoDoTime(proposta, completeAberto.time)}
+        pendente={pendente}
+        onPasso={(passo) =>
+          mudarCompletes(completeAberto.time, (cs) => cs.map((c) => (c.chave === aberto.chave ? { ...c, nota: passoDeNota(c.nota, passo) } : c)))
+        }
+        onTirar={() => {
+          mudarCompletes(completeAberto.time, (cs) => cs.filter((c) => c.chave !== aberto.chave));
+          setCompleteAberto(null);
+        }}
+        onFechar={() => setCompleteAberto(null)}
+      />
+    ) : selecionado ? (
+      <TrocarEscolhido nome={selecionado.nome} onCancelar={() => setSelecao(null)} />
+    ) : null;
+  const temPainel = !!aberto || !!selecionado;
+
+  const acoes = (pc: boolean) => (
+    <AcoesDoSorteio
+      pc={pc}
+      fase={proposta && !quemJogaMudou ? 'proposta' : 'escolher'}
+      escolhidos={escolhidos.length}
+      nTimes={nTimes}
+      viramComplete={viramComplete}
+      pendente={pendente}
+      acao={acao}
+      confirmando={confirmando}
+      jogadas={p.jogadas}
+      motivoTravado={motivoTravado}
+      onSortear={rodarSorteio}
+      onDefinir={definir}
+      onVoltarDaConfirmacao={() => setConfirmando(false)}
+      onVoltarAosSalvos={proposta ? undefined : p.onVoltar}
+    />
+  );
 
   return (
     <>
       {p.times.length > 0 && <AtualizarSozinho />}
-      {p.onVoltar && (
-        <p className="mt-4 text-base text-apagado">
-          Os times salvos continuam valendo até você marcar um sorteio novo como definitivo.
-        </p>
-      )}
-      <BuscaDeJogador
-        id="busca-sorteio"
-        rotulo="Pôr mais alguém"
-        todos={todos}
-        jaEstao={marcados}
-        textoJaEsta="Já marcado"
-        onEscolher={incluir}
-        onCadastrado={(j) => {
-          setCadastrados((cs) => [...cs, j]);
-          incluir(j);
-        }}
-      />
+      <div className={COLUNAS}>
+        <div className={ESQUERDA}>
+          {temPainel && (
+            <SoNo pc>
+              <PainelAoLado>{painel(true)}</PainelAoLado>
+            </SoNo>
+          )}
+          {/* No celular, "Quem joga" dá lugar aos times depois de sortear; no PC fica à vista (menos com o Painel aberto). */}
+          <div className={!proposta ? 'contents lg:block' : temPainel ? 'hidden' : 'hidden lg:block'}>
+            {p.onVoltar && (
+              <p className="mt-4 text-base text-apagado lg:mt-0">Os times salvos continuam valendo até você marcar um sorteio novo como definitivo.</p>
+            )}
+            <BuscaDeJogador
+              id="busca-sorteio"
+              className={p.onVoltar ? 'mt-6' : 'mt-6 lg:mt-0'}
+              rotulo="Pôr mais alguém"
+              todos={todos}
+              jaEstao={marcados}
+              textoJaEsta="Já marcado"
+              onEscolher={incluir}
+              onCadastrado={(j) => {
+                setCadastrados((cs) => [...cs, j]);
+                incluir(j);
+              }}
+            />
 
-      <section aria-labelledby="titulo-quem-joga" className="mt-8">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="titulo-quem-joga" className="font-placa text-2xl font-semibold">
-            Quem joga
-          </h2>
-          <p className="text-base text-apagado">
-            <span className="font-placa text-subtitulo leading-none font-semibold text-tinta tabular-nums">{escolhidos.length}</span>{' '}
-            {escolhidos.length === 1 ? 'marcado' : 'marcados'}
-          </p>
+            <section aria-labelledby="titulo-quem-joga" className="mt-8">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 id="titulo-quem-joga" className="font-placa text-2xl font-semibold">
+                  Quem joga
+                </h2>
+                <p className="text-base text-apagado">
+                  <span className="font-placa text-subtitulo leading-none font-semibold text-tinta tabular-nums">{escolhidos.length}</span>{' '}
+                  {escolhidos.length === 1 ? 'marcado' : 'marcados'}
+                </p>
+              </div>
+              {visiveis.length === 0 ? (
+                <p className="mt-3 text-base text-meta">Ninguém confirmou na lista. Busque pelo nome quem está na quadra.</p>
+              ) : (
+                <ul className="mt-3 flex flex-col gap-2">
+                  {visiveis.map((id) => {
+                    const j = porId.get(id)!;
+                    const marcado = marcados.has(id);
+                    return (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={marcado}
+                          onClick={() => alternar(id)}
+                          className={`flex h-toque w-full items-center gap-3 rounded-placa px-4 text-left text-linha font-medium transition-colors ${
+                            marcado ? 'bg-placa-alta text-tinta' : 'bg-placa text-apagado hover:bg-placa-alta/60 active:bg-placa-alta'
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{j.nome}</span>
+                          <span className="shrink-0 text-base text-meta tabular-nums">
+                            <span className="sr-only">nota </span>
+                            {formatarNota(j.nota)}
+                          </span>
+                          <span className={`flex size-8 shrink-0 items-center justify-center rounded-placa text-lima ${marcado ? '' : 'bg-chao'}`}>
+                            {marcado && <Marca className="size-6" />}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          </div>
         </div>
-        {visiveis.length === 0 ? (
-          <p className="mt-3 text-base text-meta">Ninguém confirmou na lista. Busque pelo nome quem está na quadra.</p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            {visiveis.map((id) => {
-              const j = porId.get(id)!;
-              const marcado = marcados.has(id);
-              return (
-                <li key={id}>
+
+        <div className={`contents ${DIREITA}`}>
+          {proposta ? (
+            <>
+              <Equilibrio
+                times={proposta.map(paraSorteado)}
+                dica={
+                  quemJogaMudou ? (
+                    'Quem joga mudou. Sorteie de novo para os times terem quem está marcado.'
+                  ) : proposta.some((t) => t.completes.length) ? (
+                    'Toque em dois de times diferentes para trocar, ou num COMPLETE para mudar a nota.'
+                  ) : (
+                    'Toque em dois de times diferentes para trocar.'
+                  )
+                }
+                acao={
+                  // No PC "Quem joga" já está à vista, ao lado.
                   <button
                     type="button"
-                    role="checkbox"
-                    aria-checked={marcado}
-                    onClick={() => alternar(id)}
-                    className={`flex h-toque w-full items-center gap-3 rounded-placa px-4 text-left text-linha font-medium transition-colors ${
-                      marcado ? 'bg-placa-alta text-tinta' : 'bg-placa text-apagado hover:bg-placa-alta/60 active:bg-placa-alta'
-                    }`}
+                    className={`-mr-3 lg:hidden ${TEXTO}`}
+                    disabled={pendente}
+                    onClick={() => {
+                      setProposta(null);
+                      fecharFolhas();
+                      setErro(null);
+                    }}
                   >
-                    <span className="min-w-0 flex-1 truncate">{j.nome}</span>
-                    <span className="shrink-0 text-base text-meta tabular-nums">
-                      <span className="sr-only">nota </span>
-                      {formatarNota(j.nota)}
-                    </span>
-                    <span className={`flex size-8 shrink-0 items-center justify-center rounded-placa text-lima ${marcado ? '' : 'bg-chao'}`}>
-                      {marcado && <Marca className="size-6" />}
-                    </span>
+                    Mudar quem joga
                   </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                }
+                acaoPc={acoes(true)}
+              />
+              <SoNo pc>
+                <div className="hidden lg:block">
+                  <Erro texto={erro} />
+                </div>
+              </SoNo>
+              <GradeDeTimes
+                times={proposta}
+                selecionado={selecao?.id ?? null}
+                completeAberto={aberto ? completeAberto : null}
+                animados={troca}
+                onToque={(t, j) => tocar(t, j.id)}
+                onToqueComplete={(time, chave) => {
+                  if (pendente) return;
+                  setSelecao(null);
+                  setConfirmando(false);
+                  setCompleteAberto(completeAberto?.chave === chave ? null : { time, chave });
+                }}
+                onPorComplete={(time) => {
+                  if (pendente) return;
+                  const chave = proximaChave.current++;
+                  mudarCompletes(time, (cs) => [...cs, { chave, nota: NOTA_DO_COMPLETE_NOVO }]);
+                  setSelecao(null);
+                  setConfirmando(false);
+                  setCompleteAberto({ time, chave });
+                }}
+              />
+            </>
+          ) : (
+            <SoNo pc>
+              <div className="hidden lg:block">
+                {acoes(true)}
+                <Erro texto={erro} />
+                <p className="mt-4 max-w-xl text-base text-apagado">
+                  Os times aparecem aqui, equilibrados pela nota. Antes de marcar como definitivo, dá para trocar quem quiser.
+                </p>
+              </div>
+            </SoNo>
+          )}
+        </div>
 
-      <Barra>
-        <button type="button" className={PILULA} disabled={pendente || escolhidos.length < 2} onClick={rodarSorteio}>
-          {acao === 'sortear'
-            ? 'Sorteando…'
-            : escolhidos.length < 2
-              ? 'Marque pelo menos 2'
-              : `Sortear ${escolhidos.length} em ${nTimes} times`}
-        </button>
-        {escolhidos.length >= 2 && viramComplete > 0 && (
-          <p className="mt-2 text-center text-base text-meta">
-            {viramComplete === 1 ? '1 vaga vira COMPLETE.' : `${viramComplete} vagas viram COMPLETE.`}
-          </p>
-        )}
-        {p.onVoltar && (
-          <button type="button" className={`mx-auto mt-1 ${TEXTO}`} disabled={pendente} onClick={p.onVoltar}>
-            Voltar aos times salvos
-          </button>
-        )}
-        <Erro texto={erro} />
-      </Barra>
+        <SoNo pc={false}>
+          <Barra folha={temPainel}>
+            {painel(false) ?? acoes(false)}
+            <Erro texto={erro} />
+          </Barra>
+        </SoNo>
+      </div>
     </>
   );
 }
@@ -424,7 +422,6 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
 // ---- Depois de definir: mexer nos times entre as partidas -------------------------------
 
 type Escolhido = { id: number; nome: string; de: number | null };
-type Aviso = { tipo: 'ok' | 'erro'; texto: string };
 
 function Definitivo(p: Props & { onRefazer: () => void }) {
   useAutoRefresh(5000);
@@ -434,6 +431,7 @@ function Definitivo(p: Props & { onRefazer: () => void }) {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [cadastrados, setCadastrados] = useState<JogadorNota[]>([]);
   const [pendente, startAcao] = useTransition();
+  const busca = useTermoDaBusca();
   const notas = useNotasDosCompletes(p.times, setAviso);
   const emTime = new Set(p.times.flatMap((t) => t.jogadores.map((j) => j.id)));
   const todos = [...p.ativos, ...cadastrados.filter((c) => !p.ativos.some((a) => a.id === c.id))];
@@ -454,7 +452,7 @@ function Definitivo(p: Props & { onRefazer: () => void }) {
     return null;
   }
   const aberto = acharComplete(completeAberto);
-  const paraQuem = acharComplete(escolhendoPara);
+  const paraQuem = escolhendoPara === null ? null : acharComplete(escolhendoPara);
 
   /** Roda uma ação do servidor; `someComplete` = o COMPLETE que ela apaga (a nota dele não vai mais). */
   function executar(fn: () => Promise<{ ok: true } | { ok: false; erro: string }>, aoDar: () => void, someComplete?: number) {
@@ -498,320 +496,163 @@ function Definitivo(p: Props & { onRefazer: () => void }) {
     );
   }
 
-  if (paraQuem && escolhendoPara !== null) {
-    const naLista = p.sugeridos.filter((id) => !emTime.has(id)).flatMap((id) => porId.get(id) ?? []);
-    return (
-      <EscolherQuemEntra
-        cor={paraQuem.time.cor}
-        nota={paraQuem.nota}
-        todos={todos}
-        emTime={emTime}
-        naLista={naLista}
-        pendente={pendente}
-        erro={aviso?.tipo === 'erro' ? aviso.texto : null}
-        onEscolher={porNoLugar}
-        onCadastrado={(j) => {
-          setCadastrados((cs) => [...cs, j]);
-          porNoLugar(j);
-        }}
-        onCancelar={() => {
-          setAviso(null);
-          setEscolhendoPara(null);
-        }}
-      />
-    );
+  /** Escolher alguém (nos cartões ou na busca) fecha o resto: no PC tudo isso divide a coluna da esquerda. */
+  function escolher(e: Escolhido | null) {
+    setAviso(null);
+    setCompleteAberto(null);
+    setEscolhendoPara(null);
+    setEscolhido(e);
   }
 
-  return (
-    <>
-      <Equilibrio
-        times={times.map(paraSorteado)}
-        dica={
-          times.some((t) => t.completes.length)
-            ? 'Toque num jogador para mudar de time ou num COMPLETE para mexer nele.'
-            : 'Toque num jogador para mudar de time ou tirar.'
-        }
-      />
-      <GradeDeTimes
-        times={times}
-        cores={p.times.map((t) => t.cor)}
-        selecionado={escolhido?.id ?? null}
-        completeAberto={aberto ? { time: aberto.indice, chave: completeAberto! } : null}
-        onToque={(i, j) => {
+  const painel = (pc: boolean) =>
+    aberto && completeAberto !== null ? (
+      <FolhaDoComplete
+        pc={pc}
+        cor={aberto.time.cor}
+        nota={aberto.nota}
+        resumo={resumoDoTime(times, aberto.indice)}
+        pendente={pendente}
+        onPasso={(passo) => notas.mudar(completeAberto, passoDeNota(aberto.nota, passo))}
+        onPorAlguem={() => {
           setAviso(null);
+          notas.descarregar();
+          setEscolhendoPara(completeAberto);
           setCompleteAberto(null);
-          setEscolhido(escolhido?.id === j.id ? null : { id: j.id, nome: j.nome, de: p.times[i].id });
+          window.scrollTo({ top: 0 });
         }}
-        onToqueComplete={(_, chave) => {
-          setAviso(null);
-          setEscolhido(null);
-          setCompleteAberto(completeAberto === chave ? null : chave);
-        }}
-        onPorComplete={(i) => {
-          if (pendente) return;
-          const t = p.times[i];
-          setEscolhido(null);
-          setCompleteAberto(null);
+        onTirar={() => {
+          const id = completeAberto;
+          const sobram = aberto.time.jogadores.length + aberto.time.completes.length - 1;
+          const time = NOME_DA_COR[aberto.time.cor];
           executar(
-            () => porComplete(t.id, NOTA_DO_COMPLETE_NOVO),
-            () =>
-              setAviso({
-                tipo: 'ok',
-                texto: `COMPLETE no ${NOME_DA_COR[t.cor]}, nota ${formatarNota(NOTA_DO_COMPLETE_NOVO)}. Toque nele para mudar.`,
-              }),
+            () => tirarComplete(id),
+            () => {
+              setAviso({ tipo: 'ok', texto: `O ${time} agora joga com ${sobram}.` });
+              setCompleteAberto(null);
+            },
+            id,
           );
         }}
-      />
-
-      <BuscaDeJogador
-        id="busca-definitivo"
-        rotulo="Pôr alguém num time"
-        todos={todos}
-        jaEstao={emTime}
-        textoJaEsta="Já tem time"
-        onEscolher={(j) => {
-          setAviso(null);
+        onFechar={() => {
+          notas.descarregar();
           setCompleteAberto(null);
-          setEscolhido({ id: j.id, nome: j.nome, de: null });
-        }}
-        onCadastrado={(j) => {
-          setCadastrados((cs) => [...cs, j]);
-          setCompleteAberto(null);
-          setEscolhido({ id: j.id, nome: j.nome, de: null });
         }}
       />
+    ) : escolhido ? (
+      <LevarEscolhido nome={escolhido.nome} de={escolhido.de} times={p.times} pendente={pendente} onLevar={levar} onCancelar={() => setEscolhido(null)} />
+    ) : null;
+  const temPainel = !!aberto || !!escolhido;
 
-      <section aria-label="Sortear de novo" className="mt-10 pb-8">
-        <button type="button" className={PILULA_SEGUNDA} onClick={p.onRefazer}>
-          Sortear de novo
-        </button>
-        <p className="mt-2 text-base text-meta">
-          {p.jogadas > 0
-            ? 'Os times salvos só mudam quando você marcar o novo sorteio como definitivo. As partidas já jogadas não mudam.'
-            : 'Os times salvos só mudam quando você marcar o novo sorteio como definitivo.'}
-        </p>
-      </section>
+  const buscaNumTime = {
+    rotulo: 'Pôr alguém num time',
+    todos,
+    jaEstao: emTime,
+    textoJaEsta: 'Já tem time',
+    ...busca,
+    onEscolher: (j: JogadorNota) => escolher({ id: j.id, nome: j.nome, de: null }),
+    onCadastrado: (j: JogadorNota) => {
+      setCadastrados((cs) => [...cs, j]);
+      setCompleteAberto(null);
+      setEscolhido({ id: j.id, nome: j.nome, de: null });
+    },
+  };
 
-      {(escolhido || aberto || aviso) && (
-        <Barra folha={!!escolhido || !!aberto}>
-          {aberto && completeAberto !== null ? (
-            <FolhaDoComplete
-              cor={aberto.time.cor}
-              nota={aberto.nota}
-              resumo={resumoDoTime(times, aberto.indice)}
-              pendente={pendente}
-              onPasso={(passo) => notas.mudar(completeAberto, passoDeNota(aberto.nota, passo))}
-              onPorAlguem={() => {
-                setAviso(null);
-                notas.descarregar();
-                setEscolhendoPara(completeAberto);
-                setCompleteAberto(null);
-                window.scrollTo({ top: 0 });
-              }}
-              onTirar={() => {
-                const id = completeAberto;
-                const sobram = aberto.time.jogadores.length + aberto.time.completes.length - 1;
-                const time = NOME_DA_COR[aberto.time.cor];
-                executar(
-                  () => tirarComplete(id),
-                  () => {
-                    setAviso({ tipo: 'ok', texto: `O ${time} agora joga com ${sobram}.` });
-                    setCompleteAberto(null);
-                  },
-                  id,
-                );
-              }}
-              onFechar={() => {
-                notas.descarregar();
-                setCompleteAberto(null);
-              }}
-            />
-          ) : (
-            escolhido && (
-              <div>
-                <div className="flex items-center gap-3">
-                  <p className="min-w-0 flex-1 truncate text-linha font-medium text-tinta">
-                    {escolhido.de === null ? `Pôr ${escolhido.nome} no` : `Levar ${escolhido.nome} para`}
-                  </p>
-                  <button type="button" className={`-mr-3 ${TEXTO}`} disabled={pendente} onClick={() => setEscolhido(null)}>
-                    Cancelar
-                  </button>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {p.times
-                    .filter((t) => t.id !== escolhido.de)
-                    .map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        disabled={pendente}
-                        onClick={() => levar(t.id)}
-                        className="flex h-toque items-center gap-3 rounded-placa bg-placa-alta px-4 text-left text-linha font-medium text-tinta transition-colors hover:bg-meta/40 active:bg-meta/60 disabled:text-meta"
-                      >
-                        <Colete cor={t.cor} />
-                        {NOME_DA_COR[t.cor]}
-                      </button>
-                    ))}
-                </div>
-                {escolhido.de !== null && (
-                  <button type="button" className={`mt-2 ${PILULA_SEGUNDA}`} disabled={pendente} onClick={() => levar(null)}>
-                    Tirar do time
-                  </button>
-                )}
-              </div>
+  return (
+    <div className={COLUNAS}>
+      <div className={ESQUERDA}>
+        {paraQuem && escolhendoPara !== null ? (
+          // No celular, a tela inteira (os times somem); no PC, a coluna da esquerda, com os times à vista.
+          <EscolherQuemEntra
+            cor={paraQuem.time.cor}
+            nota={paraQuem.nota}
+            todos={todos}
+            emTime={emTime}
+            naLista={p.sugeridos.filter((id) => !emTime.has(id)).flatMap((id) => porId.get(id) ?? [])}
+            pendente={pendente}
+            erro={aviso?.tipo === 'erro' ? aviso.texto : null}
+            onEscolher={porNoLugar}
+            onCadastrado={(j) => {
+              setCadastrados((cs) => [...cs, j]);
+              porNoLugar(j);
+            }}
+            onCancelar={() => {
+              setAviso(null);
+              setEscolhendoPara(null);
+            }}
+          />
+        ) : (
+          <SoNo pc>
+            <div className="hidden lg:block">
+              {temPainel ? (
+                <PainelAoLado>
+                  {painel(true)}
+                  {aviso && <AvisoDoSorteio aviso={aviso} pc className="mt-3" />}
+                </PainelAoLado>
+              ) : (
+                <>
+                  {aviso && <AvisoDoSorteio aviso={aviso} pc className="mb-4" />}
+                  <BuscaDeJogador id="busca-definitivo-pc" className="" {...buscaNumTime} />
+                  <SortearDeNovo jogadas={p.jogadas} onRefazer={p.onRefazer} className="mt-10" />
+                </>
+              )}
+            </div>
+          </SoNo>
+        )}
+      </div>
+
+      <div className={`${paraQuem ? 'hidden' : 'contents'} ${DIREITA}`}>
+        <Equilibrio
+          times={times.map(paraSorteado)}
+          dica={
+            times.some((t) => t.completes.length) ? (
+              'Toque num jogador para mudar de time ou num COMPLETE para mexer nele.'
+            ) : (
+              'Toque num jogador para mudar de time ou tirar.'
             )
+          }
+        />
+        <GradeDeTimes
+          times={times}
+          cores={p.times.map((t) => t.cor)}
+          selecionado={escolhido?.id ?? null}
+          completeAberto={aberto ? { time: aberto.indice, chave: completeAberto! } : null}
+          onToque={(i, j) => escolher(escolhido?.id === j.id ? null : { id: j.id, nome: j.nome, de: p.times[i].id })}
+          onToqueComplete={(_, chave) => {
+            setAviso(null);
+            setEscolhido(null);
+            setEscolhendoPara(null);
+            setCompleteAberto(completeAberto === chave ? null : chave);
+          }}
+          onPorComplete={(i) => {
+            if (pendente) return;
+            const t = p.times[i];
+            escolher(null);
+            const nota = formatarNota(NOTA_DO_COMPLETE_NOVO);
+            executar(
+              () => porComplete(t.id, NOTA_DO_COMPLETE_NOVO),
+              () =>
+                setAviso({
+                  tipo: 'ok',
+                  texto: `COMPLETE no ${NOME_DA_COR[t.cor]}, nota ${nota}. Toque nele para mudar.`,
+                  textoPc: `COMPLETE no ${NOME_DA_COR[t.cor]}, nota ${nota}. Clique nele para mudar.`,
+                }),
+            );
+          }}
+        />
+      </div>
+
+      {!paraQuem && (
+        <SoNo pc={false}>
+          <BuscaDeJogador id="busca-definitivo" className="mt-6 lg:hidden" {...buscaNumTime} />
+          <SortearDeNovo jogadas={p.jogadas} onRefazer={p.onRefazer} className="mt-10 pb-8 lg:hidden" />
+          {(escolhido || aberto || aviso) && (
+            <Barra folha={temPainel}>
+              {painel(false)}
+              {aviso && <AvisoDoSorteio aviso={aviso} className={temPainel ? 'mt-3' : ''} />}
+            </Barra>
           )}
-          {aviso && (
-            <p
-              role={aviso.tipo === 'erro' ? 'alert' : 'status'}
-              className={`text-base font-medium ${aviso.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${escolhido || aberto ? 'mt-3' : ''}`}
-            >
-              {aviso.texto}
-            </p>
-          )}
-        </Barra>
+        </SoNo>
       )}
-    </>
-  );
-}
-
-// ---- Peças -------------------------------------------------------------------------------
-
-/**
- * A diferença de força dita com todas as letras (soma, ou média por jogador se os tamanhos diferem), o que dá para fazer
- * nos cartões e, à direita, uma ação de texto opcional.
- */
-function Equilibrio({ times, dica, acao }: { times: TimeSorteado[]; dica: string; acao?: ReactNode }) {
-  return (
-    <div className="mt-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="font-placa text-subtitulo font-semibold tabular-nums">{rotuloDaDiferenca(times)}</p>
-        {acao}
-      </div>
-      <p className="mt-1 text-base text-meta">{dica}</p>
-    </div>
-  );
-}
-
-/**
- * Os cartões dos times. O COMPLETE é uma vaga: um buraco na placa (fundo do chão), com a nota que
- * conta na soma. Time com menos de 4 ganha "COMPLETE" com um mais, para pôr uma vaga.
- */
-function GradeDeTimes({
-  times,
-  cores = CORES.slice(0, times.length),
-  selecionado,
-  completeAberto,
-  animados,
-  onToque,
-  onToqueComplete,
-  onPorComplete,
-}: {
-  times: TimeNaTela[];
-  cores?: readonly Cor[];
-  selecionado: number | null;
-  completeAberto: CompleteEscolhido | null;
-  animados?: { ids: number[]; n: number };
-  onToque: (time: number, j: JogadorNota) => void;
-  onToqueComplete: (time: number, chave: number) => void;
-  onPorComplete: (time: number) => void;
-}) {
-  return (
-    <section aria-label="Times" className="mt-4">
-      <div className="grid grid-cols-2 gap-2">
-        {times.map((t, i) => {
-          const cor = cores[i];
-          const nome = NOME_DA_COR[cor];
-          const idTitulo = `time-${cor}`;
-          return (
-            <section key={cor} aria-labelledby={idTitulo} className="flex flex-col rounded-placa bg-placa p-1.5">
-              <div className="flex h-12 items-center gap-2 px-2">
-                <Colete cor={cor} />
-                <h3 id={idTitulo} className="min-w-0 flex-1 truncate text-base font-semibold">
-                  {nome}
-                </h3>
-                <span className="font-placa text-subtitulo leading-none font-semibold tabular-nums">
-                  <span className="sr-only">soma </span>
-                  {formatarNota(somar(t))}
-                </span>
-              </div>
-              {vagas(t) === 0 && <p className="px-2 pb-3 text-base text-meta">Ninguém.</p>}
-              <ul className="flex flex-col">
-                {t.jogadores.map((j) => {
-                  const marcado = selecionado === j.id;
-                  const animar = animados?.ids.includes(j.id);
-                  return (
-                    <li key={animar ? `${j.id}-${animados!.n}` : j.id}>
-                      <button
-                        type="button"
-                        aria-pressed={marcado}
-                        onClick={() => onToque(i, j)}
-                        className={`flex h-12 w-full items-center gap-2 rounded-placa px-2 text-left transition-colors ${
-                          marcado ? 'bg-placa-alta ring-2 ring-lima ring-inset' : 'hover:bg-placa-alta/60 active:bg-placa-alta'
-                        } ${animar ? 'animate-pendurar' : ''}`}
-                      >
-                        <span className="min-w-0 flex-1 truncate text-base font-medium text-tinta">{j.nome}</span>
-                        <span className="shrink-0 text-base text-meta tabular-nums">
-                          <span className="sr-only">nota </span>
-                          {formatarNota(j.nota)}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-                {t.completes.map((c) => {
-                  const aberto = completeAberto?.chave === c.chave;
-                  return (
-                    <li key={`c${c.chave}`} className="animate-pendurar pt-1">
-                      <button
-                        type="button"
-                        aria-pressed={aberto}
-                        aria-label={`COMPLETE do ${nome}, nota ${formatarNota(c.nota)}`}
-                        onClick={() => onToqueComplete(i, c.chave)}
-                        className={`flex h-12 w-full items-center gap-2 rounded-placa px-2 text-left transition-colors ${
-                          aberto ? 'bg-placa-alta ring-2 ring-lima ring-inset' : 'bg-chao hover:bg-placa-alta/60 active:bg-placa-alta'
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1 truncate text-base font-medium text-apagado">COMPLETE</span>
-                        <span className="shrink-0 text-base text-meta tabular-nums">{formatarNota(c.nota)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-                {vagas(t) > 0 && vagas(t) < VAGAS && (
-                  <li>
-                    <button
-                      type="button"
-                      aria-label={`Pôr um COMPLETE no ${nome}`}
-                      onClick={() => onPorComplete(i)}
-                      className="flex h-12 w-full items-center gap-2 rounded-placa px-2 text-left text-base font-medium text-meta transition-colors hover:bg-placa-alta/60 hover:text-tinta active:bg-placa-alta"
-                    >
-                      <Mais className="size-5 shrink-0" />
-                      COMPLETE
-                    </button>
-                  </li>
-                )}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-/**
- * Barra de baixo, presa no rodapé da tela: as ações ficam no alcance do polegar. `folha` = a
- * pergunta de um jogador ou COMPLETE escolhido: sobe em placa com sombra, porque flutua sobre os times.
- */
-function Barra({ children, folha = false }: { children: ReactNode; folha?: boolean }) {
-  return (
-    <div
-      className={`sticky bottom-0 mt-auto ${
-        folha ? '-mx-3 rounded-t-cartao bg-placa px-4 pt-3 pb-4 shadow-[0_-12px_32px_rgba(0,0,0,0.7)]' : '-mx-5 bg-chao px-5 pt-3 pb-4'
-      }`}
-    >
-      {children}
     </div>
   );
 }

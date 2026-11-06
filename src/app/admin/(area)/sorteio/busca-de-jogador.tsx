@@ -17,6 +17,12 @@ export function Erro({ texto }: { texto: string | null }) {
   );
 }
 
+/** O texto digitado, guardado por quem chama quando a busca tem uma cópia por largura (celular e PC). */
+export function useTermoDaBusca() {
+  const [termo, setTermo] = useState('');
+  return { termo, onTermo: setTermo };
+}
+
 /** Busca qualquer jogador ativo pelo nome (Joao acha João) e, se não existir, cadastra na hora. */
 export function BuscaDeJogador({
   id,
@@ -27,6 +33,9 @@ export function BuscaDeJogador({
   onEscolher,
   onCadastrado,
   autoFocus = false,
+  className = 'mt-6',
+  termo: termoDeFora,
+  onTermo,
 }: {
   id: string;
   rotulo: string;
@@ -36,8 +45,14 @@ export function BuscaDeJogador({
   onEscolher: (j: JogadorNota) => void;
   onCadastrado: (j: JogadorNota) => void;
   autoFocus?: boolean;
+  className?: string;
+  /** Com `useTermoDaBusca`: as duas cópias (celular e PC) mostram o mesmo texto e girar a tela não apaga. */
+  termo?: string;
+  onTermo?: (termo: string) => void;
 }) {
-  const [termo, setTermo] = useState('');
+  const [termoAqui, setTermoAqui] = useState('');
+  const termo = termoDeFora ?? termoAqui;
+  const setTermo = onTermo ?? setTermoAqui;
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, startAcao] = useTransition();
   const campo = useRef<HTMLInputElement>(null);
@@ -73,7 +88,7 @@ export function BuscaDeJogador({
   }
 
   return (
-    <section aria-label={rotulo} className="mt-6">
+    <section aria-label={rotulo} className={className}>
       <label htmlFor={id} className="block text-base font-medium text-apagado">
         {rotulo}
       </label>

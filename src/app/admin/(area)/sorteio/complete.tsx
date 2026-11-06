@@ -17,7 +17,7 @@ import { BuscaDeJogador, Erro } from './busca-de-jogador';
 /** Nota de quem o admin põe à mão num time: o meio das notas que o sorteio escolhe sozinho. */
 export const NOTA_DO_COMPLETE_NOVO = 3;
 
-/** Conteúdo da folha de um COMPLETE escolhido (vai dentro da Barra em modo folha). */
+/** Conteúdo da folha de um COMPLETE escolhido (dentro da Barra em modo folha; no PC, no Painel ao lado). */
 export function FolhaDoComplete({
   cor,
   nota,
@@ -27,6 +27,7 @@ export function FolhaDoComplete({
   onTirar,
   onPorAlguem,
   onFechar,
+  pc = false,
 }: {
   cor: Cor;
   nota: number;
@@ -38,6 +39,8 @@ export function FolhaDoComplete({
   /** Só nos times definitivos: alguém fica no lugar do COMPLETE pelo resto da noite. */
   onPorAlguem?: () => void;
   onFechar: () => void;
+  /** No Painel ao lado (PC): o seletor sem o "de 0 a 5", que não cabe na coluna (o limite fica nos botões apagados). */
+  pc?: boolean;
 }) {
   const time = NOME_DA_COR[cor];
   return (
@@ -52,7 +55,7 @@ export function FolhaDoComplete({
         </button>
       </div>
       <div className="mt-3">
-        <SeletorDeNota valor={nota} rotulo={`Nota do COMPLETE do ${time}`} onPasso={onPasso} desabilitado={pendente} />
+        <SeletorDeNota valor={nota} rotulo={`Nota do COMPLETE do ${time}`} onPasso={onPasso} desabilitado={pendente} dica={!pc} />
       </div>
       <div className="mt-4 flex flex-col gap-2">
         {onPorAlguem && (
@@ -71,7 +74,7 @@ export function FolhaDoComplete({
 /**
  * Quem entra no lugar do COMPLETE: primeiro quem está na lista da pelada e ainda não tem time, depois
  * a busca entre todos os ativos (com o cadastro rápido). Uma tarefa só: a busca fica no alto, acima
- * do teclado.
+ * do teclado. No celular ocupa a tela; no PC, a coluna da esquerda, com os times à vista.
  */
 export function EscolherQuemEntra({
   cor,
@@ -99,7 +102,7 @@ export function EscolherQuemEntra({
 }) {
   const time = NOME_DA_COR[cor];
   return (
-    <section aria-labelledby="titulo-quem-entra" className="mt-6 pb-8">
+    <section aria-labelledby="titulo-quem-entra" className="mt-6 pb-8 lg:mt-0">
       <div className="flex items-center justify-between gap-3">
         <h2 id="titulo-quem-entra" className="font-placa text-2xl font-semibold">
           Quem entra no {time}?
