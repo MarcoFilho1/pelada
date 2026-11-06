@@ -7,6 +7,7 @@ import {
   inicioJogo,
   mesDaQuarta,
   mesDe,
+  nomeDoMes,
   prazoMensalista,
   proximaQuarta,
 } from '@/domain/tempo';
@@ -71,5 +72,13 @@ describe('rótulos de data (Recife)', () => {
   it('diaDaSemana dá o dia por extenso e a data, em Recife', () => {
     expect(diaDaSemana(aberturaLista('2026-11-11'))).toBe('segunda, 09/11');
     expect(diaDaSemana(new Date('2026-11-05T01:00:00Z'))).toBe('quarta, 04/11');
+  });
+});
+
+describe('nomeDoMes', () => {
+  it('escreve o mês por extenso, minúsculo, com o ano', () => {
+    expect(nomeDoMes('2026-11')).toBe('novembro de 2026');
+    expect(nomeDoMes('2027-01')).toBe('janeiro de 2027');
+    expect(nomeDoMes('2026-03')).toBe('março de 2026');
   });
 });

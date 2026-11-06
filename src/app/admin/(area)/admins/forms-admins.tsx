@@ -37,7 +37,7 @@ export function FormsAdmins() {
 
   return (
     <>
-      <section className="mt-10" aria-labelledby="h-novo">
+      <section className="mt-10 lg:col-start-1" aria-labelledby="h-novo">
         <h2 id="h-novo" className="font-placa text-2xl font-semibold">
           Novo admin
         </h2>
@@ -73,7 +73,7 @@ export function FormsAdmins() {
             aria-describedby="novo-dica novo-msg"
             className={CAMPO}
           />
-          <p id="novo-dica" className="mt-2 text-base text-meta">
+          <p id="novo-dica" className="mt-2 text-base text-meta lg:min-h-12">
             Pelo menos 10 caracteres.
           </p>
           <Mensagem id="novo-msg" estado={novo} />
@@ -83,7 +83,7 @@ export function FormsAdmins() {
         </form>
       </section>
 
-      <section className="mt-12" aria-labelledby="h-troca">
+      <section className="mt-12 lg:mt-10" aria-labelledby="h-troca">
         <h2 id="h-troca" className="font-placa text-2xl font-semibold">
           Trocar minha senha
         </h2>
@@ -115,7 +115,7 @@ export function FormsAdmins() {
             aria-describedby="troca-dica troca-msg"
             className={CAMPO}
           />
-          <p id="troca-dica" className="mt-2 text-base text-meta">
+          <p id="troca-dica" className="mt-2 text-base text-meta lg:min-h-12">
             Pelo menos 10 caracteres. Os outros aparelhos saem da conta.
           </p>
           <Mensagem id="troca-msg" estado={troca} />

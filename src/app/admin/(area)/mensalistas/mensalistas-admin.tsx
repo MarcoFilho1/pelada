@@ -2,21 +2,14 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
-import { MAX_MENSALISTAS as MAX } from '@/domain/tempo';
+import { MAX_MENSALISTAS as MAX, nomeDoMes } from '@/domain/tempo';
 import { Marca, SetaDireita, SetaEsquerda } from '@/components/icones';
 import { salvarMensalistas } from './actions';
-
-const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function deslocar(mes: string, delta: number): string {
   const [a, m] = mes.split('-').map(Number);
   const i = a * 12 + (m - 1) + delta;
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
-}
-
-function nomeDoMes(mes: string): string {
-  const [a, m] = mes.split('-').map(Number);
-  return `${MESES[m - 1]} de ${a}`;
 }
 
 const BOTAO_MES =
@@ -60,11 +53,41 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
     });
   }
 
-  return (
-    <main className="flex flex-1 flex-col pb-8">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Mensalistas</h1>
+  // Desfazer e Salvar: no celular, na barra presa no rodapé; no PC, na linha de cima, ao lado do mês
+  // (duas cópias, uma escondida em cada largura, para o Tab seguir a ordem que se vê).
+  const acoes = (
+    <>
+      {mudou && (
+        <button
+          type="button"
+          onClick={() => {
+            setEscolhidos(new Set(salvos));
+            setAviso(null);
+          }}
+          disabled={salvando}
+          className="flex h-12 shrink-0 items-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta"
+        >
+          Desfazer
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={salvar}
+        disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
+        className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado lg:w-auto lg:px-8"
+      >
+        {salvando ? 'Salvando…' : 'Salvar mensalistas'}
+      </button>
+    </>
+  );
 
-      <div className="mt-4 flex items-center gap-3">
+  return (
+    // No PC (lg) vira grade: o mês e o Salvar dividem a linha de cima, o contador e os avisos logo
+    // abaixo, e os nomes em colunas (sem a barra presa no rodapé).
+    <main className="flex flex-1 flex-col pb-8 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)_auto] lg:content-start lg:gap-x-6">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-3">Mensalistas</h1>
+
+      <div className="mt-4 flex items-center gap-3 lg:col-start-1 lg:row-start-2">
         {mudou ? (
           <span className={BOTAO_MES_OFF} aria-hidden="true">
             <SetaEsquerda />
@@ -88,16 +111,28 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
         )}
       </div>
 
-      <p className="mt-6 flex items-baseline gap-3">
+      <div className="hidden lg:col-start-3 lg:row-start-2 lg:mt-4 lg:flex lg:items-center lg:justify-end lg:gap-3">{acoes}</div>
+
+      <p className="mt-6 flex items-baseline gap-3 lg:col-span-3 lg:row-start-3">
         <span className="font-placa text-numero font-semibold tabular-nums" aria-label={`${total} de ${MAX} vagas`}>
           {total}/{MAX}
         </span>
         <span className="text-base text-apagado">
-          {cheio ? 'Vagas cheias. Tire alguém para pôr outro.' : total === 0 ? 'Marque pelo menos 1 mensalista.' : 'Toque no nome para marcar.'}
+          {cheio ? (
+            'Vagas cheias. Tire alguém para pôr outro.'
+          ) : total === 0 ? (
+            'Marque pelo menos 1 mensalista.'
+          ) : (
+            <>
+              {/* No PC é com o mouse. */}
+              <span className="lg:hidden">Toque</span>
+              <span className="hidden lg:inline">Clique</span> no nome para marcar.
+            </>
+          )}
         </span>
       </p>
 
-      <p className="mt-2 text-base text-apagado">
+      <p className="mt-2 text-base text-apagado lg:col-span-3 lg:row-start-4">
         Mudanças valem a partir da próxima pelada. Para esta semana, ajuste em{' '}
         <Link href="/admin/pelada" className="-my-3 inline-block py-3 font-medium text-tinta underline underline-offset-4">
           Pelada
@@ -106,15 +141,15 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
       </p>
 
       {pendenteDeGravar && (
-        <p className="mt-2 text-base text-apagado">
+        <p className="mt-2 text-base text-apagado lg:col-span-3 lg:row-start-5">
           Copiado de {nomeDoMes(copiadoDe ?? mes)}, ainda não salvo.
         </p>
       )}
 
       {jogadores.length === 0 ? (
-        <p className="mt-6 text-base text-apagado">Nenhum jogador ativo. Cadastre em Jogadores.</p>
+        <p className="mt-6 text-base text-apagado lg:col-span-3 lg:row-start-7">Nenhum jogador ativo. Cadastre em Jogadores.</p>
       ) : (
-        <ul className="mt-4 flex flex-col gap-2">
+        <ul className="mt-4 flex flex-col gap-2 lg:col-span-3 lg:row-start-7 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
           {jogadores.map((j) => {
             const marcado = escolhidos.has(j.id);
             const travado = cheio && !marcado;
@@ -143,34 +178,12 @@ export function MensalistasAdmin({ mes, jogadores, marcados, copiadoDe }: Props)
 
       <p
         role={aviso?.tipo === 'erro' ? 'alert' : 'status'}
-        className={`mt-4 text-base font-medium break-words ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
+        className={`mt-4 text-base font-medium break-words lg:col-span-3 lg:row-start-6 ${aviso?.tipo === 'erro' ? 'text-erro' : 'text-lima'} ${aviso ? '' : 'sr-only'}`}
       >
         {aviso?.texto}
       </p>
 
-      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4">
-        {mudou && (
-          <button
-            type="button"
-            onClick={() => {
-              setEscolhidos(new Set(salvos));
-              setAviso(null);
-            }}
-            disabled={salvando}
-            className="flex h-12 shrink-0 items-center rounded-placa px-3 text-base font-medium text-apagado transition-colors hover:text-tinta"
-          >
-            Desfazer
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={salvar}
-          disabled={!(mudou || pendenteDeGravar) || total === 0 || salvando}
-          className="h-toque w-full rounded-full bg-tinta text-linha font-semibold text-chao transition-colors hover:bg-apagado active:bg-meta disabled:bg-placa-alta disabled:text-apagado"
-        >
-          {salvando ? 'Salvando…' : 'Salvar mensalistas'}
-        </button>
-      </div>
+      <div className="sticky bottom-0 -mx-5 mt-4 flex items-center gap-3 bg-chao px-5 pt-3 pb-4 lg:hidden">{acoes}</div>
     </main>
   );
 }

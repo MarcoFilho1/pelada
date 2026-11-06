@@ -200,7 +200,8 @@ botões são Inter. Caixa normal, sem letras espaçadas em maiúsculas.
 
 ## Layout
 
-Coluna única de até 448px (`max-w-md`), margens laterais de 20px, barra do topo de 56px no mesmo fundo. No
+Coluna única de até 448px (`max-w-md`), margens laterais de 20px, barra do topo de 56px no mesmo fundo (a área
+admin muda a partir de 1024px: ver "No PC"). No
 celular o conteúdo começa logo abaixo do topo (título 24px abaixo da barra) para caber acima do teclado; a
 partir de 768px a área principal centraliza na altura. Ritmo: 8px entre rótulo e campo, 24px entre blocos,
 32px antes das placas. Alvos de toque: 56px nos controles principais, 48px no mínimo (links de texto do topo
@@ -253,6 +254,22 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   48px de altura com 10px de folga lateral. Seção atual: texto branco sobre placa #111 (raio 10px) e
   `aria-current="page"`; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. Se não couber,
   rola de lado, sem quebrar linha. Só existe dentro da área admin; /admin/entrar e o anotador não têm.
+  A partir de 1024px vira o menu lateral (ver "No PC").
+
+### Painel (resumo da semana, admin)
+- Vale em todas as larguras. h1 "Painel" e, em #b4b4b4, "Hoje é sexta, 06/11.". Abaixo, um bloco por assunto
+  (lista, sorteio, partidas, jogadores, mensalistas), 8px entre eles: placa #111, raio 10px, 20px de respiro, e a
+  placa inteira é um link para a seção (hover placa alta a 60%, ativo placa alta). Dentro: o nome do assunto em
+  Inter 500 18px com a seta de 20px em Giz à direita, o número em Barlow tabular com a palavra em Inter 16px
+  #b4b4b4 ao lado ("10/16 confirmados", "22 ativos") e uma frase em #b4b4b4 com o estado ("Aberta, 2 na fila.",
+  "Abre segunda, 09/11, à meia-noite.", "1 ainda está com o PIN 1234."). O número da lista é o maior (Número,
+  44px); os outros em Subtítulo (28px). Sem ícone, sem cor: só o check lima de 20px em "Times definitivos".
+- Sem pelada até hoje, sorteio e partidas dizem quando aparecem, sem número. Fora do dia, os dois falam da última
+  pelada com a data ("Na última pelada, 04/11, teve times definitivos. O próximo aparece no dia da pelada."; o
+  sorteio fica sem número e sem o check lima, para ninguém achar que os times da semana já saíram). Pelada do dia
+  cancelada: "A pelada de hoje foi cancelada.". Com partida em andamento, o bloco das partidas leva direto ao
+  anotador ("Uma em andamento: voltar ao anotador.").
+- O resumo só lê o banco: abrir o painel nunca cria a pelada da semana nem copia os mensalistas.
 
 ### Linha de jogador recolhível (admin)
 - Placa #111, raio 10px, em lista com 8px de intervalo. Fechada: 56px, nome em Inter 500 18px (truncado), meta
@@ -529,6 +546,31 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
   salvando = pontos lima. Enquanto confere, o campo fica só-leitura (não desabilitado) para o teclado não
   fechar.
 - Ao completar 4 dígitos, envia sozinho. Sem botão.
+
+## No PC (≥1024px)
+
+Um corte só, em 1024px (`lg`). Abaixo dele a área admin é exatamente a do celular. Por enquanto só a área admin
+muda; as telas do jogador continuam na coluna de 448px.
+
+- **Moldura:** duas colunas. À esquerda o menu lateral de 240px no mesmo chão #000, sem borda (o espaço separa),
+  preso na altura da tela: a marca "Pelada" no alto (a mesma da barra do topo), as 7 seções em lista vertical
+  (itens de 48px, 4px entre eles, texto alinhado com a marca; a atual em branco sobre placa #111 com
+  `aria-current="page"`, as outras em #b4b4b4) e "Sair" no pé, como texto. A barra do topo e as abas somem. No
+  teclado, o Tab passa pela marca, pelas seções e pelo Sair antes do conteúdo.
+- **Conteúdo:** o `main` ocupa a coluna da direita, alinhado no alto (o h1 a 40px do topo), com 40px de margem
+  dos lados e até 1152px de largura, centrado no espaço ao lado do menu. Cada tela decide as próprias colunas;
+  o que ainda não foi pensado para o PC fica numa coluna larga.
+- **Anotador:** continua a tela cheia do celular, sem menu lateral. As duas colunas só existem quando o menu está
+  na tela (variante `admin-pc` no globals.css); sem ele (anotador, partida que não existe) a coluna de 448px
+  continua centrada, como antes.
+- **Painel:** os blocos numa grade de 3 colunas (8px); a lista ocupa 2, os outros 1, sem sobra na grade.
+- **Mensalistas:** a linha de cima traz o seletor de mês (320px) à esquerda e "Desfazer" + "Salvar mensalistas"
+  (pílula do tamanho do texto) à direita; logo abaixo o contador "x/16" com a instrução, o aviso de que muda a
+  partir da próxima pelada e a mensagem de salvo/erro. Os nomes vêm em colunas de pelo menos 224px (3 em 1024px,
+  4 em 1440px). Sem a barra presa no rodapé. A instrução diz "Clique no nome para marcar." (no celular,
+  "Toque…").
+- **Admins:** a lista de admins na coluna da esquerda e, abaixo, "Novo admin" e "Trocar minha senha" lado a lado
+  (duas colunas, 40px entre elas), com o mesmo topo; as dicas reservam duas linhas para as pílulas alinharem.
 
 ## Do's and Don'ts
 

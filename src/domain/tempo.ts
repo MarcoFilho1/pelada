@@ -17,6 +17,14 @@ export function diaMes(data: string): string {
   return `${dia}/${mes}`;
 }
 
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** 'YYYY-MM' → 'novembro de 2026' (minúsculo, como no meio da frase). */
+export function nomeDoMes(mes: string): string {
+  const [a, m] = mes.split('-').map(Number);
+  return `${MESES[m - 1]} de ${a}`;
+}
+
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
 /** Dia da semana e data do instante em Recife: 'segunda, 09/11'. */
