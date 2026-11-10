@@ -75,3 +75,69 @@ Passo a passo para quem cuida do site (nada disto é preciso no dia a dia).
   5. Abrir `/ranking`.
   6. Num iPhone, iniciar uma partida e ouvir o aviso sonoro dos 8:00 (o iOS é o mais exigente com som).
 - **Backup:** a restauração a qualquer ponto no tempo do Neon só volta até onde o plano permite (a janela de retenção muda de plano para plano). Confira a janela do seu plano.
+
+## Robô do WhatsApp
+
+Um robô manda a lista no grupo **"Pelada 3.0"** sozinho: segunda às 14:00 avisa que a lista abriu, depois manda a lista de novo de meia em meia hora **só quando algo mudou**, lembra os mensalistas na quarta às 12:00 e avisa às 14:00 quando o prazo acabou. Das 23:00 às 08:00 fica quieto. Ele usa um número de WhatsApp sobrando, que já precisa estar no grupo, e roda no seu Mac.
+
+Tudo dele fica no Mac, fora do projeto, na pasta `~/Library/Application Support/PeladaRobo/` (o login do WhatsApp, a última lista que ele mandou e o arquivo com o endereço do banco).
+
+### 0. Pôr o projeto em `~/pelada`
+
+O macOS não deixa um serviço que liga sozinho abrir pastas da Mesa (Desktop), Documentos, Downloads ou iCloud Drive. Por isso o robô precisa do projeto fora delas, em `~/pelada` (a pasta pessoal). Clone (ou mova) o projeto para lá e rode `pnpm install` dentro dele. Daqui para baixo, rode todos os comandos de dentro de `~/pelada`. Se você esquecer, o `pnpm robo:instalar` recusa e avisa.
+
+### 1. Dizer onde está o banco
+
+Crie o arquivo `~/Library/Application Support/PeladaRobo/.env` com uma linha só:
+
+```
+DATABASE_URL=<a mesma DATABASE_URL do site, copiada da Vercel>
+```
+
+Esse arquivo tem a senha do banco: não mande para ninguém e não coloque dentro da pasta do projeto. Depois de criar, proteja-o: `chmod 600 ~/Library/Application\ Support/PeladaRobo/.env`. Sem ele o robô não liga e avisa o que falta.
+
+### 2. Conectar o número do robô (QR)
+
+Na pasta do projeto, rode `pnpm robo:configurar`. Aparece um QR no Terminal. No celular do número sobrando, abra o WhatsApp > **Aparelhos conectados** > **Conectar um aparelho** e leia o QR. O robô procura o grupo "Pelada 3.0":
+
+- achou um: guarda e diz "Pronto";
+- achou dois com o mesmo nome: mostra os dois e pergunta qual é o certo (digite o número);
+- não achou: o número do robô ainda não está no grupo (ou o nome está diferente). Adicione e rode de novo.
+
+### 3. Testar num grupo de teste primeiro
+
+Antes de valer no grupo de verdade, crie um grupo só com você e o número do robô (por exemplo, "Teste robô") e rode:
+
+1. `pnpm robo:configurar --nome="Teste robô"` (escolhe o grupo de teste).
+2. Para ver o que ele mandaria, sem mandar nada: `pnpm robo:ensaio`. Dá para simular um horário: `pnpm robo:ensaio --agora=2026-11-11T12:00:00-03:00`. O ensaio só lê o banco (nunca cria a lista da semana), então pode simular qualquer dia sem mexer no site.
+3. Para mandar de verdade no grupo de teste: `pnpm robo` no Terminal, entre segunda 14:00 e quarta 20:30. A primeira mensagem sai na hora; feche com Ctrl+C.
+4. Gostou? Rode `pnpm robo:configurar` de novo, sem `--nome`, para voltar ao "Pelada 3.0". Ao trocar de grupo o robô começa do zero, e a primeira mensagem no grupo de verdade é a lista completa.
+
+### 4. Instalar (liga sozinho com o Mac)
+
+Rode `pnpm robo:instalar`. Ele mostra **"Vai mandar em: …"** com o nome do grupo: confira que é o "Pelada 3.0" e não o grupo de teste (se for o de teste, rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` e instale de novo). A partir daí o robô liga sozinho quando você entra no Mac. Fora de segunda 14:00 → quarta 20:30 ele fica parado; dentro desse horário ele impede o Mac de dormir.
+
+**Nos dias da pelada (segunda a quarta), deixe o Mac aberto e na tomada.** Com a tampa fechada o Mac dorme mesmo assim, e as mensagens atrasam. Quando o Mac volta, o robô manda uma mensagem só com tudo o que mudou (os horários fixos que passaram, como o lembrete das 12:00, não saem atrasados).
+
+### Ver o que ele está fazendo
+
+Ao ligar, o robô escreve no log em qual grupo vai mandar. Depois, entre segunda 14:00 e quarta 20:30, escreve uma linha por minuto no arquivo `~/Library/Logs/PeladaRobo/robo.log` (o que decidiu, o que mandou, erros). Fora desse horário fica quieto (uma linha avisando quando começa a próxima janela). Para acompanhar ao vivo: `tail -f ~/Library/Logs/PeladaRobo/robo.log`.
+
+- **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (ele guarda o login antigo ao lado e mostra um QR novo) e `pnpm robo:instalar`. Nunca deixe dois programas conectados no número do robô ao mesmo tempo: o WhatsApp derruba a sessão.
+- **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte; como a mensagem só é dada como enviada depois da confirmação do WhatsApp, um erro desse tipo não manda nada.
+- **Log vazio depois de instalar**: confira se o projeto está mesmo em `~/pelada` (passo 0). Em último caso, `launchctl print gui/$(id -u)/com.pelada.robo` mostra o motivo da última parada.
+- **"pode sair duplicada"**: o WhatsApp não confirmou a mensagem a tempo (internet ruim). O robô tenta de novo no minuto seguinte, então às vezes a mesma lista aparece duas vezes no grupo. É melhor do que perder a mensagem.
+
+### Atualizar o robô
+
+Quando o site ganhar regras novas, o robô continua com as antigas até você atualizá-lo. No Terminal, rode (um comando por vez):
+
+1. `cd ~/pelada`
+2. `git pull` (baixa a versão nova) e `pnpm install`
+3. `pnpm robo:desinstalar` e depois `pnpm robo:instalar` (reinicia o robô com o código novo). Confira o "Vai mandar em: …" que aparece.
+
+Faça isso fora de segunda 14:00 → quarta 20:30, se puder. O login do WhatsApp e o estado não se perdem.
+
+### Desligar
+
+`pnpm robo:desinstalar` desliga o robô e tira do início do Mac. Para voltar, `pnpm robo:instalar`. Não rode `pnpm robo:configurar` com o robô instalado: são duas conexões no mesmo número e uma derruba a outra. Desinstale antes.

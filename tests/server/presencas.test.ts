@@ -12,6 +12,7 @@ import {
   confirmar,
   entrarNaFila,
   estadoDaSemana,
+  estadoDaSemanaSemCriar,
   remover,
 } from '@/server/presencas';
 import { createTestDb } from '../helpers/db';
@@ -434,5 +435,21 @@ describe('admin', () => {
     await definirEstadoManual(db, p.id, null);
     expect((await estadoDaSemana(db, DOMINGO)).aberta).toBe(false);
     await expect(definirEstadoManual(db, 999_999, 'fechada')).rejects.toMatchObject({ motivo: 'pelada_inexistente' });
+  });
+});
+
+describe('estadoDaSemanaSemCriar', () => {
+  it('depois da abertura, sem pelada criada, não escreve nada (mostra a prévia)', async () => {
+    await criar(['Ana']);
+    const antes = { p: await db.select().from(peladas), pr: await db.select().from(presencas) };
+    const e = await estadoDaSemanaSemCriar(db, SEGUNDA);
+    expect(e.peladaId).toBeNull();
+    expect(await db.select().from(peladas)).toEqual(antes.p);
+    expect(await db.select().from(presencas)).toEqual(antes.pr);
+    expect(antes.p).toHaveLength(0);
+  });
+  it('com a pelada criada, lê a lista real', async () => {
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    expect((await estadoDaSemanaSemCriar(db, SEGUNDA)).peladaId).toBe(p.id);
   });
 });
