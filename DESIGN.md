@@ -201,7 +201,7 @@ botões são Inter. Caixa normal, sem letras espaçadas em maiúsculas.
 ## Layout
 
 Coluna única de até 448px (`max-w-md`), margens laterais de 20px, barra do topo de 56px no mesmo fundo (a área
-admin muda a partir de 1024px: ver "No PC"). No
+admin e as telas do jogador com menu mudam a partir de 1024px: ver "No PC"). No
 celular o conteúdo começa logo abaixo do topo (título 24px abaixo da barra) para caber acima do teclado; a
 partir de 768px a área principal centraliza na altura. Ritmo: 8px entre rótulo e campo, 24px entre blocos,
 32px antes das placas. Alvos de toque: 56px nos controles principais, 48px no mínimo (links de texto do topo
@@ -247,7 +247,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
 
 ### Navigation
 - Barra de 56px no fundo: marca à esquerda, no máximo um link de texto à direita. Sem ícones em caixa, sem
-  pílulas coloridas.
+  pílulas coloridas. A exceção é o PC do jogador: o menu Lista · Ranking · Perfil à direita (ver "No PC").
 
 ### Navegação do admin
 - Linha de texto logo abaixo da barra (Painel · Pelada · Sorteio · Partidas · Jogadores · Mensalistas · Admins), Inter 500 16px, itens de
@@ -483,7 +483,8 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
 ### Barra de baixo do jogador (Lista · Ranking · Perfil)
 - Fixa no rodapé, fundo #000 (como as barras dos mensalistas e do sorteio), sem borda nem sombra, com o recuo da
   área segura do iPhone. Três itens de largura igual, 56px de altura, Inter 500 16px; o atual em branco sobre placa
-  #111 (raio 10px) e `aria-current="page"`, os outros em #b4b4b4, branco no hover. Sem lima, sem ícone.
+  #111 (raio 10px) e `aria-current="page"`, os outros em #b4b4b4, branco no hover. Sem lima, sem ícone. A partir de
+  1024px some (e o espaço que ela reserva também): o menu sobe para a barra do topo (ver "No PC").
 - Reserva a própria altura no fim da página: nada fica escondido atrás dela. A barra do topo perde o "Sair" (ele
   mora no Perfil). Telas de uma tarefa com teclado aberto (Trocar PIN) não têm a barra; têm "‹ Perfil".
 
@@ -552,8 +553,8 @@ A tela mais importante do site: o admin segura o celular na beira da quadra e to
 
 ## No PC (≥1024px)
 
-Um corte só, em 1024px (`lg`). Abaixo dele a área admin é exatamente a do celular. Por enquanto só a área admin
-muda; as telas do jogador continuam na coluna de 448px.
+Um corte só, em 1024px (`lg`). Abaixo dele a área admin e as telas do jogador são exatamente as do celular
+(provado com capturas 390×844 antes/depois, pixel a pixel).
 
 - **Moldura:** duas colunas. À esquerda o menu lateral de 240px no mesmo chão #000, sem borda (o espaço separa),
   preso na altura da tela: a marca "Pelada" no alto (a mesma da barra do topo), as 7 seções em lista vertical
@@ -631,6 +632,26 @@ muda; as telas do jogador continuam na coluna de 448px.
   ("Jogar sem" e "Iniciar" também do tamanho do texto). À direita, "Já jogadas". "Escolha livre. Clique para trocar."
 - **Corrigir partida:** os dois times lado a lado (duas colunas iguais até 896px, 40px entre elas), abaixo do
   confronto; as linhas e os contadores como no celular.
+
+### Jogador no PC
+
+- **Menu no topo:** em Lista, Ranking e Perfil (`TelaJogador`), a barra do topo de 56px ganha, à direita da marca,
+  Lista · Ranking · Perfil em texto: Inter 500 16px, itens de 48px com 12px de folga lateral e 4px entre eles; a
+  seção atual em branco sobre placa #111 (raio 10px) com `aria-current="page"`, como o item atual do menu lateral do
+  admin; as outras em #b4b4b4, branco no hover. Sem lima, sem sublinhado. O texto do último item alinha com a margem
+  da coluna (a placa do atual sai 12px para fora). A barra de baixo e o espaço reservado para ela somem. As duas
+  cópias do menu têm o mesmo nome ("Principal") e só uma existe na tela em cada largura. No teclado: marca → menu →
+  conteúdo. Trocar PIN (e as telas de entrar) continua uma coluna centrada sem menu.
+- **Moldura:** a coluna se abre até 1152px (`max-w-6xl`) com 40px de margem dos lados, centrada; a barra do topo usa
+  a largura toda. A tela com colunas próprias (`pc`) alinha o `main` no alto; as outras continuam com o conteúdo na
+  coluna de 448px centrada, até ganharem as suas.
+- **Lista:** abaixo do h1 ("Quarta, 11/11") e do horário, duas colunas com 40px entre elas: à esquerda, com 352px
+  (22rem), o bloco "sua vaga" e, 24px abaixo, "Copiar lista pro WhatsApp" (o aviso de copiado e a área de texto
+  manual também ficam ali); à direita a Lista (16) e a Fila. Os dois topos ficam na mesma altura. A coluna da
+  esquerda fica presa no alto (`sticky`, 24px) enquanto a lista rola, se a tela tem pelo menos 640px de altura. O
+  bloco é um só nas duas larguras (a pergunta do "Não vou" aberta sobrevive a atravessar 1024px); o "Copiar" tem uma
+  cópia por largura com o mesmo estado (`SoNo`), e só a da largura atual fica no DOM depois de hidratar. Tab: menu →
+  bloco → Copiar (as linhas da lista não são tocáveis).
 
 ## Do's and Don'ts
 
