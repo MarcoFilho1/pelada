@@ -75,3 +75,54 @@ Passo a passo para quem cuida do site (nada disto é preciso no dia a dia).
   5. Abrir `/ranking`.
   6. Num iPhone, iniciar uma partida e ouvir o aviso sonoro dos 8:00 (o iOS é o mais exigente com som).
 - **Backup:** a restauração a qualquer ponto no tempo do Neon só volta até onde o plano permite (a janela de retenção muda de plano para plano). Confira a janela do seu plano.
+
+## Robô do WhatsApp
+
+Um robô manda a lista no grupo **"Pelada 3.0"** sozinho: segunda às 14:00 avisa que a lista abriu, depois manda a lista de novo de meia em meia hora **só quando algo mudou**, lembra os mensalistas na quarta às 12:00 e avisa às 14:00 quando o prazo acabou. Das 23:00 às 08:00 fica quieto. Ele usa um número de WhatsApp sobrando, que já precisa estar no grupo, e roda no seu Mac.
+
+Tudo dele fica no Mac, fora do projeto, na pasta `~/Library/Application Support/PeladaRobo/` (o login do WhatsApp, a última lista que ele mandou e o arquivo com o endereço do banco).
+
+### 1. Dizer onde está o banco
+
+Crie o arquivo `~/Library/Application Support/PeladaRobo/.env` com uma linha só:
+
+```
+DATABASE_URL=<a mesma DATABASE_URL do site, copiada da Vercel>
+```
+
+Esse arquivo tem a senha do banco: não mande para ninguém e não coloque dentro da pasta do projeto. Sem ele o robô não liga e avisa o que falta.
+
+### 2. Conectar o número do robô (QR)
+
+Na pasta do projeto, rode `pnpm robo:configurar`. Aparece um QR no Terminal. No celular do número sobrando, abra o WhatsApp > **Aparelhos conectados** > **Conectar um aparelho** e leia o QR. O robô procura o grupo "Pelada 3.0":
+
+- achou um: guarda e diz "Pronto";
+- achou dois com o mesmo nome: mostra os dois e pergunta qual é o certo (digite o número);
+- não achou: o número do robô ainda não está no grupo (ou o nome está diferente). Adicione e rode de novo.
+
+### 3. Testar num grupo de teste primeiro
+
+Antes de valer no grupo de verdade, crie um grupo só com você e o número do robô (por exemplo, "Teste robô") e rode:
+
+1. `pnpm robo:configurar --nome="Teste robô"` (escolhe o grupo de teste).
+2. Para ver o que ele mandaria, sem mandar nada: `pnpm robo:ensaio`. Dá para simular um horário: `pnpm robo:ensaio --agora=2026-11-11T12:00:00-03:00`.
+3. Para mandar de verdade no grupo de teste: `pnpm robo` no Terminal, entre segunda 14:00 e quarta 20:30. A primeira mensagem sai na hora; feche com Ctrl+C.
+4. Gostou? Rode `pnpm robo:configurar` de novo, sem `--nome`, para voltar ao "Pelada 3.0". Ao trocar de grupo o robô começa do zero, e a primeira mensagem no grupo de verdade é a lista completa.
+
+### 4. Instalar (liga sozinho com o Mac)
+
+Rode `pnpm robo:instalar`. A partir daí o robô liga sozinho quando você entra no Mac. Fora de segunda 14:00 → quarta 20:30 ele fica parado; dentro desse horário ele impede o Mac de dormir.
+
+**Nos dias da pelada (segunda a quarta), deixe o Mac aberto e na tomada.** Com a tampa fechada o Mac dorme mesmo assim, e as mensagens atrasam. Quando o Mac volta, o robô manda uma mensagem só com tudo o que mudou (os horários fixos que passaram, como o lembrete das 12:00, não saem atrasados).
+
+### Ver o que ele está fazendo
+
+O robô escreve uma linha por minuto no arquivo `~/Library/Logs/PeladaRobo/robo.log` (o que decidiu, o que mandou, erros). Para acompanhar ao vivo: `tail -f ~/Library/Logs/PeladaRobo/robo.log`.
+
+- **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (QR) e `pnpm robo:instalar`.
+- **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte, sem mandar nada repetido.
+- **"Operation not permitted"**: o macOS não deixou o robô ler a pasta do projeto (acontece com projetos na Mesa/Desktop ou em Documentos). Mova a pasta do projeto para fora delas (por exemplo, `~/pelada`) e rode `pnpm robo:instalar` de novo de lá.
+
+### Desligar
+
+`pnpm robo:desinstalar` desliga o robô e tira do início do Mac. Para voltar, `pnpm robo:instalar`. Não rode `pnpm robo:configurar` com o robô instalado: são duas conexões no mesmo número e uma derruba a outra. Desinstale antes.
