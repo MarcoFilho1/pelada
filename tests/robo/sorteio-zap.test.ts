@@ -37,11 +37,18 @@ beforeEach(async () => {
 describe('ehAdmin', () => {
   it('compara só dígitos, com ou sem 55 e com ou sem o 9 extra', () => {
     const admins = ['+55 (81) 99000-0001'];
-    for (const t of ['5581990000001', '81990000001', '558190000001', '8190000001', '+55 81 99000-0001']) expect(ehAdmin(t, admins)).toBe(true);
-    for (const t of ['5581990000002', '', '55', '5511990000001', 'abc']) expect(ehAdmin(t, admins)).toBe(false);
+    for (const t of ['5581990000001', '558190000001', '+55 81 99000-0001']) expect(ehAdmin(t, admins)).toBe(true);
+    for (const t of ['5581990000002', '', '55', '5511990000001', 'abc', '81990000001', '8190000001']) expect(ehAdmin(t, admins)).toBe(false);
   });
   it('admin cadastrado sem o 9 também casa com quem manda com o 9', () => {
     expect(ehAdmin('5581990000001', ['558190000001'])).toBe(true);
+  });
+  it('remetente sem 55 é recusado: +81 (Japão) não vira DDD 81', () => {
+    expect(ehAdmin('+81 90 0000 0001', ['5581990000001', '81990000001'])).toBe(false);
+    expect(ehAdmin('819000000001', ['558190000001'])).toBe(false);
+  });
+  it('admin cadastrado sem 55 e sem 9 casa com remetente completo', () => {
+    expect(ehAdmin('5581990000001', ['8190000001'])).toBe(true);
   });
   it('lista vazia não tem admin', () => expect(ehAdmin('5581990000001', [])).toBe(false));
   it('texto fixo', () => expect(TEXTO_SO_ADMIN).toBe('Só os organizadores podem sortear pelo WhatsApp.'));
@@ -66,6 +73,9 @@ describe('proporSorteio', () => {
     const antes = await tudo();
     expect(await proporSorteio(db, new Date('2026-11-18T15:00:00Z'), ADMIN, rng)).toEqual({ erro: 'Hoje não tem pelada para sortear.' });
     expect(await tudo()).toBe(antes);
+    expect(await proporSorteio(db, new Date('2026-11-12T15:00:00Z'), ADMIN, rng)).toEqual({ erro: 'Hoje não tem pelada para sortear.' });
+    expect(await proporSorteio(db, new Date('2026-11-10T15:00:00Z'), ADMIN, rng)).toEqual({ erro: 'Hoje não tem pelada para sortear.' });
+    expect(await tudo()).toBe(antes);
     await db.execute(sql`update presencas set status = 'removido' where id > 1`);
     expect(await proporSorteio(db, QUARTA, ADMIN, rng)).toEqual({ erro: 'Poucos confirmados para sortear.' });
   });
@@ -77,7 +87,7 @@ describe('confirmarSorteio', () => {
 
   it('mesmo admin grava times iguais aos da proposta (aceita variação do número)', async () => {
     const p = await proposta();
-    expect(await confirmarSorteio(db, mais(9, 59), '81990000001', p)).toEqual({ ok: 'Times definitivos salvos.' });
+    expect(await confirmarSorteio(db, mais(9, 59), '558190000001', p)).toEqual({ ok: 'Times definitivos salvos.' });
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => t.jogadores.map((j) => j.id).sort())).toEqual(p.elencos.map((e) => [...e].sort()));
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual(p.completes);
@@ -98,6 +108,14 @@ describe('confirmarSorteio', () => {
     const antes = await tudo();
     expect(await confirmarSorteio(db, mais(10), ADMIN, p)).toEqual({ erro: 'A proposta expirou. Peça *sortear* de novo.' });
     expect(await confirmarSorteio(db, mais(30), ADMIN, p)).toEqual({ erro: 'A proposta expirou. Peça *sortear* de novo.' });
+    expect(await tudo()).toBe(antes);
+  });
+
+  it('lista mudou depois da proposta: não grava', async () => {
+    const p = await proposta();
+    await db.execute(sql`update presencas set status = 'removido' where id = (select min(id) from presencas)`);
+    const antes = await tudo();
+    expect(await confirmarSorteio(db, mais(1), ADMIN, p)).toEqual({ erro: 'A lista mudou desde o sorteio. Peça *sortear* de novo.' });
     expect(await tudo()).toBe(antes);
   });
 

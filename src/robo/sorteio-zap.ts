@@ -2,7 +2,7 @@ import { desc, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { peladas } from '@/db/schema';
 import { CORES, diferenca, formatarNota, sortearComCompletes } from '@/domain/sorteio';
-import { dataDe, proximaQuarta } from '@/domain/tempo';
+import { dataDe } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { participantesPadrao, salvarTimesDefinitivos } from '@/server/times';
 
@@ -31,8 +31,17 @@ function canonico(telefone: string): string {
   return d.length === 10 ? d : '';
 }
 
+/**
+ * Quem manda vem do WhatsApp com código do país (12 ou 13 dígitos começando com 55); sem isso o DDD 81
+ * se confundiria com o +81 do Japão. A tolerância (sem 55, sem o 9) vale só para o cadastro dos admins.
+ */
+function canonicoRemetente(telefone: string): string {
+  const d = telefone.replace(/\D/g, '');
+  return /^55\d{10,11}$/.test(d) ? canonico(d) : '';
+}
+
 export function ehAdmin(telefone: string, admins: string[]): boolean {
-  const t = canonico(telefone);
+  const t = canonicoRemetente(telefone);
   return t !== '' && admins.some((a) => canonico(a) === t);
 }
 
@@ -46,9 +55,9 @@ export async function proporSorteio(
   rng: () => number = Math.random,
 ): Promise<Proposta | { erro: string }> {
   const hoje = dataDe(now);
-  // Só lê: o `peladaDoDia` do site cria a pelada da quarta se ninguém abriu a lista, e aqui isso seria escrita.
+  // Só lê e só a pelada de hoje: o `peladaDoDia` do site cria a da quarta e, nos outros dias, devolve a última.
   const [p] = await db.select().from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1);
-  if (!p || (p.data !== hoje && proximaQuarta(now) === hoje)) return { erro: 'Hoje não tem pelada para sortear.' };
+  if (!p || p.data !== hoje) return { erro: 'Hoje não tem pelada para sortear.' };
 
   const participantes = await participantesPadrao(db, p.id, now);
   if (participantes.length < 2) return { erro: 'Poucos confirmados para sortear.' };
@@ -80,10 +89,15 @@ export async function confirmarSorteio(
   proposta: Proposta | null,
 ): Promise<{ ok: string } | { erro: string }> {
   if (!proposta) return { erro: 'Não tem sorteio esperando confirmação.' };
-  const quem = canonico(telefone);
+  const quem = canonicoRemetente(telefone);
   if (quem === '' || quem !== canonico(proposta.adminTelefone)) return { erro: 'Só quem pediu o sorteio pode confirmar.' };
   if (now.getTime() - proposta.criadaEm.getTime() >= VALIDADE_MS) return { erro: 'A proposta expirou. Peça *sortear* de novo.' };
   try {
+    const hoje = new Set((await participantesPadrao(db, proposta.peladaId, now)).map((j) => j.id));
+    const propostos = proposta.elencos.flat();
+    if (hoje.size !== propostos.length || !propostos.every((id) => hoje.has(id))) {
+      return { erro: 'A lista mudou desde o sorteio. Peça *sortear* de novo.' };
+    }
     await salvarTimesDefinitivos(db, proposta.peladaId, proposta.elencos, proposta.completes, now);
   } catch (e) {
     return { erro: mensagemParaUsuario(e) };
