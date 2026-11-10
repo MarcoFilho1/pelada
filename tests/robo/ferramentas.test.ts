@@ -60,9 +60,17 @@ describe('ferramentasDeLeitura', () => {
   });
 
   it('partidas e times da noite usam a última pelada sem criar nada', async () => {
-    expect(await achar('partidas_da_noite').executar({})).toEqual({ data: null, partidas: [] });
+    expect(await achar('partidas_da_noite').executar({})).toEqual({ data: null, ehHoje: false, partidas: [] });
     await db.insert(peladas).values({ data: '2026-11-04' });
-    expect(await achar('times_da_noite').executar({})).toEqual({ data: '2026-11-04', times: [] });
-    expect(await achar('partidas_da_noite').executar({})).toEqual({ data: '2026-11-04', partidas: [] });
+    expect(await achar('times_da_noite').executar({})).toEqual({ data: '2026-11-04', ehHoje: false, times: [] });
+    expect(await achar('partidas_da_noite').executar({})).toEqual({ data: '2026-11-04', ehHoje: false, partidas: [] });
+  });
+
+  it('ehHoje é true quando a pelada é a de hoje (quarta em Recife)', async () => {
+    await db.insert(peladas).values({ data: '2026-11-11' });
+    const quarta = ferramentasDeLeitura(db, () => new Date('2026-11-11T23:00:00Z'));
+    const f = (n: string) => quarta.find((x) => x.nome === n)!;
+    expect(await f('times_da_noite').executar({})).toMatchObject({ data: '2026-11-11', ehHoje: true });
+    expect(await f('partidas_da_noite').executar({})).toMatchObject({ data: '2026-11-11', ehHoje: true });
   });
 });

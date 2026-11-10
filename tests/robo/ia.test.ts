@@ -76,6 +76,12 @@ describe('perguntar', () => {
     expect(await perguntar('x', { ...base(f as unknown as typeof fetch), prazoMs: 20 })).toBe(ERRO);
   });
 
+  it('timeout cobre ferramenta que nunca resolve', async () => {
+    const f = vi.fn(async () => chamada('lista_da_semana', '{}'));
+    const trava = ferramenta(() => new Promise(() => {}));
+    expect(await perguntar('x', { ...base(f as unknown as typeof fetch, [trava]), prazoMs: 20 })).toBe(ERRO);
+  });
+
   it('mais de 3 voltas de ferramenta para', async () => {
     const f = vi.fn(async () => chamada('lista_da_semana', '{}'));
     expect(await perguntar('x', base(f as unknown as typeof fetch))).toBe(ERRO);

@@ -128,14 +128,15 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
     },
     {
       nome: 'partidas_da_noite',
-      descricao: 'As partidas já encerradas da pelada da noite (ou da última pelada): cores dos times, placar e resultado.',
+      descricao: 'As partidas já encerradas da pelada da noite (ou da última pelada): cores dos times, placar e resultado. Se ehHoje for false, a pelada de hoje ainda não existe e os dados são de data.',
       parametros: semParametros,
       async executar() {
         const p = await peladaDaNoite(db, agora());
-        if (!p) return { data: null, partidas: [] };
+        if (!p) return { data: null, ehHoje: false, partidas: [] };
         const historico = await historicoDaPelada(db, p.id);
         return {
           data: p.data,
+          ehHoje: p.data === dataDe(agora()),
           partidas: historico.map((h, i) => ({
             numero: i + 1,
             timeA: h.timeA.cor,
@@ -149,13 +150,13 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
     },
     {
       nome: 'times_da_noite',
-      descricao: 'Os times sorteados da pelada da noite (ou da última pelada): cor e jogadores de cada time.',
+      descricao: 'Os times sorteados da pelada da noite (ou da última pelada): cor e jogadores de cada time. Se ehHoje for false, o sorteio de hoje ainda não existe e os dados são de data.',
       parametros: semParametros,
       async executar() {
         const p = await peladaDaNoite(db, agora());
-        if (!p) return { data: null, times: [] };
+        if (!p) return { data: null, ehHoje: false, times: [] };
         const ts = await timesDaPelada(db, p.id);
-        return { data: p.data, times: ts.map((t) => ({ cor: t.cor, jogadores: t.jogadores.map((j) => j.nome) })) };
+        return { data: p.data, ehHoje: p.data === dataDe(agora()), times: ts.map((t) => ({ cor: t.cor, jogadores: t.jogadores.map((j) => j.nome) })) };
       },
     },
   ];

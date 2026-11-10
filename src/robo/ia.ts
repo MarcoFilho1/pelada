@@ -30,6 +30,7 @@ function sistema(agora: Date): string {
     `Agora são ${hora} de ${dia}, ${d}/${m}/${a} (horário de Recife).`,
     'Responda em português, curto (poucas linhas), sem enfeite, como numa conversa de grupo.',
     'Responda só com o que as ferramentas mostram. Se não souber ou a ferramenta não trouxer, diga que não sabe. Nunca invente nomes, números ou datas.',
+    'Se uma ferramenta trouxer ehHoje false, os times/partidas de hoje ainda não existem: diga isso e que os dados mostrados são da pelada de <data>, nunca apresente como de hoje.',
     'Você só consulta; não consegue alterar lista, times nem placar.',
   ].join('\n');
 }
@@ -88,7 +89,11 @@ export async function perguntar(pergunta: string, op: OpcoesIA): Promise<string>
   const controle = new AbortController();
   const prazo = setTimeout(() => controle.abort(), op.prazoMs ?? PRAZO_PADRAO_MS);
   try {
-    return await conversar(pergunta, op, controle.signal);
+    // O prazo vale para a conversa toda, inclusive ferramenta que trava (ela não enxerga o sinal).
+    const estourou = new Promise<never>((_, rej) => controle.signal.addEventListener('abort', () => rej(new Error('prazo estourado'))));
+    const conversa = conversar(pergunta, op, controle.signal);
+    conversa.catch(() => {});
+    return await Promise.race([conversa, estourou]);
   } catch (e) {
     // Só a mensagem do erro (nunca a requisição, que leva a chave).
     console.error('[robo] pergunta livre falhou:', e instanceof Error ? e.message.replaceAll(op.chave, '***') : 'erro');
