@@ -10,7 +10,7 @@ export const TEXTO_SO_ADMIN = 'Só os organizadores podem sortear pelo WhatsApp.
 
 /** Mesma regra do site: o sorteio completa cada time com COMPLETE até 4. */
 const POR_TIME = 4;
-const VALIDADE_MS = 10 * 60_000;
+export const VALIDADE_MS = 10 * 60_000;
 
 export type Proposta = {
   adminTelefone: string;

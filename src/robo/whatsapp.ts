@@ -2,6 +2,7 @@
 // forma dinâmica no caminho de verdade, para o ensaio rodar sem carregar a Baileys.
 import type { proto, WAMessageKey, WASocket } from 'baileys';
 import qrcode from 'qrcode-terminal';
+import type { MensagemRecebida } from './responder';
 
 export type Grupo = { id: string; nome: string; participantes: number };
 
@@ -27,6 +28,8 @@ export type OpcoesConexao = {
   log: (linha: string) => void;
   /** Chamado uma vez se a sessão cair de vez depois de conectada. */
   aoFalhar?: (erro: ErroFatalWhatsApp) => void;
+  /** Mensagens novas de grupo (não as do próprio robô). */
+  aoReceber?: (mensagem: MensagemRecebida) => void;
 };
 
 const ESPERA_ENVIO_MS = 60_000;
@@ -93,6 +96,68 @@ export async function enviarComConfirmacao(
   }
 }
 
+/** "5581…:7@s.whatsapp.net" → "5581…@s.whatsapp.net" (sem o aparelho); `null` se não parece JID. */
+function semAparelho(jid: string | null | undefined): string | null {
+  const m = /^([^:@]+)(?::\d+)?@(.+)$/.exec(jid ?? '');
+  return m ? `${m[1]}@${m[2]}` : null;
+}
+
+/** Telefone (só dígitos) de um JID de número; LID e outros formatos não têm telefone. */
+function telefoneDoJid(jid: string | null | undefined): string | null {
+  const j = semAparelho(jid);
+  return j?.endsWith('@s.whatsapp.net') ? j.slice(0, -'@s.whatsapp.net'.length) : null;
+}
+
+/** O mínimo de uma mensagem da Baileys que o robô lê (permite testar sem WhatsApp). */
+export type MensagemDaBaileys = {
+  key: Pick<WAMessageKey, 'remoteJid' | 'fromMe' | 'participant' | 'participantAlt'>;
+  message?: proto.IMessage | null;
+  messageTimestamp?: number | { toNumber(): number } | null;
+};
+
+/** Desembrulha mensagens temporárias / de visualização única. */
+function conteudo(m: proto.IMessage | null | undefined): proto.IMessage | null {
+  let c = m ?? null;
+  for (let i = 0; c && i < 3; i++) {
+    const dentro = c.ephemeralMessage?.message ?? c.viewOnceMessage?.message ?? c.viewOnceMessageV2?.message ?? c.documentWithCaptionMessage?.message;
+    if (!dentro) break;
+    c = dentro;
+  }
+  return c;
+}
+
+/**
+ * Mensagem da Baileys → mensagem do robô. `null` para o que nunca interessa: mensagem do próprio robô,
+ * conversa que não é grupo (privado, status, transmissão) ou sem texto. A marcação vale só se o JID
+ * ou o LID do robô (sem o aparelho) estiver nas menções; o `@123…` sai do texto.
+ */
+export function lerMensagemRecebida(
+  msg: MensagemDaBaileys,
+  robo: { id?: string | null; lid?: string | null },
+): MensagemRecebida | null {
+  const grupoId = msg.key.remoteJid;
+  if (msg.key.fromMe || !grupoId?.endsWith('@g.us')) return null;
+  const c = conteudo(msg.message);
+  if (!c) return null;
+  const texto = c.conversation ?? c.extendedTextMessage?.text ?? c.imageMessage?.caption ?? c.videoMessage?.caption ?? c.documentMessage?.caption;
+  if (texto == null) return null;
+  const contexto = c.extendedTextMessage?.contextInfo ?? c.imageMessage?.contextInfo ?? c.videoMessage?.contextInfo ?? c.documentMessage?.contextInfo;
+  const eu = new Set([semAparelho(robo.id), semAparelho(robo.lid)].filter((j): j is string => j !== null));
+  const mencionaORobo = (contexto?.mentionedJid ?? []).some((j) => {
+    const n = semAparelho(j);
+    return n !== null && eu.has(n);
+  });
+  const ts = msg.messageTimestamp;
+  const segundos = typeof ts === 'number' ? ts : ts ? ts.toNumber() : null;
+  return {
+    grupoId,
+    remetenteTelefone: telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant),
+    texto: texto.replace(/@\d+/g, ' ').replace(/\s+/g, ' ').trim(),
+    mencionaORobo,
+    quando: segundos ? new Date(segundos * 1000) : new Date(),
+  };
+}
+
 /** Logger que a Baileys exige; calado, a não ser com PELADA_ROBO_DEBUG=1. */
 function loggerDaBaileys() {
   const falar = process.env.PELADA_ROBO_DEBUG === '1';
@@ -150,6 +215,14 @@ export async function conectar(op: OpcoesConexao): Promise<WhatsApp> {
     });
     sock = s;
     s.ev.on('creds.update', saveCreds);
+    s.ev.on('messages.upsert', ({ messages, type }) => {
+      // 'append' é histórico/sincronização; só 'notify' é mensagem nova.
+      if (type !== 'notify' || !op.aoReceber) return;
+      for (const m of messages) {
+        const lida = lerMensagemRecebida(m, { id: s.user?.id, lid: s.user?.lid });
+        if (lida) op.aoReceber(lida);
+      }
+    });
     s.ev.on('connection.update', (u) => {
       if (u.qr) {
         if (!op.mostrarQr) return falhar(new ErroFatalWhatsApp(MSG_DESLOGADO));
