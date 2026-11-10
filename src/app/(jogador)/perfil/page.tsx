@@ -146,7 +146,7 @@ export default async function PerfilPage({ searchParams }: PageProps<'/perfil'>)
   ]);
 
   return (
-    <TelaJogador pc>
+    <TelaJogador>
       {/* No PC, duas colunas: à esquerda (448px) o nome, o filtro, os números e a conta; à direita as Quartas, que
           ocupam as 5 linhas da esquerda (a última, `1fr`, absorve a sobra, para a conta ficar logo abaixo dos números). */}
       <main className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:grid-rows-[auto_auto_auto_auto_1fr] lg:content-start lg:gap-x-10 lg:[&>*]:col-start-1">

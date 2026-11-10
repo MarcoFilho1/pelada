@@ -71,7 +71,7 @@ export default async function RankingPage({ searchParams }: PageProps<'/ranking'
   }
 
   return (
-    <TelaJogador pc>
+    <TelaJogador>
       <main>
         <h1 className="mt-6 font-placa text-titulo font-semibold">Ranking</h1>
         {/* No PC, o filtro e os destaques lado a lado no alto (cada um com a largura do celular); a tabela inteira embaixo. */}

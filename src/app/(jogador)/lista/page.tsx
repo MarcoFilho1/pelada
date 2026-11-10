@@ -24,7 +24,7 @@ export default async function ListaPage() {
     trava === 'fechada' ? (estado.estadoManual === 'fechada' ? 'fechada' : 'antes') : trava;
 
   return (
-    <TelaJogador pc>
+    <TelaJogador>
       <ListaJogador
         dataQuarta={diaMes(estado.data)}
         abertura={diaDaSemana(aberturaLista(estado.data))}

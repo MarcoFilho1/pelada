@@ -643,7 +643,7 @@ Um corte só, em 1024px (`lg`). Abaixo dele a área admin e as telas do jogador 
   cópias do menu têm o mesmo nome ("Principal") e só uma existe na tela em cada largura. No teclado: marca → menu →
   conteúdo. Trocar PIN (e as telas de entrar) continua uma coluna centrada sem menu.
 - **Moldura:** a coluna se abre até 1152px (`max-w-6xl`) com 40px de margem dos lados, centrada; a barra do topo usa
-  a largura toda. Lista, Ranking e Perfil têm colunas próprias (`pc`): o `main` fica alinhado no alto.
+  a largura da coluna. Lista, Ranking e Perfil têm colunas próprias: o `main` fica alinhado no alto.
 - **Lista:** abaixo do h1 ("Quarta, 11/11") e do horário, duas colunas com 40px entre elas: à esquerda, com 352px
   (22rem), o bloco "sua vaga" e, 24px abaixo, "Copiar lista pro WhatsApp" (o aviso de copiado e a área de texto
   manual também ficam ali); à direita a Lista (16) e a Fila. Os dois topos ficam na mesma altura. A coluna da
@@ -653,8 +653,8 @@ Um corte só, em 1024px (`lg`). Abaixo dele a área admin e as telas do jogador 
   bloco → Copiar (as linhas da lista não são tocáveis).
 - **Ranking:** abaixo do h1, o filtro de período e a placa dos destaques lado a lado, cada um com a largura do
   celular (448px), 40px entre eles, os topos na mesma altura. Embaixo, a tabela inteira com até 936px (a largura dos
-  dois juntos): nada rola nem fica preso; a tabela tem largura fixa (`table-fixed`), as colunas de número 56px (Pts
-  64px, a placa do placar continua), e o nome fica com o que sobra, truncado com reticências sem encostar nos pontos.
+  dois juntos): nada rola nem fica preso; a tabela tem largura fixa (`table-fixed`), as colunas de número 56px (Pres. e
+  Nota 68px, para o rótulo em 600 caber com a seta; Pts 64px, a placa do placar continua), e o nome fica com o que sobra, truncado com reticências sem encostar nos pontos.
   A linha da própria pessoa sai 12px para cada lado com os cantos arredondados (como na lista). "Arraste para o lado…"
   some e a legenda diz "Clique num título para ordenar." (no celular, "Toque…"). Sem rolagem, a região da tabela
   deixa de ser parada do Tab e se chama só "Tabela do ranking". Ordenação, `?p=` e destaques como no celular.

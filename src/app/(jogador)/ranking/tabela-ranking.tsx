@@ -9,7 +9,14 @@ import { ORDEM_PADRAO, ordenarLinhas, proximaOrdem, type Coluna, type Ordem } fr
 const decimal = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const umaCasa = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-type Rolante = { coluna: Exclude<Coluna, 'posicao' | 'nome' | 'pontos'>; curto: string; nome: string; valor: (l: LinhaRanking) => string };
+type Rolante = {
+  coluna: Exclude<Coluna, 'posicao' | 'nome' | 'pontos'>;
+  curto: string;
+  nome: string;
+  valor: (l: LinhaRanking) => string;
+  /** Largura no PC quando o rótulo em 600 com a seta não cabe nos 56px de sempre. */
+  largo?: boolean;
+};
 
 /** Colunas que rolam de lado, atrás das fixas (posição, nome, pontos). */
 const ROLANTES: Rolante[] = [
@@ -21,12 +28,13 @@ const ROLANTES: Rolante[] = [
   { coluna: 'gols', curto: 'G', nome: 'gols', valor: (l) => String(l.gols) },
   { coluna: 'assistencias', curto: 'A', nome: 'assistências', valor: (l) => String(l.assistencias) },
   { coluna: 'golsPorJogo', curto: 'G/J', nome: 'gols por jogo', valor: (l) => decimal.format(l.golsPorJogo) },
-  { coluna: 'presencas', curto: 'Pres.', nome: 'presenças', valor: (l) => String(l.presencas) },
-  { coluna: 'nota', curto: 'Nota', nome: 'nota', valor: (l) => umaCasa.format(l.nota) },
+  { coluna: 'presencas', curto: 'Pres.', nome: 'presenças', valor: (l) => String(l.presencas), largo: true },
+  { coluna: 'nota', curto: 'Nota', nome: 'nota', valor: (l) => umaCasa.format(l.nota), largo: true },
 ];
 
 // Larguras das colunas fixas: cada uma gruda logo depois da anterior. No PC (≥1024px) nada rola nem gruda: a
-// tabela tem largura fixa (`table-fixed`), os números 56px cada, e o nome fica com o que sobra (truncado).
+// tabela tem largura fixa (`table-fixed`), os números 56px cada (Pres. e Nota 68px, para o rótulo em 600 caber com a
+// seta), e o nome fica com o que sobra (truncado).
 const FIXA_POS = 'sticky left-0 z-[1] w-[52px] min-w-[52px] pl-5 pr-1 lg:static lg:pl-3';
 const FIXA_NOME = 'sticky left-[52px] z-[1] w-[128px] min-w-[128px] max-w-[128px] px-2 lg:static lg:w-auto lg:min-w-0 lg:max-w-none';
 const FIXA_PTS = 'sticky left-[180px] z-[1] w-[52px] min-w-[52px] px-1 lg:static lg:w-16';
@@ -65,7 +73,7 @@ function Cabecalho({
         }`}
       >
         {rotulo}
-        {ativa && <SetaOrdem paraCima={crescente} />}
+        {ativa && <SetaOrdem paraCima={crescente} className="size-3.5 shrink-0" />}
       </button>
     </th>
   );
@@ -104,7 +112,7 @@ export function TabelaRanking({ linhas, eu, periodo }: { linhas: LinhaRanking[];
                 coluna={c.coluna}
                 rotulo={c.curto}
                 nome={c.nome}
-                className={`min-w-11 pl-2 lg:w-14 ${i === ROLANTES.length - 1 ? `${ULTIMA} lg:w-[3.75rem]` : 'pr-2'}`}
+                className={`min-w-11 pl-2 ${i === ROLANTES.length - 1 ? ULTIMA : 'pr-2'} ${c.largo ? 'lg:w-[4.25rem]' : 'lg:w-14'}`}
                 {...props}
               />
             ))}

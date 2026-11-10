@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { MenuTopoJogador } from './nav-jogador';
 
-/** Barra do topo: marca à esquerda, no máximo uma ação de texto à direita. */
+/** Barra do topo: marca à esquerda e, à direita, uma ação de texto ou (no PC do jogador) o menu. */
 export function Topo({ direita, inicio = '/', rotulo }: { direita?: ReactNode; inicio?: string; rotulo?: string }) {
   return (
     <header className="flex h-14 items-center justify-between">
@@ -56,16 +56,12 @@ export function TelaAdmin({ children }: { children: ReactNode }) {
 /**
  * Moldura das telas do jogador com menu (Lista, Ranking, Perfil). Abaixo de 1024px é a `Tela` com a barra
  * do topo de sempre (o menu fica na barra de baixo). A partir de 1024px a barra do topo ganha o menu à
- * direita da marca e a moldura se abre até 1152px com 40px de margem. `pc`: a tela já tem colunas próprias
- * (o `main` usa a largura, alinhado no alto); sem ele, o conteúdo continua a coluna de 448px centrada.
+ * direita da marca, a moldura se abre até 1152px com 40px de margem e o `main` fica alinhado no alto: cada
+ * tela monta as próprias colunas.
  */
-export function TelaJogador({ children, pc = false }: { children: ReactNode; pc?: boolean }) {
+export function TelaJogador({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={`${COLUNA} lg:max-w-6xl lg:px-10 ${
-        pc ? 'lg:pb-16 lg:[&>main]:my-0' : 'lg:[&>main]:mx-auto lg:[&>main]:w-full lg:[&>main]:max-w-md'
-      }`}
-    >
+    <div className={`${COLUNA} lg:max-w-6xl lg:px-10 lg:pb-16 lg:[&>main]:my-0`}>
       <Topo inicio="/lista" direita={<MenuTopoJogador />} />
       {children}
     </div>
