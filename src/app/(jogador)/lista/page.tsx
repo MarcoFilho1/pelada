@@ -6,7 +6,7 @@ import { situacaoDoJogador, travaDoJogador, travaParaSair } from '@/domain/lista
 import { aberturaLista, diaDaSemana, diaMes } from '@/domain/tempo';
 import { estadoDaSemana } from '@/server/presencas';
 import { lerSessaoJogador } from '@/server/sessao';
-import { Tela, Topo } from '@/components/topo';
+import { TelaJogador } from '@/components/topo';
 import { ListaJogador, type TravaTela } from './lista-jogador';
 
 export const metadata: Metadata = { title: 'Lista · Pelada' };
@@ -24,8 +24,7 @@ export default async function ListaPage() {
     trava === 'fechada' ? (estado.estadoManual === 'fechada' ? 'fechada' : 'antes') : trava;
 
   return (
-    <Tela>
-      <Topo inicio="/lista" />
+    <TelaJogador pc>
       <ListaJogador
         dataQuarta={diaMes(estado.data)}
         abertura={diaDaSemana(aberturaLista(estado.data))}
@@ -38,6 +37,6 @@ export default async function ListaPage() {
         podeSair={travaParaSair(estado, estado.data, estado.estadoManual, now) === null}
         texto={textoWhatsApp(estado, estado.data)}
       />
-    </Tela>
+    </TelaJogador>
   );
 }

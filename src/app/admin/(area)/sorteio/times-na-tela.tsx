@@ -3,9 +3,10 @@
 // As peças da tela de sorteio que servem às duas larguras: a diferença, os cartões dos times, a barra de
 // baixo do celular e o que no PC fica ao lado dos times (DESIGN.md › Sorteio e › No PC).
 
-import { useSyncExternalStore, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Colete, NOME_DA_COR } from '@/components/colete';
 import { Mais } from '@/components/icones';
+import { SoNo } from '@/components/so-no';
 import { CORES, formatarNota, rotuloDaDiferenca, type Cor, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
 
 /** Vagas por time: o sorteio completa até aqui com COMPLETE. */
@@ -22,33 +23,7 @@ const vagas = (t: TimeNaTela) => t.jogadores.length + t.completes.length;
 
 // ---- Duas larguras -------------------------------------------------------------------------
 
-const PC = '(min-width: 64rem)'; // o `lg` do Tailwind
-
-function assinar(aviso: () => void) {
-  const m = window.matchMedia(PC);
-  m.addEventListener('change', aviso);
-  return () => m.removeEventListener('change', aviso);
-}
-
-/** true no PC (≥1024px), false no celular, null antes de hidratar (o servidor não sabe a largura). */
-function useNoPc() {
-  return useSyncExternalStore(
-    assinar,
-    () => window.matchMedia(PC).matches,
-    () => null,
-  );
-}
-
-/**
- * Um pedaço que tem um lugar no celular e outro no PC (a barra de baixo × o lado dos times), com o mesmo
- * estado de quem chama. Antes de hidratar as duas cópias vão no HTML e o CSS de quem chama esconde a da outra
- * largura; depois só fica a da largura atual: nada de texto, id ou leitor de tela em dobro. Girar o tablet
- * troca a cópia sem perder nada, porque o estado mora em quem chama.
- */
-export function SoNo({ pc, children }: { pc: boolean; children: ReactNode }) {
-  const noPc = useNoPc();
-  return noPc === null || noPc === pc ? children : null;
-}
+export { SoNo };
 
 // ---- Peças ---------------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Fragment } from 'react';
 import { FiltroPeriodo } from '@/components/filtro-periodo';
-import { Tela, Topo } from '@/components/topo';
+import { TelaJogador } from '@/components/topo';
 import { getDb } from '@/db/client';
 import { nomeDoPeriodo, periodoDaUrl } from '@/domain/periodo';
 import { destaques, type LinhaRanking } from '@/domain/ranking';
@@ -47,8 +47,7 @@ export default async function RankingPage({ searchParams }: PageProps<'/ranking'
   }
 
   return (
-    <Tela>
-      <Topo inicio="/lista" />
+    <TelaJogador>
       <main>
         <h1 className="mt-6 font-placa text-titulo font-semibold">Ranking</h1>
         <FiltroPeriodo base="/ranking" periodo={periodo} disp={disp} />
@@ -98,6 +97,6 @@ export default async function RankingPage({ searchParams }: PageProps<'/ranking'
           </>
         )}
       </main>
-    </Tela>
+    </TelaJogador>
   );
 }

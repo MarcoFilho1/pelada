@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FiltroPeriodo } from '@/components/filtro-periodo';
 import { PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import { Tela, Topo } from '@/components/topo';
+import { TelaJogador } from '@/components/topo';
 import { getDb } from '@/db/client';
 import { nomeDoPeriodo, periodoDaUrl } from '@/domain/periodo';
 import { NOME_DA_COR, Colete } from '@/components/colete';
@@ -146,8 +146,7 @@ export default async function PerfilPage({ searchParams }: PageProps<'/perfil'>)
   ]);
 
   return (
-    <Tela>
-      <Topo inicio="/lista" />
+    <TelaJogador>
       <main>
         <div className="mt-6 flex items-end justify-between gap-4">
           <h1 className="min-w-0 font-placa text-titulo font-semibold break-words">{sessao.nome}</h1>
@@ -188,6 +187,6 @@ export default async function PerfilPage({ searchParams }: PageProps<'/perfil'>)
           </form>
         </section>
       </main>
-    </Tela>
+    </TelaJogador>
   );
 }
