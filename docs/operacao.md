@@ -123,7 +123,7 @@ Rode `pnpm robo:instalar`. Ele mostra **"Vai mandar em: …"** com o nome do gru
 
 Ao ligar, o robô escreve no log em qual grupo vai mandar. Depois, entre segunda 14:00 e quarta 20:30, escreve uma linha por minuto no arquivo `~/Library/Logs/PeladaRobo/robo.log` (o que decidiu, o que mandou, erros). Fora desse horário fica quieto (uma linha avisando quando começa a próxima janela). Para acompanhar ao vivo: `tail -f ~/Library/Logs/PeladaRobo/robo.log`.
 
-- **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (QR) e `pnpm robo:instalar`.
+- **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (ele guarda o login antigo ao lado e mostra um QR novo) e `pnpm robo:instalar`. Nunca deixe dois programas conectados no número do robô ao mesmo tempo: o WhatsApp derruba a sessão.
 - **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte; como a mensagem só é dada como enviada depois da confirmação do WhatsApp, um erro desse tipo não manda nada.
 - **Log vazio depois de instalar**: confira se o projeto está mesmo em `~/pelada` (passo 0). Em último caso, `launchctl print gui/$(id -u)/com.pelada.robo` mostra o motivo da última parada.
 - **"pode sair duplicada"**: o WhatsApp não confirmou a mensagem a tempo (internet ruim). O robô tenta de novo no minuto seguinte, então às vezes a mesma lista aparece duas vezes no grupo. É melhor do que perder a mensagem.

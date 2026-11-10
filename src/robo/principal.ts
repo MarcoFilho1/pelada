@@ -3,7 +3,7 @@
 //   pnpm robo:ensaio [--agora=ISO] [--estado=caminho]   uma decisão, só imprime
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -99,10 +99,44 @@ async function ensaio(): Promise<void> {
 
 // ---------- configurar ----------
 
+/**
+ * Conexão do `configurar`: se o login guardado não vale mais (o WhatsApp desconectou o aparelho),
+ * guarda a pasta antiga ao lado e começa de novo com um QR novo, em vez de só repetir o aviso.
+ */
+async function conectarParaConfigurar(): Promise<WhatsApp> {
+  const { ErroFatalWhatsApp, MSG_DESLOGADO } = await import('./whatsapp');
+  try {
+    return await conectarSemParar();
+  } catch (err) {
+    if (!(err instanceof ErroFatalWhatsApp) || err.message !== MSG_DESLOGADO || !existsSync(pastaAuth)) {
+      if (err instanceof ErroFatalWhatsApp) parar(`${hora(new Date())} ${err.message}`);
+      throw err;
+    }
+    const guardada = `${pastaAuth}-antigo-${Date.now()}`;
+    renameSync(pastaAuth, guardada);
+    log(`O login antigo do WhatsApp não vale mais (guardado em ${guardada}). Leia o QR novo.`);
+    return conectarWhatsApp(true);
+  }
+}
+
+/** Como `conectarWhatsApp(true)`, mas devolve o erro fatal em vez de parar o programa. */
+async function conectarSemParar(): Promise<WhatsApp> {
+  const { conectar } = await import('./whatsapp');
+  return conectar({
+    pastaAuth,
+    mostrarQr: true,
+    log,
+    aoFalhar: (e) => {
+      log(e.message);
+      process.exit(1);
+    },
+  });
+}
+
 async function configurar(): Promise<void> {
   const nome = argumento('nome') ?? NOME_DO_GRUPO;
   const estado = lerEstadoOuParar(arquivoEstado);
-  const wa = await conectarWhatsApp(true);
+  const wa = await conectarParaConfigurar();
   const grupos = await wa.gruposChamados(nome);
   let escolhido = grupos[0];
   if (grupos.length === 0) {
