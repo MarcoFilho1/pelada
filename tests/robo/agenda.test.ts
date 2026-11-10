@@ -58,6 +58,14 @@ describe('decidir', () => {
     expect(decidir(t('2026-11-10T14:37:00'), comMudanca, robo(u))).toBeNull();
     expect(decidir(t('2026-11-10T15:00:00'), comMudanca, robo(u))).toBe('rodada');
   });
+  it('rodada só sai nos primeiros 5 min do :00/:30', () => {
+    const u = envio('2026-11-10T14:00:05', '2026-11-10T14:00:00', semMudanca);
+    expect(decidir(t('2026-11-10T14:45:00'), comMudanca, robo(u))).toBeNull();
+    expect(decidir(t('2026-11-10T14:59:00'), comMudanca, robo(u))).toBeNull();
+    expect(decidir(t('2026-11-10T15:00:00'), comMudanca, robo(u))).toBe('rodada');
+    expect(decidir(t('2026-11-10T15:03:00'), comMudanca, robo(u))).toBe('rodada');
+    expect(decidir(t('2026-11-10T15:06:00'), comMudanca, robo(u))).toBeNull();
+  });
   it('sem mudança não envia', () => {
     const u = envio('2026-11-10T14:00:05', '2026-11-10T14:00:00', semMudanca);
     expect(decidir(t('2026-11-10T14:30:00'), semMudanca, robo(u))).toBeNull();

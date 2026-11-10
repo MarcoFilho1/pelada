@@ -17,6 +17,8 @@ export type EstadoDoRobo = {
 
 const MEIA_HORA_MS = 30 * 60 * 1000;
 const HORA_MS = 60 * 60 * 1000;
+/** A rodada só sai nos primeiros minutos do :00/:30 (Mac que acorda no meio espera a próxima). */
+const TOLERANCIA_RODADA_MS = 5 * 60 * 1000;
 // Recife é sempre UTC-03:00 (sem horário de verão), como em tempo.ts.
 const OFFSET_RECIFE_MS = -3 * HORA_MS;
 
@@ -25,7 +27,7 @@ export function rodadaDe(now: Date): Date {
   return new Date(Math.floor(now.getTime() / MEIA_HORA_MS) * MEIA_HORA_MS);
 }
 
-function emSilencio(now: Date): boolean {
+export function emSilencio(now: Date): boolean {
   const hora = new Date(now.getTime() + OFFSET_RECIFE_MS).getUTCHours();
   return hora >= 23 || hora < 8;
 }
@@ -54,5 +56,6 @@ export function decidir(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): Tip
   if (ms === prazoMensalista(data).getTime()) return 'prazo';
 
   if (!anterior) return 'primeira';
+  if (now.getTime() - ms >= TOLERANCIA_RODADA_MS) return null;
   return haMudanca(mudancas(anterior, foto)) ? 'rodada' : null;
 }

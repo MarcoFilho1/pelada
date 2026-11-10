@@ -94,7 +94,7 @@ Crie o arquivo `~/Library/Application Support/PeladaRobo/.env` com uma linha só
 DATABASE_URL=<a mesma DATABASE_URL do site, copiada da Vercel>
 ```
 
-Esse arquivo tem a senha do banco: não mande para ninguém e não coloque dentro da pasta do projeto. Sem ele o robô não liga e avisa o que falta.
+Esse arquivo tem a senha do banco: não mande para ninguém e não coloque dentro da pasta do projeto. Depois de criar, proteja-o: `chmod 600 ~/Library/Application\ Support/PeladaRobo/.env`. Sem ele o robô não liga e avisa o que falta.
 
 ### 2. Conectar o número do robô (QR)
 
@@ -109,7 +109,7 @@ Na pasta do projeto, rode `pnpm robo:configurar`. Aparece um QR no Terminal. No 
 Antes de valer no grupo de verdade, crie um grupo só com você e o número do robô (por exemplo, "Teste robô") e rode:
 
 1. `pnpm robo:configurar --nome="Teste robô"` (escolhe o grupo de teste).
-2. Para ver o que ele mandaria, sem mandar nada: `pnpm robo:ensaio`. Dá para simular um horário: `pnpm robo:ensaio --agora=2026-11-11T12:00:00-03:00`.
+2. Para ver o que ele mandaria, sem mandar nada: `pnpm robo:ensaio`. Dá para simular um horário: `pnpm robo:ensaio --agora=2026-11-11T12:00:00-03:00`. O ensaio só lê o banco (nunca cria a lista da semana), então pode simular qualquer dia sem mexer no site.
 3. Para mandar de verdade no grupo de teste: `pnpm robo` no Terminal, entre segunda 14:00 e quarta 20:30. A primeira mensagem sai na hora; feche com Ctrl+C.
 4. Gostou? Rode `pnpm robo:configurar` de novo, sem `--nome`, para voltar ao "Pelada 3.0". Ao trocar de grupo o robô começa do zero, e a primeira mensagem no grupo de verdade é a lista completa.
 
@@ -124,9 +124,19 @@ Rode `pnpm robo:instalar`. Ele mostra **"Vai mandar em: …"** com o nome do gru
 Ao ligar, o robô escreve no log em qual grupo vai mandar. Depois, entre segunda 14:00 e quarta 20:30, escreve uma linha por minuto no arquivo `~/Library/Logs/PeladaRobo/robo.log` (o que decidiu, o que mandou, erros). Fora desse horário fica quieto (uma linha avisando quando começa a próxima janela). Para acompanhar ao vivo: `tail -f ~/Library/Logs/PeladaRobo/robo.log`.
 
 - **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (QR) e `pnpm robo:instalar`.
-- **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte, sem mandar nada repetido.
+- **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte; como a mensagem só é dada como enviada depois da confirmação do WhatsApp, um erro desse tipo não manda nada.
 - **Log vazio depois de instalar**: confira se o projeto está mesmo em `~/pelada` (passo 0). Em último caso, `launchctl print gui/$(id -u)/com.pelada.robo` mostra o motivo da última parada.
 - **"pode sair duplicada"**: o WhatsApp não confirmou a mensagem a tempo (internet ruim). O robô tenta de novo no minuto seguinte, então às vezes a mesma lista aparece duas vezes no grupo. É melhor do que perder a mensagem.
+
+### Atualizar o robô
+
+Quando o site ganhar regras novas, o robô continua com as antigas até você atualizá-lo. No Terminal, rode (um comando por vez):
+
+1. `cd ~/pelada`
+2. `git pull` (baixa a versão nova) e `pnpm install`
+3. `pnpm robo:desinstalar` e depois `pnpm robo:instalar` (reinicia o robô com o código novo). Confira o "Vai mandar em: …" que aparece.
+
+Faça isso fora de segunda 14:00 → quarta 20:30, se puder. O login do WhatsApp e o estado não se perdem.
 
 ### Desligar
 

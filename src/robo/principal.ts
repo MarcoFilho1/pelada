@@ -8,8 +8,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
-import { estadoDaSemana } from '@/server/presencas';
-import { decidir } from './agenda';
+import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
+import { decidir, emSilencio } from './agenda';
 import { gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { fotografar } from './foto';
 import { dentroDaJanela, proximaJanela } from './janela';
@@ -90,7 +90,7 @@ async function ensaio(): Promise<void> {
   const now = textoAgora ? new Date(textoAgora) : new Date();
   if (Number.isNaN(now.getTime())) parar(`--agora inválido: "${textoAgora}". Exemplo: --agora=2026-11-11T12:00:00-03:00`);
   const estado = lerEstadoOuParar(argumento('estado') ?? arquivoEstado);
-  const lista = await estadoDaSemana(getDb(), now);
+  const lista = await estadoDaSemanaSemCriar(getDb(), now); // só lê: o ensaio nunca cria pelada
   const foto = fotografar(lista);
   const tipo = decidir(now, foto, estado);
   console.log(`[ensaio] ${hora(now)} (Recife) → ${tipo ?? 'nada a enviar'}`);
@@ -187,6 +187,8 @@ async function laco(): Promise<void> {
         lerLista: (n) => estadoDaSemana(db, n),
         enviar: async (texto) => {
           wa ??= await conectarWhatsApp(false, 2 * 60_000);
+          // A conexão pode ter demorado: não manda depois das 23:00 (não grava; tenta de manhã).
+          if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
           await wa.enviar(grupoId, texto);
         },
         gravar: (e) => gravarEstado(arquivoEstado, e),
@@ -205,5 +207,11 @@ modo().then(
   () => {
     if (modo !== laco) process.exit(0);
   },
-  (err) => parar(`Erro inesperado: ${(err as Error).stack ?? err}`),
+  (err) => {
+    const e = err as NodeJS.ErrnoException;
+    if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH'].includes(e?.code ?? '')) {
+      parar(`${hora(new Date())} Sem internet (ou o servidor não respondeu): ${e.code}. O robô para e liga de novo sozinho.`);
+    }
+    parar(`Erro inesperado: ${e?.stack ?? err}`);
+  },
 );

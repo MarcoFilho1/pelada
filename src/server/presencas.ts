@@ -93,6 +93,17 @@ export async function estadoDaSemana(db: DB, now: Date): Promise<EstadoDaSemana>
 }
 
 /**
+ * Como `estadoDaSemana`, mas nunca escreve: mesmo depois da abertura, sem pelada criada mostra a
+ * prévia. Para simulações (ensaio do robô) com um `now` que não é o de agora.
+ */
+export async function estadoDaSemanaSemCriar(db: DB, now: Date): Promise<EstadoDaSemana> {
+  const data = proximaQuarta(now);
+  const pelada = await peladaExistenteDaSemana(db, now);
+  if (!pelada) return { ...montar({ id: 0, data, estadoManual: null }, await previaDasPresencas(db, data), now), peladaId: null };
+  return montar(pelada, await lerPresencas(db, pelada.id, false), now);
+}
+
+/**
  * A lista de uma pelada qualquer (pelo id), com as mesmas regras da lista da semana: só
  * jogadores ativos, prazo dos mensalistas e limite de vagas. Só lê.
  */

@@ -34,7 +34,7 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
 
 /** Grava de forma atômica: escreve num temporário na mesma pasta e renomeia por cima. */
 export function gravarEstado(arquivo: string, estado: EstadoDoRobo): void {
-  mkdirSync(dirname(arquivo), { recursive: true });
+  mkdirSync(dirname(arquivo), { recursive: true, mode: 0o700 });
   const temporario = `${arquivo}.${process.pid}.tmp`;
   try {
     writeFileSync(temporario, JSON.stringify(estado, null, 2) + '\n', { mode: 0o600 });
