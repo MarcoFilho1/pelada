@@ -72,4 +72,13 @@ describe('montarMensagem', () => {
   it('voltou', () => {
     expect(montarMensagem('voltou', antes, fotografar(antes), null)).toBe(`A pelada de quarta, 11/11 voltou.\n\n${lista(antes)}`);
   });
+  it('anterior de outra semana não gera linhas de mudança (prazo, lembrete, rodada)', () => {
+    const passada = estado({ principal: [item(9, 'Zeca', true)] });
+    const velha = { ...fotografar(passada), dataQuarta: '2026-11-04' };
+    const p = estado({ principal: [item(1, 'Ana', true)] });
+    expect(montarMensagem('prazo', p, fotografar(p), velha)).toBe(`Prazo dos mensalistas encerrado.\nTodos os mensalistas confirmaram.\n\n${lista(p)}`);
+    const l = estado({ principal: [item(1, 'Ana')] });
+    expect(montarMensagem('lembrete', l, fotografar(l), velha)).toBe(`Faltam 2 horas para os mensalistas confirmarem. Ainda não confirmaram: Ana.\n\n${lista(l)}`);
+    expect(montarMensagem('rodada', p, fotografar(p), velha)).not.toMatch(/Entraram|Saíram/);
+  });
 });

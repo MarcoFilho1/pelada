@@ -108,4 +108,18 @@ describe('decidir', () => {
     // sem abertura em terça: primeira, não rodada
     expect(decidir(t('2026-11-10T09:00:00'), nova, robo(u, '2026-11-09'))).toBe('primeira');
   });
+  it('abertura não repete depois de cancelada/voltou na segunda', () => {
+    const normal = foto();
+    const canc = foto({ estadoManual: 'cancelada' });
+    expect(decidir(t('2026-11-09T14:00:00'), canc, robo(null, null))).toBe('cancelada');
+    const u1 = envio('2026-11-09T14:00:05', '2026-11-09T14:00:00', canc);
+    expect(decidir(t('2026-11-09T15:00:00'), normal, robo(u1, null))).toBe('voltou');
+    const u2 = envio('2026-11-09T15:00:05', '2026-11-09T15:00:00', normal);
+    expect(decidir(t('2026-11-09T15:30:00'), normal, robo(u2, null))).toBeNull();
+  });
+  it('abertura ainda sai na segunda se o único último é da semana passada', () => {
+    const passada = foto({ data: '2026-11-04' });
+    const u = envio('2026-11-04T20:00:05', '2026-11-04T20:00:00', passada);
+    expect(decidir(t('2026-11-09T15:00:00'), foto(), robo(u, '2026-11-04'))).toBe('abertura');
+  });
 });

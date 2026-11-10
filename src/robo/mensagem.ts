@@ -10,8 +10,10 @@ export function montarMensagem(
   tipo: TipoMensagem,
   estadoDaSemana: EstadoDaSemana,
   foto: FotoDaLista,
-  anterior: FotoDaLista | null,
+  anteriorBruta: FotoDaLista | null,
 ): string {
+  // Foto de outra semana nunca vira cabeçalho (Review Focus 5), mesmo que o chamador a passe.
+  const anterior = anteriorBruta?.dataQuarta === foto.dataQuarta ? anteriorBruta : null;
   const data = estadoDaSemana.data;
   const dia = diaMes(data);
   const cabecalho = (): string[] => (anterior ? linhasDoCabecalho(mudancas(anterior, foto)) : []);

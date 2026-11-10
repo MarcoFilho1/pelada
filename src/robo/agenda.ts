@@ -44,7 +44,7 @@ export function decidir(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): Tip
   if (cancelada) return eraCancelada ? null : 'cancelada';
   if (eraCancelada) return 'voltou';
 
-  if (estado.aberturaEnviada !== data && dataDe(now) === dataDe(segunda14)) return 'abertura';
+  if (!anterior && estado.aberturaEnviada !== data && dataDe(now) === dataDe(segunda14)) return 'abertura';
 
   const ms = rodada.getTime();
   const quarta12 = new Date(`${data}T12:00:00-03:00`).getTime();
