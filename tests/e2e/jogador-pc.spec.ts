@@ -3,7 +3,8 @@ import { E2E } from './ambiente';
 import { entrarComoNovato } from './jogador';
 
 // O jogador no PC (≥1024px): o menu Lista · Ranking · Perfil sobe para a barra do topo (a barra de baixo
-// some) e a Lista fica em duas colunas, o bloco "sua vaga" à esquerda. Só navega e lê.
+// some), a Lista fica em duas colunas (o bloco "sua vaga" à esquerda), o Ranking cabe inteiro e o Perfil põe as
+// Quartas ao lado dos números. Só navega e lê (o novato tem uma quarta semeada só para ele).
 test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false });
 
 const SECOES = [
@@ -14,7 +15,7 @@ const SECOES = [
 
 const semRolagemLateral = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
-test('jogador no PC: menu no topo com as 3 seções e a lista em duas colunas', async ({ page }) => {
+test('jogador no PC: menu no topo, lista em duas colunas, ranking inteiro e perfil em duas colunas', async ({ page }) => {
   await entrarComoNovato(page, E2E.novatos.jogadorPc);
   await page.waitForLoadState('networkidle');
 
@@ -42,6 +43,24 @@ test('jogador no PC: menu no topo com as 3 seções e a lista em duas colunas', 
     await expect(menu.locator('[aria-current="page"]')).toHaveCount(1);
     expect(await semRolagemLateral(page)).toBe(true);
   }
+
+  // Ranking: a tabela inteira cabe (nem ela nem a página rolam de lado) e a dica de arrastar some.
+  await page.goto('/ranking?p=geral', { waitUntil: 'networkidle' });
+  const tabela = page.getByRole('region', { name: 'Tabela do ranking', exact: true });
+  await expect(tabela).toBeVisible();
+  expect(await tabela.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  await expect(page.getByText('Arraste para o lado para ver mais colunas.')).toBeHidden();
+  expect(await semRolagemLateral(page)).toBe(true);
+
+  // Perfil: as Quartas numa coluna à direita dos números; "Trocar PIN" logo abaixo dos números.
+  await page.goto('/perfil?p=geral', { waitUntil: 'networkidle' });
+  const numeros = await page.getByRole('region', { name: 'Seus números' }).boundingBox();
+  const quartas = await page.getByRole('region', { name: 'Quartas' }).boundingBox();
+  const trocar = await page.getByRole('link', { name: 'Trocar PIN' }).boundingBox();
+  expect(numeros!.x + numeros!.width).toBeLessThan(quartas!.x);
+  expect(trocar!.x).toBe(numeros!.x);
+  expect(trocar!.y).toBeGreaterThan(numeros!.y + numeros!.height);
+  expect(await semRolagemLateral(page)).toBe(true);
 
   // Trocar o PIN (tela de uma tarefa) continua sem menu, também no PC.
   await page.goto('/perfil/pin');
