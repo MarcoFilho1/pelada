@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FiltroPeriodo } from '@/components/filtro-periodo';
 import { PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import { Tela, Topo } from '@/components/topo';
+import { TelaJogador } from '@/components/topo';
 import { getDb } from '@/db/client';
 import { nomeDoPeriodo, periodoDaUrl } from '@/domain/periodo';
 import { NOME_DA_COR, Colete } from '@/components/colete';
@@ -92,7 +92,7 @@ function LinhaPartida({ p }: { p: PartidaDoJogador }) {
 
 function Historico({ historico, anoAtual }: { historico: QuartaDoJogador[]; anoAtual: string }) {
   return (
-    <section aria-labelledby="titulo-quartas" className="mt-10">
+    <section aria-labelledby="titulo-quartas" className="mt-10 lg:col-start-2! lg:row-span-5 lg:row-start-1 lg:mt-6">
       <h2 id="titulo-quartas" className="font-placa text-2xl font-semibold">
         Quartas
       </h2>
@@ -146,9 +146,10 @@ export default async function PerfilPage({ searchParams }: PageProps<'/perfil'>)
   ]);
 
   return (
-    <Tela>
-      <Topo inicio="/lista" />
-      <main>
+    <TelaJogador>
+      {/* No PC, duas colunas: à esquerda (448px) o nome, o filtro, os números e a conta; à direita as Quartas, que
+          ocupam as 5 linhas da esquerda (a última, `1fr`, absorve a sobra, para a conta ficar logo abaixo dos números). */}
+      <main className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:grid-rows-[auto_auto_auto_auto_1fr] lg:content-start lg:gap-x-10 lg:[&>*]:col-start-1">
         <div className="mt-6 flex items-end justify-between gap-4">
           <h1 className="min-w-0 font-placa text-titulo font-semibold break-words">{sessao.nome}</h1>
           {nota !== null && (
@@ -188,6 +189,6 @@ export default async function PerfilPage({ searchParams }: PageProps<'/perfil'>)
           </form>
         </section>
       </main>
-    </Tela>
+    </TelaJogador>
   );
 }

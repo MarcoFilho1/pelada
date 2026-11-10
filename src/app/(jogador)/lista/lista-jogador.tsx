@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Ampulheta, Copiar, Marca } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
+import { SoNo } from '@/components/so-no';
 import { marcaDe, type ItemLista, type Situacao } from '@/domain/lista';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { naoVou, queroEntrar, vou, type Resposta } from './acoes';
@@ -24,65 +25,85 @@ type Props = {
   texto: string;
 };
 
+/**
+ * No PC, a coluna da esquerda fica presa no alto enquanto a lista rola, se a tela tem altura para ela
+ * (com a área de texto do "Copiar" aberta ela passa de 600px; em tela mais baixa, rola com a página).
+ */
+const PRESO = '[@media(min-width:64rem)_and_(min-height:40rem)]:sticky [@media(min-width:64rem)_and_(min-height:40rem)]:top-6';
+
 export function ListaJogador(p: Props) {
   useAutoRefresh(5000);
+  const copia = useCopia(p.texto);
   const confirmados = p.principal.filter((i) => i.confirmado).length;
 
+  // No PC (≥1024px), duas colunas: à esquerda o bloco "sua vaga" e o "Copiar lista", presos no alto enquanto a
+  // lista rola; à direita a Lista e a Fila. Abaixo disso, a coluna do celular (os invólucros são `contents`).
+  // O bloco é um só nas duas larguras (a pergunta de "Não vou" aberta sobrevive a redimensionar); o "Copiar"
+  // muda de lugar, então tem uma cópia por largura com o mesmo estado (`useCopia`).
   return (
-    <main className="flex flex-1 flex-col">
-      <h1 className="mt-6 font-placa text-titulo font-semibold">Quarta, {p.dataQuarta}</h1>
-      <p className="mt-1 text-base text-apagado">{p.trava === 'cancelada' ? 'Cancelada' : '20:30 às 22:30'}</p>
+    <main className="flex flex-1 flex-col lg:grid lg:grid-cols-[22rem_minmax(0,1fr)] lg:content-start lg:gap-x-10">
+      <h1 className="mt-6 font-placa text-titulo font-semibold lg:col-span-2">Quarta, {p.dataQuarta}</h1>
+      <p className="mt-1 text-base text-apagado lg:col-span-2">{p.trava === 'cancelada' ? 'Cancelada' : '20:30 às 22:30'}</p>
 
-      <MeuBloco
-        situacao={p.situacao}
-        trava={p.trava}
-        podeSair={p.podeSair}
-        abertura={p.abertura}
-        cheia={p.principal.length >= p.vagas}
-      />
+      <div className={`contents lg:mt-6 lg:block lg:self-start ${PRESO}`}>
+        <MeuBloco
+          situacao={p.situacao}
+          trava={p.trava}
+          podeSair={p.podeSair}
+          abertura={p.abertura}
+          cheia={p.principal.length >= p.vagas}
+        />
+        <SoNo pc>
+          <CopiarLista copia={copia} className="mt-6 hidden lg:block" />
+        </SoNo>
+      </div>
 
-      <section aria-labelledby="titulo-lista" className="mt-10">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="titulo-lista" className="font-placa text-2xl font-semibold">
-            Lista
-          </h2>
-          <p className="text-base text-apagado">
-            <span className="font-placa text-subtitulo leading-none font-semibold text-tinta tabular-nums">
-              {confirmados}/{p.vagas}
-            </span>{' '}
-            confirmados
-          </p>
-        </div>
-        <ol className="mt-3 flex flex-col">
-          {Array.from({ length: p.vagas }, (_, i) => (
-            <Linha key={i} numero={i + 1} item={p.principal[i]} eu={p.principal[i]?.jogadorId === p.jogadorId} />
-          ))}
-        </ol>
-      </section>
-
-      <section aria-labelledby="titulo-fila" className="mt-10">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="titulo-fila" className="font-placa text-2xl font-semibold">
-            Fila
-          </h2>
-          {p.fila.length > 0 && (
+      <div className="contents lg:block">
+        <section aria-labelledby="titulo-lista" className="mt-10 lg:mt-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="titulo-lista" className="font-placa text-2xl font-semibold">
+              Lista
+            </h2>
             <p className="text-base text-apagado">
-              {p.fila.length} esperando
+              <span className="font-placa text-subtitulo leading-none font-semibold text-tinta tabular-nums">
+                {confirmados}/{p.vagas}
+              </span>{' '}
+              confirmados
             </p>
-          )}
-        </div>
-        {p.fila.length === 0 ? (
-          <p className="mt-3 text-base text-meta">Ninguém na fila.</p>
-        ) : (
+          </div>
           <ol className="mt-3 flex flex-col">
-            {p.fila.map((item, i) => (
-              <Linha key={item.jogadorId} numero={i + 1} item={item} eu={item.jogadorId === p.jogadorId} naFila />
+            {Array.from({ length: p.vagas }, (_, i) => (
+              <Linha key={i} numero={i + 1} item={p.principal[i]} eu={p.principal[i]?.jogadorId === p.jogadorId} />
             ))}
           </ol>
-        )}
-      </section>
+        </section>
 
-      <CopiarLista texto={p.texto} />
+        <section aria-labelledby="titulo-fila" className="mt-10">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="titulo-fila" className="font-placa text-2xl font-semibold">
+              Fila
+            </h2>
+            {p.fila.length > 0 && (
+              <p className="text-base text-apagado">
+                {p.fila.length} esperando
+              </p>
+            )}
+          </div>
+          {p.fila.length === 0 ? (
+            <p className="mt-3 text-base text-meta">Ninguém na fila.</p>
+          ) : (
+            <ol className="mt-3 flex flex-col">
+              {p.fila.map((item, i) => (
+                <Linha key={item.jogadorId} numero={i + 1} item={item} eu={item.jogadorId === p.jogadorId} naFila />
+              ))}
+            </ol>
+          )}
+        </section>
+      </div>
+
+      <SoNo pc={false}>
+        <CopiarLista copia={copia} className="mt-10 lg:hidden" />
+      </SoNo>
     </main>
   );
 }
@@ -253,7 +274,7 @@ function MeuBloco({
     t = textos(situacao, cheia);
   }
   return (
-    <section aria-labelledby="meu-titulo" className="mt-6 rounded-placa bg-placa p-5">
+    <section aria-labelledby="meu-titulo" className="mt-6 rounded-placa bg-placa p-5 lg:mt-0">
       <h2 id="meu-titulo" className="flex items-center gap-2 font-placa text-subtitulo font-semibold">
         {t.titulo}
         {t.confirmado && <Marca className="size-7 shrink-0 text-lima" />}
@@ -296,7 +317,10 @@ function MeuBloco({
   );
 }
 
-function CopiarLista({ texto }: { texto: string }) {
+type Copia = ReturnType<typeof useCopia>;
+
+/** O estado do "Copiar lista": mora na tela, para as duas cópias (celular e PC) dividirem. */
+function useCopia(texto: string) {
   const [estado, setEstado] = useState<'parado' | 'copiado' | 'manual'>('parado');
   const area = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -318,8 +342,12 @@ function CopiarLista({ texto }: { texto: string }) {
     }
   }
 
+  return { estado, copiar, area, texto };
+}
+
+function CopiarLista({ copia: { estado, copiar, area, texto }, className }: { copia: Copia; className: string }) {
   return (
-    <section className="mt-10" aria-label="Copiar lista">
+    <section className={className} aria-label="Copiar lista">
       <button type="button" className={PILULA_SEGUNDA} onClick={copiar}>
         <Copiar className="size-5" />
         Copiar lista pro WhatsApp

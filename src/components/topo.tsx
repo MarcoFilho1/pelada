@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { MenuTopoJogador } from './nav-jogador';
 
-/** Barra do topo: marca à esquerda, no máximo uma ação de texto à direita. */
+/** Barra do topo: marca à esquerda e, à direita, uma ação de texto ou (no PC do jogador) o menu. */
 export function Topo({ direita, inicio = '/', rotulo }: { direita?: ReactNode; inicio?: string; rotulo?: string }) {
   return (
     <header className="flex h-14 items-center justify-between">
@@ -47,6 +48,21 @@ export function Tela({ children }: { children: ReactNode }) {
 export function TelaAdmin({ children }: { children: ReactNode }) {
   return (
     <div className={`${COLUNA} admin-pc:grid admin-pc:max-w-none admin-pc:grid-cols-[15rem_minmax(0,1fr)] admin-pc:px-0 admin-pc:pb-0 admin-pc:[&>main]:col-start-2 admin-pc:[&>main]:my-0 admin-pc:[&>main]:w-full admin-pc:[&>main]:max-w-6xl admin-pc:[&>main]:justify-self-center admin-pc:[&>main]:px-10 admin-pc:[&>main]:pt-4 admin-pc:[&>main]:pb-16`}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Moldura das telas do jogador com menu (Lista, Ranking, Perfil). Abaixo de 1024px é a `Tela` com a barra
+ * do topo de sempre (o menu fica na barra de baixo). A partir de 1024px a barra do topo ganha o menu à
+ * direita da marca, a moldura se abre até 1152px com 40px de margem e o `main` fica alinhado no alto: cada
+ * tela monta as próprias colunas.
+ */
+export function TelaJogador({ children }: { children: ReactNode }) {
+  return (
+    <div className={`${COLUNA} lg:max-w-6xl lg:px-10 lg:pb-16 lg:[&>main]:my-0`}>
+      <Topo inicio="/lista" direita={<MenuTopoJogador />} />
       {children}
     </div>
   );
