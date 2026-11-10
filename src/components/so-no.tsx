@@ -14,7 +14,7 @@ function assinar(aviso: () => void) {
 }
 
 /** true no PC (≥1024px), false no celular, null antes de hidratar (o servidor não sabe a largura). */
-function useNoPc() {
+export function useNoPc() {
   return useSyncExternalStore(
     assinar,
     () => window.matchMedia(PC).matches,
