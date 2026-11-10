@@ -56,6 +56,7 @@ ordem:
 - "Saíram: X." (saiu da lista ou da fila)
 - "Entraram na lista: W." (entrou direto, com vaga)
 - "Subiram da fila: K." (fila → lista)
+- "Foram para a fila: L." (lista → fila, ex.: mexida do admin)
 - "Entraram na fila: J."
 - "Perderam o prazo: M." (só a partir de quarta 14:00)
 - "O admin fechou/reabriu a lista."

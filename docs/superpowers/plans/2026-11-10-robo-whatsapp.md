@@ -50,14 +50,14 @@
     jogadores: Record<number, { nome: string; onde: Onde; tipo: 'M' | 'D' }>;
   };
   function fotografar(estado: EstadoDaSemana): FotoDaLista;
-  type Mudancas = { confirmaram: string[]; sairam: string[]; entraramNaLista: string[]; subiramDaFila: string[]; entraramNaFila: string[]; perderamPrazo: string[]; manual: 'fechou' | 'reabriu' | null };
+  type Mudancas = { confirmaram: string[]; sairam: string[]; entraramNaLista: string[]; subiramDaFila: string[]; foramParaFila: string[]; entraramNaFila: string[]; perderamPrazo: string[]; manual: 'fechou' | 'reabriu' | null };
   function mudancas(antes: FotoDaLista, depois: FotoDaLista): Mudancas;
   function haMudanca(m: Mudancas): boolean;
   function linhasDoCabecalho(m: Mudancas): string[];   // na ordem do desenho
   function juntarNomes(nomes: string[]): string;       // "A", "A e B", "A, B e C"
   ```
-- Regras de `mudancas` (por `jogadorId`): pendente→confirmado = confirmaram; estava (lista/fila) e sumiu = sairam; ausente→lista = entraramNaLista; fila→lista = subiramDaFila; ausente→fila = entraramNaFila; →prazo = perderamPrazo; `estadoManual` virou 'fechada' = 'fechou', saiu de 'fechada' para null/'aberta' = 'reabriu'. Nomes sempre da foto `depois` (ou `antes` para quem saiu), em ordem alfabética pt-BR.
-- Textos de `linhasDoCabecalho` (verbatim, uma linha por tipo, só os não vazios, nesta ordem): `Confirmaram: ${nomes}.` · `Saíram: ${nomes}.` · `Entraram na lista: ${nomes}.` · `Subiram da fila: ${nomes}.` · `Entraram na fila: ${nomes}.` · `Perderam o prazo: ${nomes}.` · `O admin fechou a lista.` / `O admin reabriu a lista.`
+- Regras de `mudancas` (por `jogadorId`): pendente→confirmado = confirmaram; estava (lista/fila) e sumiu = sairam; ausente→lista = entraramNaLista; fila→lista = subiramDaFila; lista→fila = foramParaFila; ausente→fila = entraramNaFila; →prazo = perderamPrazo; `estadoManual` virou 'fechada' = 'fechou', saiu de 'fechada' para null/'aberta' = 'reabriu'. Nomes sempre da foto `depois` (ou `antes` para quem saiu), em ordem alfabética pt-BR.
+- Textos de `linhasDoCabecalho` (verbatim, uma linha por tipo, só os não vazios, nesta ordem): `Confirmaram: ${nomes}.` · `Saíram: ${nomes}.` · `Entraram na lista: ${nomes}.` · `Subiram da fila: ${nomes}.` · `Foram para a fila: ${nomes}.` · `Entraram na fila: ${nomes}.` · `Perderam o prazo: ${nomes}.` · `O admin fechou a lista.` / `O admin reabriu a lista.`
 
 - [ ] **Step 1: testes** em `tests/robo/foto.test.ts` montando `EstadoDaSemana` à mão:
   - `juntarNomes`: `[]→''`, `['Ana']→'Ana'`, `['Ana','Bia']→'Ana e Bia'`, `['Ana','Bia','Caio']→'Ana, Bia e Caio'`.
