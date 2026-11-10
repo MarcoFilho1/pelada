@@ -7,7 +7,7 @@ export type Grupo = { id: string; nome: string; participantes: number };
 
 export interface WhatsApp {
   gruposChamados(nome: string): Promise<Grupo[]>;
-  /** Resolve só quando o servidor do WhatsApp aceitou a mensagem. */
+  /** Resolve só quando o servidor do WhatsApp devolveu o ack desta mensagem. */
   enviar(grupoId: string, texto: string): Promise<void>;
   fechar(): Promise<void>;
 }
@@ -41,6 +41,56 @@ function comPrazo<T>(promessa: Promise<T>, ms: number, oQue: string): Promise<T>
     timer = setTimeout(() => rejeitar(new Error(`${oQue}: sem resposta em ${ms / 1000} s`)), ms);
   });
   return Promise.race([promessa, prazo]).finally(() => clearTimeout(timer));
+}
+
+/** O mínimo do socket da Baileys que o envio usa (permite testar sem WhatsApp). */
+export type SocketDeEnvio = {
+  ws: {
+    on(evento: string, ouvinte: (no: { attrs: Record<string, string | undefined> }) => void): unknown;
+    off(evento: string, ouvinte: (no: { attrs: Record<string, string | undefined> }) => void): unknown;
+  };
+  sendMessage(jid: string, conteudo: { text: string }, opcoes: { messageId: string }): Promise<{ message?: proto.IMessage | null } | undefined>;
+};
+
+// O servidor responde cada mensagem com <ack class="message" id="…"> (com `error` se recusou).
+// A Baileys repassa isso no ws como 'CB:ack,class:message' (socket.js, prefixo DEF_CALLBACK_PREFIX).
+export const EVENTO_ACK = 'CB:ack,class:message';
+export const MSG_SEM_ACK = 'O servidor do WhatsApp não confirmou a mensagem a tempo; ela pode ter saído e, na próxima volta, pode sair duplicada.';
+
+/**
+ * Envia e só resolve quando chega o ack do servidor para este id. O `sendMessage` da Baileys
+ * resolve assim que o quadro é escrito no socket local (e o id é gerado aqui), então não serve
+ * de confirmação: com a rede caída e o socket meio aberto, a mensagem se perderia em silêncio.
+ */
+export async function enviarComConfirmacao(
+  sock: SocketDeEnvio,
+  grupoId: string,
+  texto: string,
+  id: string,
+  prazoMs: number,
+  aoEscrever?: (mensagem: proto.IMessage) => void,
+): Promise<void> {
+  let ouvinte: ((no: { attrs: Record<string, string | undefined> }) => void) | undefined;
+  let timer: NodeJS.Timeout | undefined;
+  const ack = new Promise<void>((ok, erro) => {
+    ouvinte = ({ attrs }) => {
+      if (attrs.id !== id) return;
+      if (attrs.error) erro(new Error(`O WhatsApp recusou a mensagem (erro ${attrs.error}).`));
+      else ok();
+    };
+    timer = setTimeout(() => erro(new Error(MSG_SEM_ACK)), prazoMs);
+  });
+  sock.ws.on(EVENTO_ACK, ouvinte!);
+  try {
+    const envio = sock.sendMessage(grupoId, { text: texto }, { messageId: id });
+    envio.catch(() => {}); // se o ack vencer a corrida, uma falha tardia do envio não derruba o processo
+    const msg = await Promise.race([envio, ack]);
+    if (msg?.message) aoEscrever?.(msg.message);
+    await ack;
+  } finally {
+    clearTimeout(timer);
+    sock.ws.off(EVENTO_ACK, ouvinte!);
+  }
 }
 
 /** Logger que a Baileys exige; calado, a não ser com PELADA_ROBO_DEBUG=1. */
@@ -156,9 +206,8 @@ export async function conectar(op: OpcoesConexao): Promise<WhatsApp> {
     },
     async enviar(grupoId, texto) {
       await esperarAberto(ESPERA_ENVIO_MS);
-      const msg = await comPrazo(sock!.sendMessage(grupoId, { text: texto }), ESPERA_ENVIO_MS, 'Envio da mensagem');
-      if (!msg?.key?.id) throw new Error('O WhatsApp não confirmou o envio da mensagem.');
-      if (msg.message) enviadas.set(msg.key.id, msg.message);
+      const id = b.generateMessageIDV2(sock!.user?.id);
+      await enviarComConfirmacao(sock!, grupoId, texto, id, ESPERA_ENVIO_MS, (m) => enviadas.set(id, m));
     },
     async fechar() {
       fechando = true;
