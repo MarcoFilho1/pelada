@@ -14,6 +14,7 @@ export type Mudancas = {
   sairam: string[];
   entraramNaLista: string[];
   subiramDaFila: string[];
+  foramParaFila: string[];
   entraramNaFila: string[];
   perderamPrazo: string[];
   manual: 'fechou' | 'reabriu' | null;
@@ -42,6 +43,7 @@ export function mudancas(antes: FotoDaLista, depois: FotoDaLista): Mudancas {
     sairam: [] as string[],
     entraramNaLista: [] as string[],
     subiramDaFila: [] as string[],
+    foramParaFila: [] as string[],
     entraramNaFila: [] as string[],
     perderamPrazo: [] as string[],
   };
@@ -62,8 +64,9 @@ export function mudancas(antes: FotoDaLista, depois: FotoDaLista): Mudancas {
     } else if (d.onde === 'pendente') {
       if (a?.onde === 'fila') r.subiramDaFila.push(d.nome);
       else if (!naLista(a?.onde)) r.entraramNaLista.push(d.nome);
-    } else if (d.onde === 'fila' && !estava(a?.onde)) {
-      r.entraramNaFila.push(d.nome);
+    } else if (d.onde === 'fila') {
+      if (naLista(a?.onde)) r.foramParaFila.push(d.nome);
+      else if (a?.onde !== 'fila') r.entraramNaFila.push(d.nome);
     }
   }
   let manual: Mudancas['manual'] = null;
@@ -74,6 +77,7 @@ export function mudancas(antes: FotoDaLista, depois: FotoDaLista): Mudancas {
     sairam: alfabetica(r.sairam),
     entraramNaLista: alfabetica(r.entraramNaLista),
     subiramDaFila: alfabetica(r.subiramDaFila),
+    foramParaFila: alfabetica(r.foramParaFila),
     entraramNaFila: alfabetica(r.entraramNaFila),
     perderamPrazo: alfabetica(r.perderamPrazo),
     manual,
@@ -83,7 +87,7 @@ export function mudancas(antes: FotoDaLista, depois: FotoDaLista): Mudancas {
 export function haMudanca(m: Mudancas): boolean {
   return (
     m.manual !== null ||
-    m.confirmaram.length + m.sairam.length + m.entraramNaLista.length + m.subiramDaFila.length + m.entraramNaFila.length + m.perderamPrazo.length > 0
+    m.confirmaram.length + m.sairam.length + m.entraramNaLista.length + m.subiramDaFila.length + m.foramParaFila.length + m.entraramNaFila.length + m.perderamPrazo.length > 0
   );
 }
 
@@ -103,6 +107,7 @@ export function linhasDoCabecalho(m: Mudancas): string[] {
   add('Saíram', m.sairam);
   add('Entraram na lista', m.entraramNaLista);
   add('Subiram da fila', m.subiramDaFila);
+  add('Foram para a fila', m.foramParaFila);
   add('Entraram na fila', m.entraramNaFila);
   add('Perderam o prazo', m.perderamPrazo);
   if (m.manual === 'fechou') linhas.push('O admin fechou a lista.');

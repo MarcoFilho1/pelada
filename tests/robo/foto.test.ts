@@ -91,6 +91,18 @@ describe('mudancas', () => {
     expect(linhasDoCabecalho(m)).toEqual(['Entraram na lista: Ana.']);
   });
 
+  it('rebaixado para a fila', () => {
+    const antes = foto({ principal: [it_(1, 'X', false, 'D')] });
+    const depois = foto({ fila: [it_(1, 'X', false, 'D')] });
+    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['Foram para a fila: X.']);
+  });
+
+  it('troca de lugar entre lista e fila', () => {
+    const antes = foto({ principal: [it_(1, 'X', false, 'D')], fila: [it_(2, 'Y', false, 'D')] });
+    const depois = foto({ principal: [it_(2, 'Y', false, 'D')], fila: [it_(1, 'X', false, 'D')] });
+    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['Subiram da fila: Y.', 'Foram para a fila: X.']);
+  });
+
   it('entrou na fila', () => {
     const m = mudancas(vazia, foto({ fila: [it_(1, 'Ana', false, 'D')] }));
     expect(m.entraramNaFila).toEqual(['Ana']);
@@ -127,12 +139,12 @@ describe('mudancas', () => {
 
   it('ordem das linhas com todos os tipos', () => {
     const antes: FotoDaLista = foto({
-      principal: [it_(1, 'A'), it_(2, 'B'), it_(8, 'H')],
+      principal: [it_(1, 'A'), it_(2, 'B'), it_(8, 'H'), it_(6, 'F', false, 'D')],
       fila: [it_(3, 'C', false, 'D'), it_(9, 'I', false, 'D')],
     });
     const depois: FotoDaLista = foto({
       principal: [it_(1, 'A', true), it_(3, 'C', false, 'D'), it_(4, 'D', false, 'D')],
-      fila: [it_(5, 'E', false, 'D')],
+      fila: [it_(5, 'E', false, 'D'), it_(6, 'F', false, 'D')],
       foraDoPrazo: [it_(8, 'H')],
       estadoManual: 'fechada',
     });
@@ -141,6 +153,7 @@ describe('mudancas', () => {
       'Saíram: B e I.',
       'Entraram na lista: D.',
       'Subiram da fila: C.',
+      'Foram para a fila: F.',
       'Entraram na fila: E.',
       'Perderam o prazo: H.',
       'O admin fechou a lista.',
