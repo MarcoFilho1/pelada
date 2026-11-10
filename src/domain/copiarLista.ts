@@ -1,8 +1,8 @@
-import type { EstadoLista, ItemLista } from './lista';
+import { marcaDe, type EstadoLista, type ItemLista } from './lista';
 
 function linhaPrincipal(numero: number, item: ItemLista | undefined): string {
   if (!item) return `${numero}.`;
-  return `${numero}. ${item.nome} (${item.tipo}) ${item.confirmado ? '✅' : '⏳'}`;
+  return `${numero}. ${item.nome} (${marcaDe(item)}) ${item.confirmado ? '✅' : '⏳'}`;
 }
 
 function linhaFila(numero: number, item: ItemLista): string {

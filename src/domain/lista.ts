@@ -9,8 +9,19 @@ export type Presenca = {
   tipo: 'M' | 'D';
   status: 'pendente' | 'confirmado' | 'removido';
   entrouEm: Date;
+  /** Mensalista do mês desta pelada (mesmo que tenha saído e voltado como D). Só muda a marca. */
+  mensalista?: boolean;
 };
-export type ItemLista = { jogadorId: number; nome: string; tipo: 'M' | 'D'; confirmado: boolean };
+/**
+ * `tipo` decide as regras (M tem prioridade e prazo das 14h); `marca` é o que aparece na tela e
+ * no texto: M para quem é mensalista do mês, mesmo que tenha saído e voltado pela ordem de chegada.
+ */
+export type ItemLista = { jogadorId: number; nome: string; tipo: 'M' | 'D'; confirmado: boolean; marca?: 'M' | 'D' };
+
+/** A marca que aparece (M/D); sem `marca` calculada, vale o tipo. */
+export function marcaDe(item: Pick<ItemLista, 'tipo' | 'marca'>): 'M' | 'D' {
+  return item.marca ?? item.tipo;
+}
 export type EstadoLista = {
   aberta: boolean;
   cancelada: boolean;
@@ -24,7 +35,13 @@ function porChegada(a: Presenca, b: Presenca): number {
 }
 
 function item(p: Presenca): ItemLista {
-  return { jogadorId: p.jogadorId, nome: p.nome, tipo: p.tipo, confirmado: p.status === 'confirmado' };
+  return {
+    jogadorId: p.jogadorId,
+    nome: p.nome,
+    tipo: p.tipo,
+    confirmado: p.status === 'confirmado',
+    marca: p.tipo === 'M' || p.mensalista ? 'M' : 'D',
+  };
 }
 
 export function calcularLista(input: {
