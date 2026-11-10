@@ -12,6 +12,7 @@ import {
   confirmar,
   entrarNaFila,
   estadoDaSemana,
+  estadoDaSemanaSemCriar,
   remover,
 } from '@/server/presencas';
 import { createTestDb } from '../helpers/db';
@@ -116,9 +117,9 @@ describe('estadoDaSemana', () => {
     const estado = await estadoDaSemana(db, DOMINGO);
     expect(estado).toMatchObject({ peladaId: null, aberta: false, fila: [], foraDoPrazo: [] });
     expect(estado.principal).toEqual([
-      { jogadorId: ana, nome: 'Ana', tipo: 'M', confirmado: false },
-      { jogadorId: bia, nome: 'Bia', tipo: 'M', confirmado: false },
-      { jogadorId: caio, nome: 'Caio', tipo: 'M', confirmado: false },
+      { jogadorId: ana, nome: 'Ana', tipo: 'M', confirmado: false, marca: 'M' },
+      { jogadorId: bia, nome: 'Bia', tipo: 'M', confirmado: false, marca: 'M' },
+      { jogadorId: caio, nome: 'Caio', tipo: 'M', confirmado: false, marca: 'M' },
     ]);
     expect(await db.select().from(peladas)).toHaveLength(0);
     expect(await db.select().from(presencas)).toHaveLength(0);
@@ -320,6 +321,43 @@ describe('entrarNaFila', () => {
     expect(p).toMatchObject({ tipo: 'D', status: 'pendente' });
   });
 
+  it('mensalista que sai e volta com vaga entra direto na lista com a marca M', async () => {
+    const [ana, bia] = await criar(['Ana', 'Bia']);
+    await definirMensalistas(db, '2026-11', [ana, bia]);
+    await remover(db, ana, SEGUNDA);
+    await entrarNaFila(db, ana, TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(estado.principal.find((i) => i.jogadorId === ana)).toMatchObject({ marca: 'M', tipo: 'D' });
+    expect(estado.principal.find((i) => i.jogadorId === bia)).toMatchObject({ marca: 'M', tipo: 'M' });
+  });
+
+  it('mensalista que sai e volta sem vaga vai pra fila com a marca M, sem tirar quem subiu', async () => {
+    const { ms, ds } = await cenarioCheio(1);
+    await entrarNaFila(db, ds[0], SEGUNDA);
+    await remover(db, ms[0], SEGUNDA);
+    await entrarNaFila(db, ms[0], TERCA);
+    const estado = await estadoDaSemana(db, TERCA);
+    expect(idsDe(estado.principal)).toContain(ds[0]);
+    expect(estado.fila).toEqual([expect.objectContaining({ jogadorId: ms[0], marca: 'M' })]);
+  });
+
+  it('mensalista que voltou não perde a vaga no prazo das 14h', async () => {
+    const [ana] = await criar(['Ana']);
+    await definirMensalistas(db, '2026-11', [ana]);
+    await remover(db, ana, SEGUNDA);
+    await entrarNaFila(db, ana, TERCA);
+    const estado = await estadoDaSemana(db, QUARTA_TARDE);
+    expect(idsDe(estado.principal)).toContain(ana);
+    expect(estado.foraDoPrazo).toEqual([]);
+  });
+
+  it('diarista continua com a marca D', async () => {
+    const { ds } = await cenarioCheio(1);
+    await entrarNaFila(db, ds[0], SEGUNDA);
+    const estado = await estadoDaSemana(db, SEGUNDA);
+    expect(estado.fila[0]).toMatchObject({ jogadorId: ds[0], marca: 'D' });
+  });
+
   it('quem já está na lista ou na fila recebe ja_na_lista', async () => {
     const { ms, ds } = await cenarioCheio(1);
     await entrarNaFila(db, ds[0], SEGUNDA);
@@ -434,5 +472,21 @@ describe('admin', () => {
     await definirEstadoManual(db, p.id, null);
     expect((await estadoDaSemana(db, DOMINGO)).aberta).toBe(false);
     await expect(definirEstadoManual(db, 999_999, 'fechada')).rejects.toMatchObject({ motivo: 'pelada_inexistente' });
+  });
+});
+
+describe('estadoDaSemanaSemCriar', () => {
+  it('depois da abertura, sem pelada criada, não escreve nada (mostra a prévia)', async () => {
+    await criar(['Ana']);
+    const antes = { p: await db.select().from(peladas), pr: await db.select().from(presencas) };
+    const e = await estadoDaSemanaSemCriar(db, SEGUNDA);
+    expect(e.peladaId).toBeNull();
+    expect(await db.select().from(peladas)).toEqual(antes.p);
+    expect(await db.select().from(presencas)).toEqual(antes.pr);
+    expect(antes.p).toHaveLength(0);
+  });
+  it('com a pelada criada, lê a lista real', async () => {
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    expect((await estadoDaSemanaSemCriar(db, SEGUNDA)).peladaId).toBe(p.id);
   });
 });

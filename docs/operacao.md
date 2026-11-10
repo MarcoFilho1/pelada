@@ -75,3 +75,105 @@ Passo a passo para quem cuida do site (nada disto é preciso no dia a dia).
   5. Abrir `/ranking`.
   6. Num iPhone, iniciar uma partida e ouvir o aviso sonoro dos 8:00 (o iOS é o mais exigente com som).
 - **Backup:** a restauração a qualquer ponto no tempo do Neon só volta até onde o plano permite (a janela de retenção muda de plano para plano). Confira a janela do seu plano.
+
+## Robô do WhatsApp
+
+Um robô manda a lista no grupo **"Pelada 3.0"** sozinho: segunda às 14:00 avisa que a lista abriu, depois manda a lista de novo de meia em meia hora **só quando algo mudou**, lembra os mensalistas na quarta às 12:00 e avisa às 14:00 quando o prazo acabou. Das 23:00 às 08:00 fica quieto. Ele também **responde quando alguém marca o número dele** no grupo (veja "Robô responde quando é marcado", abaixo). Ele usa um número de WhatsApp sobrando, que já precisa estar no grupo, e roda no seu Mac.
+
+Tudo dele fica no Mac, fora do projeto, na pasta `~/Library/Application Support/PeladaRobo/` (o login do WhatsApp, a última lista que ele mandou e o arquivo `.env` com o endereço do banco, a chave da IA e os números dos organizadores).
+
+### 0. Pôr o projeto em `~/pelada`
+
+O macOS não deixa um serviço que liga sozinho abrir pastas da Mesa (Desktop), Documentos, Downloads ou iCloud Drive. Por isso o robô precisa do projeto fora delas, em `~/pelada` (a pasta pessoal). Clone (ou mova) o projeto para lá e rode `pnpm install` dentro dele. Daqui para baixo, rode todos os comandos de dentro de `~/pelada`. Se você esquecer, o `pnpm robo:instalar` recusa e avisa.
+
+### 1. Dizer onde está o banco
+
+Crie o arquivo `~/Library/Application Support/PeladaRobo/.env` com uma linha só:
+
+```
+DATABASE_URL=<a mesma DATABASE_URL do site, copiada da Vercel>
+```
+
+Esse arquivo tem a senha do banco: não mande para ninguém e não coloque dentro da pasta do projeto. Depois de criar, proteja-o: `chmod 600 ~/Library/Application\ Support/PeladaRobo/.env`. Sem ele o robô não liga e avisa o que falta.
+
+### 2. Conectar o número do robô (QR)
+
+Na pasta do projeto, rode `pnpm robo:configurar`. Aparece um QR no Terminal. No celular do número sobrando, abra o WhatsApp > **Aparelhos conectados** > **Conectar um aparelho** e leia o QR. O robô procura o grupo "Pelada 3.0":
+
+- achou um: guarda e diz "Pronto";
+- achou dois com o mesmo nome: mostra os dois e pergunta qual é o certo (digite o número);
+- não achou: o número do robô ainda não está no grupo (ou o nome está diferente). Adicione e rode de novo.
+
+### 3. Testar num grupo de teste primeiro
+
+Antes de valer no grupo de verdade, crie um grupo só com você e o número do robô (por exemplo, "Teste robô") e rode:
+
+1. `pnpm robo:configurar --nome="Teste robô"` (escolhe o grupo de teste).
+2. Para ver o que ele mandaria, sem mandar nada: `pnpm robo:ensaio`. Dá para simular um horário: `pnpm robo:ensaio --agora=2026-11-11T12:00:00-03:00`. O ensaio só lê o banco (nunca cria a lista da semana), então pode simular qualquer dia sem mexer no site.
+3. Para mandar de verdade no grupo de teste: `pnpm robo` no Terminal, entre segunda 14:00 e quarta 20:30. A primeira mensagem sai na hora; feche com Ctrl+C.
+4. Gostou? Rode `pnpm robo:configurar` de novo, sem `--nome`, para voltar ao "Pelada 3.0". Ao trocar de grupo o robô começa do zero, e a primeira mensagem no grupo de verdade é a lista completa.
+
+### 4. Instalar (liga sozinho com o Mac)
+
+Rode `pnpm robo:instalar`. Ele mostra **"Vai mandar em: …"** com o nome do grupo: confira que é o "Pelada 3.0" e não o grupo de teste (se for o de teste, rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` e instale de novo). A partir daí o robô liga sozinho quando você entra no Mac e fica conectado a semana toda, para responder quando for marcado. As mensagens automáticas continuam só de segunda 14:00 a quarta 20:30, e só nesse horário ele impede o Mac de dormir.
+
+**Nos dias da pelada (segunda a quarta), deixe o Mac aberto e na tomada.** Com a tampa fechada o Mac dorme mesmo assim, e as mensagens atrasam. Quando o Mac volta, o robô manda uma mensagem só com tudo o que mudou (os horários fixos que passaram, como o lembrete das 12:00, não saem atrasados).
+
+### Ver o que ele está fazendo
+
+Ao ligar, o robô escreve no log em qual grupo vai mandar. Depois, entre segunda 14:00 e quarta 20:30, escreve uma linha por minuto no arquivo `~/Library/Logs/PeladaRobo/robo.log` (o que decidiu, o que mandou, erros). Fora desse horário fica quieto (uma linha avisando quando começa a próxima janela), a não ser quando responde a uma marcação ("respondeu a uma marcação …"). Para acompanhar ao vivo: `tail -f ~/Library/Logs/PeladaRobo/robo.log`.
+
+- **"Sessão do WhatsApp desconectada. Leia o QR de novo com `pnpm robo:configurar`."**: o WhatsApp desconectou o aparelho. Rode `pnpm robo:desinstalar`, depois `pnpm robo:configurar` (ele guarda o login antigo ao lado e mostra um QR novo) e `pnpm robo:instalar`. Nunca deixe dois programas conectados no número do robô ao mesmo tempo: o WhatsApp derruba a sessão.
+- **"erro (tenta de novo na próxima volta)"**: faltou internet ou o banco não respondeu. Ele tenta sozinho no minuto seguinte; como a mensagem só é dada como enviada depois da confirmação do WhatsApp, um erro desse tipo não manda nada.
+- **Log vazio depois de instalar**: confira se o projeto está mesmo em `~/pelada` (passo 0). Em último caso, `launchctl print gui/$(id -u)/com.pelada.robo` mostra o motivo da última parada.
+- **"pode sair duplicada"**: o WhatsApp não confirmou a mensagem a tempo (internet ruim). O robô tenta de novo no minuto seguinte, então às vezes a mesma lista aparece duas vezes no grupo. É melhor do que perder a mensagem.
+
+### Robô responde quando é marcado
+
+Quando alguém marca o número do robô com @ no grupo configurado, ele responde. Em outro grupo ou no privado ele não responde. Ele responde a semana toda, **enquanto o Mac estiver ligado e acordado**, e fica calado das 23:00 às 08:00 (marcação nesse horário fica sem resposta, nem depois).
+
+Comandos (escritos depois da marcação, com ou sem acento e maiúscula):
+
+- `@robô lista` (ou só `@robô`): a lista da semana. Se nada mudou desde a última lista que ele mandou, responde só "A lista não mudou desde as 15:30.".
+- `@robô falta confirmar` (ou `quem falta`): quem ainda não confirmou.
+- `@robô fila`: a fila de espera.
+- `@robô ajuda`: a lista de comandos.
+- `@robô sortear`: só para os organizadores. Ele sorteia os times como o site, **sem salvar**, e mostra no grupo. Quem pediu responde `@robô sim` em até 10 minutos para marcar como definitivo (igual ao botão do site). Também vale **responder à mensagem dos times** (segurar a mensagem > Responder) escrevendo só `sim`, sem marcar o robô. Se errou, `@robô sortear de novo` faz outra proposta. Outra pessoa pedindo recebe "Só os organizadores podem sortear pelo WhatsApp.".
+- Se um organizador receber "Só os organizadores podem sortear pelo WhatsApp.", pode ser que o WhatsApp esteja escondendo o número dele no grupo (o robô só vê um código no lugar do número). Avise o Marco.
+- Qualquer outro texto é uma **pergunta livre**, respondida por uma IA que só consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times). Ela não muda nada. Qualquer pessoa do grupo consegue fazer a IA repetir um texto qualquer, mas ela não consegue alterar nada no site.
+
+Ele responde no máximo uma vez por minuto (marcações a mais nesse minuto ficam sem resposta). A exceção é o `sim` de quem pediu o sorteio, que é respondido mesmo dentro desse minuto.
+
+Marcações feitas enquanto o Mac estava dormindo ou desligado, ou enquanto o robô reconectava, ficam sem resposta mesmo quando ele volta: é só marcar de novo.
+
+**Ligar as perguntas livres e o sorteio.** Acrescente três linhas ao arquivo `~/Library/Application Support/PeladaRobo/.env` (o mesmo do banco). Os valores abaixo são só exemplos; use os seus:
+
+```
+OPENROUTER_API_KEY=sk-or-v1-exemplo123
+OPENROUTER_MODEL=fornecedor/nome-do-modelo
+ROBO_ADMINS=5581900000001,5581900000002,5581900000003
+```
+
+- `OPENROUTER_API_KEY`: a chave que você cria no site da OpenRouter (openrouter.ai > Keys). Ela é como uma senha que gasta seu dinheiro: não mande para ninguém e nunca coloque dentro da pasta do projeto.
+- `OPENROUTER_MODEL`: o nome do modelo como aparece na OpenRouter.
+- `ROBO_ADMINS`: os números de quem pode sortear, com 55 e DDD, só números, separados por vírgula.
+
+Depois de mudar o `.env`, reinicie o robô: `pnpm robo:desinstalar` e `pnpm robo:instalar`. Ao ligar, o log diz se as perguntas livres estão ligadas e quantos organizadores ele conhece.
+
+**Custo e limite.** Comandos e sorteio não usam IA e não custam nada. Cada pergunta livre é cobrada pela OpenRouter, por mensagem, no seu cartão (o preço depende do modelo; confira na página dele na OpenRouter). Para o gasto não fugir do controle, são no máximo **30 perguntas livres por dia**; passou disso, ele responde "Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.". Esse contador volta a zero quando o robô reinicia, então **ponha também um limite de gasto na própria chave**: na OpenRouter, em Keys, edite a chave e preencha o limite de crédito (por exemplo, US$ 5). Passou do limite, a OpenRouter recusa e o robô responde "Não consegui responder agora.".
+
+**Desligar as perguntas livres.** Apague a linha `OPENROUTER_API_KEY` do `.env` e reinicie o robô. Os comandos e o sorteio continuam; uma pergunta livre passa a responder "As perguntas livres não estão ligadas.".
+
+### Atualizar o robô
+
+Quando o site ganhar regras novas, o robô continua com as antigas até você atualizá-lo. No Terminal, rode (um comando por vez):
+
+1. `cd ~/pelada`
+2. `git pull` (baixa a versão nova) e `pnpm install`
+3. `pnpm robo:desinstalar` e depois `pnpm robo:instalar` (reinicia o robô com o código novo). Confira o "Vai mandar em: …" que aparece.
+
+Faça isso fora de segunda 14:00 → quarta 20:30, se puder. O login do WhatsApp e o estado não se perdem.
+
+### Desligar
+
+`pnpm robo:desinstalar` desliga o robô e tira do início do Mac. Para voltar, `pnpm robo:instalar`. Não rode `pnpm robo:configurar` com o robô instalado: são duas conexões no mesmo número e uma derruba a outra. Desinstale antes.

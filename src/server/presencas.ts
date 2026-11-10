@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, mensalistasMes, peladas, presencas } from '@/db/schema';
 import {
@@ -37,9 +37,16 @@ async function lerPresencas(db: DB | Tx, peladaId: number, travar: boolean): Pro
       tipo: presencas.tipo,
       status: presencas.status,
       entrouEm: presencas.entrouEm,
+      mensalista: sql<boolean>`${mensalistasMes.jogadorId} is not null`,
     })
     .from(presencas)
     .innerJoin(jogadores, eq(jogadores.id, presencas.jogadorId))
+    .innerJoin(peladas, eq(peladas.id, presencas.peladaId))
+    // Mensalista do mês da quarta: só para a marca M de quem saiu e voltou como D.
+    .leftJoin(
+      mensalistasMes,
+      and(eq(mensalistasMes.jogadorId, presencas.jogadorId), eq(mensalistasMes.mes, sql`to_char(${peladas.data}, 'YYYY-MM')`)),
+    )
     .where(and(eq(presencas.peladaId, peladaId), eq(jogadores.ativo, true)));
   return travar ? consulta.for('update', { of: presencas }) : consulta;
 }
@@ -58,7 +65,7 @@ function montar(pelada: Pelada, ps: Presenca[], now: Date): EstadoDaSemana {
   const foraDoPrazo = ps
     .filter((p) => perdeuPrazo(p, pelada.data, now))
     .sort((a, b) => a.entrouEm.getTime() - b.entrouEm.getTime() || a.id - b.id)
-    .map((p) => ({ jogadorId: p.jogadorId, nome: p.nome, tipo: p.tipo, confirmado: false }));
+    .map((p) => ({ jogadorId: p.jogadorId, nome: p.nome, tipo: p.tipo, confirmado: false, marca: p.tipo === 'M' || p.mensalista ? ('M' as const) : ('D' as const) }));
   return { ...estado, peladaId: pelada.id, data: pelada.data, estadoManual: pelada.estadoManual, foraDoPrazo };
 }
 
@@ -88,6 +95,17 @@ async function previaDasPresencas(db: DB, data: string): Promise<Presenca[]> {
 export async function estadoDaSemana(db: DB, now: Date): Promise<EstadoDaSemana> {
   const data = proximaQuarta(now);
   const pelada = now >= aberturaLista(data) ? await obterPeladaDaSemana(db, now) : await peladaExistenteDaSemana(db, now);
+  if (!pelada) return { ...montar({ id: 0, data, estadoManual: null }, await previaDasPresencas(db, data), now), peladaId: null };
+  return montar(pelada, await lerPresencas(db, pelada.id, false), now);
+}
+
+/**
+ * Como `estadoDaSemana`, mas nunca escreve: mesmo depois da abertura, sem pelada criada mostra a
+ * prévia. Para simulações (ensaio do robô) com um `now` que não é o de agora.
+ */
+export async function estadoDaSemanaSemCriar(db: DB, now: Date): Promise<EstadoDaSemana> {
+  const data = proximaQuarta(now);
+  const pelada = await peladaExistenteDaSemana(db, now);
   if (!pelada) return { ...montar({ id: 0, data, estadoManual: null }, await previaDasPresencas(db, data), now), peladaId: null };
   return montar(pelada, await lerPresencas(db, pelada.id, false), now);
 }

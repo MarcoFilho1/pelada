@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Ampulheta, Marca, Mais, SetaDireita } from '@/components/icones';
 import { CAMPO, PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import type { EstadoManual, ItemLista } from '@/domain/lista';
+import { marcaDe, type EstadoManual, type ItemLista } from '@/domain/lista';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { adicionar, buscar, confirmarPor, mudarEstado, tirar, type EstadoEscolhido, type Resposta } from './acoes';
 
@@ -210,8 +210,8 @@ function LinhaAdmin({
         )}
         <span className="min-w-0 flex-1 truncate text-linha font-medium text-tinta">{item.nome}</span>
         <span className="shrink-0 text-base text-meta">
-          <span aria-hidden="true">{item.tipo}</span>
-          <span className="sr-only">{item.tipo === 'M' ? 'mensalista' : 'diarista'}</span>
+          <span aria-hidden="true">{marcaDe(item)}</span>
+          <span className="sr-only">{marcaDe(item) === 'M' ? 'mensalista' : 'diarista'}</span>
         </span>
         {grupo === 'principal' && (
           <span className="flex w-6 shrink-0 justify-center">
@@ -227,7 +227,7 @@ function LinhaAdmin({
           {tirando ? (
             <div>
               <p className="text-base text-tinta">
-                Tirar {item.nome} {grupo === 'fila' ? 'da fila' : 'da lista'}? Se voltar, entra no fim da fila.
+                Tirar {item.nome} {grupo === 'fila' ? 'da fila' : 'da lista'}? Se voltar, entra direto se tiver vaga; senão, no fim da fila.
               </p>
               <div className="mt-3 flex flex-col gap-1">
                 <button type="button" className={PILULA} disabled={pendente} onClick={() => rodar(() => tirar(peladaId, item.jogadorId))}>
