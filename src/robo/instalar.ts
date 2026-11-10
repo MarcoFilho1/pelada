@@ -10,7 +10,7 @@ import { lerEstado, pastaDoRobo } from './estado';
 
 export const ROTULO = 'com.pelada.robo';
 
-export type OpcoesPlist = { repo: string; pnpm: string; node: string; log: string };
+export type OpcoesPlist = { repo: string; pnpm: string; node: string; log: string; pastaDoRobo?: string };
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -32,7 +32,9 @@ export function gerarPlist(o: OpcoesPlist): string {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${xml(path)}</string>
+    <string>${xml(path)}</string>${o.pastaDoRobo ? `
+    <key>PELADA_ROBO_DIR</key>
+    <string>${xml(o.pastaDoRobo)}</string>` : ''}
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -53,7 +55,13 @@ export function gerarPlist(o: OpcoesPlist): string {
 function opcoesDestaMaquina(): OpcoesPlist {
   // `which` (e não process.execPath) para pegar o atalho estável, que sobrevive a atualizar o node.
   const achar = (cmd: string) => execFileSync('which', [cmd], { encoding: 'utf8' }).trim();
-  return { repo: process.cwd(), pnpm: achar('pnpm'), node: achar('node'), log: join(homedir(), 'Library', 'Logs', 'PeladaRobo', 'robo.log') };
+  return {
+    repo: process.cwd(),
+    pnpm: achar('pnpm'),
+    node: achar('node'),
+    log: join(homedir(), 'Library', 'Logs', 'PeladaRobo', 'robo.log'),
+    pastaDoRobo: process.env.PELADA_ROBO_DIR || undefined,
+  };
 }
 
 const plistInstalado = () => join(homedir(), 'Library', 'LaunchAgents', `${ROTULO}.plist`);

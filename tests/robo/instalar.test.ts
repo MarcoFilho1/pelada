@@ -21,5 +21,11 @@ describe('plist do LaunchAgent', () => {
   it('PATH com as pastas do pnpm e do node (e o caffeinate em /usr/bin); escapa XML', () => {
     expect(plist).toContain('<string>/opt/homebrew/bin:/Users/u/.nvm/versions/node/v22/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>');
     expect(plist).toContain('<string>/Users/u/Desktop/pelada &amp; cia</string>');
+    expect(plist).not.toContain('PELADA_ROBO_DIR');
+  });
+
+  it('pasta do robô personalizada vai junto para o serviço', () => {
+    const outro = gerarPlist({ repo: '/r', pnpm: '/b/pnpm', node: '/b/node', log: '/l', pastaDoRobo: '/Users/u/RoboTeste' });
+    expect(outro).toMatch(/<key>PELADA_ROBO_DIR<\/key>\s*<string>\/Users\/u\/RoboTeste<\/string>/);
   });
 });
