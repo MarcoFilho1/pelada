@@ -43,7 +43,7 @@ describe('calcularLista', () => {
     const r = calcularLista(entrada([...ms, d]));
     expect(r.fila).toEqual([]);
     const sobe = r.principal.find((i) => i.jogadorId === d.jogadorId);
-    expect(sobe).toEqual({ jogadorId: d.jogadorId, nome: d.nome, tipo: 'D', confirmado: false });
+    expect(sobe).toEqual({ jogadorId: d.jogadorId, nome: d.nome, tipo: 'D', confirmado: false, marca: 'D' });
     expect(r.principal).toHaveLength(16);
   });
 

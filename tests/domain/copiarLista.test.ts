@@ -16,6 +16,17 @@ const estadoBase: EstadoLista = {
 };
 
 describe('textoWhatsApp', () => {
+  it('mensalista que saiu e voltou (tipo D) aparece com (M)', () => {
+    const estado: EstadoLista = {
+      aberta: true,
+      cancelada: false,
+      vagas: 2,
+      principal: [{ jogadorId: 1, nome: 'Ana', tipo: 'D', confirmado: false, marca: 'M' }],
+      fila: [],
+    };
+    expect(textoWhatsApp(estado, '2026-11-11')).toContain('1. Ana (M) ⏳');
+  });
+
   it('lista com 2 na principal e Bruno na fila', () => {
     const esperado = [
       'Pelada 04/11 - 20:30-22:30',

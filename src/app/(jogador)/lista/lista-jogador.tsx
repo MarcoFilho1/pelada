@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Ampulheta, Copiar, Marca } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import type { ItemLista, Situacao } from '@/domain/lista';
+import { marcaDe, type ItemLista, type Situacao } from '@/domain/lista';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { naoVou, queroEntrar, vou, type Resposta } from './acoes';
 
@@ -102,9 +102,9 @@ function Linha({ numero, item, eu, naFila = false }: { numero: number; item?: It
           </span>
           {!naFila && (
             <>
-              <span className="shrink-0 text-base text-meta" title={item.tipo === 'M' ? 'Mensalista' : 'Diarista'}>
-                <span aria-hidden="true">{item.tipo}</span>
-                <span className="sr-only">{item.tipo === 'M' ? 'mensalista' : 'diarista'}</span>
+              <span className="shrink-0 text-base text-meta" title={marcaDe(item) === 'M' ? 'Mensalista' : 'Diarista'}>
+                <span aria-hidden="true">{marcaDe(item)}</span>
+                <span className="sr-only">{marcaDe(item) === 'M' ? 'mensalista' : 'diarista'}</span>
               </span>
               <span className="flex w-6 shrink-0 justify-center">
                 {item.confirmado ? <Marca className="size-6 text-lima" /> : <Ampulheta className="size-5 text-meta" />}
