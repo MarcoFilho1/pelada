@@ -227,7 +227,7 @@ function LinhaAdmin({
           {tirando ? (
             <div>
               <p className="text-base text-tinta">
-                Tirar {item.nome} {grupo === 'fila' ? 'da fila' : 'da lista'}? Se voltar, entra no fim da fila.
+                Tirar {item.nome} {grupo === 'fila' ? 'da fila' : 'da lista'}? Se voltar, entra direto se tiver vaga; senão, no fim da fila.
               </p>
               <div className="mt-3 flex flex-col gap-1">
                 <button type="button" className={PILULA} disabled={pendente} onClick={() => rodar(() => tirar(peladaId, item.jogadorId))}>

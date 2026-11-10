@@ -122,7 +122,7 @@ function Linha({ numero, item, eu, naFila = false }: { numero: number; item?: It
 
 type Acao = { rotulo: string; fazendo: string; fn: () => Promise<Resposta>; primaria: boolean; confirmar?: { frase: string; verbo: string } };
 
-const SAIR_DA_LISTA = { frase: 'Você perde a vaga. Se voltar, entra no fim da fila.', verbo: 'Não vou' };
+const SAIR_DA_LISTA = { frase: 'Você perde a vaga. Se voltar, entra direto se tiver vaga; senão, no fim da fila.', verbo: 'Não vou' };
 const SAIR_DA_FILA = { frase: 'Você perde o lugar. Se voltar, entra no fim da fila.', verbo: 'Sair da fila' };
 
 type Textos = { titulo: string; linha: string; acoes: Acao[]; confirmado?: boolean; ondeEstou?: string };
