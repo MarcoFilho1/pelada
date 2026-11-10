@@ -88,6 +88,26 @@ describe('perguntar', () => {
     expect(f).toHaveBeenCalledTimes(4);
   });
 
+  it('limita a resposta do modelo (max_tokens), corta resposta longa e pergunta longa', async () => {
+    const f = vi.fn(async () => texto('a'.repeat(1500)));
+    const r = await perguntar('p'.repeat(800), base(f as unknown as typeof fetch));
+    expect(r.length).toBeLessThanOrEqual(1000);
+    expect(r.endsWith('…')).toBe(true);
+    const corpo = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(corpo.max_tokens).toBe(400);
+    expect(corpo.messages[1].content.length).toBe(500);
+  });
+
+  it('mais de 6 ferramentas numa volta: erro curto, sem executar nenhuma', async () => {
+    const calls = Array.from({ length: 7 }, (_, i) => ({ id: `c${i}`, type: 'function', function: { name: 'lista_da_semana', arguments: '{}' } }));
+    const f = vi.fn(async () => resp({ choices: [{ message: { role: 'assistant', content: null, tool_calls: calls } }] }));
+    const executar = vi.fn(async () => ({}));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await perguntar('x', base(f as unknown as typeof fetch, [ferramenta(executar)]))).toBe(ERRO);
+    expect(executar).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
   it('não vaza a chave no erro nem no log', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const f = vi.fn(async () => resp({ error: 'sk-segredo' }, 500));

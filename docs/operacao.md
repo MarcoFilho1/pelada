@@ -138,10 +138,11 @@ Comandos (escritos depois da marcação, com ou sem acento e maiúscula):
 - `@robô falta confirmar` (ou `quem falta`): quem ainda não confirmou.
 - `@robô fila`: a fila de espera.
 - `@robô ajuda`: a lista de comandos.
-- `@robô sortear`: só para os organizadores. Ele sorteia os times como o site, **sem salvar**, e mostra no grupo. Quem pediu responde `@robô sim` em até 10 minutos para marcar como definitivo (igual ao botão do site). Outra pessoa pedindo recebe "Só os organizadores podem sortear pelo WhatsApp.".
-- Qualquer outro texto é uma **pergunta livre**, respondida por uma IA que só consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times). Ela não muda nada.
+- `@robô sortear`: só para os organizadores. Ele sorteia os times como o site, **sem salvar**, e mostra no grupo. Quem pediu responde `@robô sim` em até 10 minutos para marcar como definitivo (igual ao botão do site). Também vale **responder à mensagem dos times** (segurar a mensagem > Responder) escrevendo só `sim`, sem marcar o robô. Se errou, `@robô sortear de novo` faz outra proposta. Outra pessoa pedindo recebe "Só os organizadores podem sortear pelo WhatsApp.".
+- Se um organizador receber "Só os organizadores podem sortear pelo WhatsApp.", pode ser que o WhatsApp esteja escondendo o número dele no grupo (o robô só vê um código no lugar do número). Avise o Marco.
+- Qualquer outro texto é uma **pergunta livre**, respondida por uma IA que só consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times). Ela não muda nada. Qualquer pessoa do grupo consegue fazer a IA repetir um texto qualquer, mas ela não consegue alterar nada no site.
 
-Ele responde no máximo uma vez por minuto (marcações a mais nesse minuto ficam sem resposta). A exceção é o `sim` de quem pediu o sorteio, que sempre é respondido.
+Ele responde no máximo uma vez por minuto (marcações a mais nesse minuto ficam sem resposta). A exceção é o `sim` de quem pediu o sorteio, que é respondido mesmo dentro desse minuto.
 
 Marcações feitas enquanto o Mac estava dormindo ou desligado, ou enquanto o robô reconectava, ficam sem resposta mesmo quando ele volta: é só marcar de novo.
 
@@ -159,7 +160,7 @@ ROBO_ADMINS=5581900000001,5581900000002,5581900000003
 
 Depois de mudar o `.env`, reinicie o robô: `pnpm robo:desinstalar` e `pnpm robo:instalar`. Ao ligar, o log diz se as perguntas livres estão ligadas e quantos organizadores ele conhece.
 
-**Custo e limite.** Comandos e sorteio não usam IA e não custam nada. Cada pergunta livre é cobrada pela OpenRouter, por mensagem, no seu cartão (o preço depende do modelo; confira na página dele na OpenRouter). Para o gasto não fugir do controle, são no máximo **30 perguntas livres por dia**; passou disso, ele responde "Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.".
+**Custo e limite.** Comandos e sorteio não usam IA e não custam nada. Cada pergunta livre é cobrada pela OpenRouter, por mensagem, no seu cartão (o preço depende do modelo; confira na página dele na OpenRouter). Para o gasto não fugir do controle, são no máximo **30 perguntas livres por dia**; passou disso, ele responde "Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.". Esse contador volta a zero quando o robô reinicia, então **ponha também um limite de gasto na própria chave**: na OpenRouter, em Keys, edite a chave e preencha o limite de crédito (por exemplo, US$ 5). Passou do limite, a OpenRouter recusa e o robô responde "Não consegui responder agora.".
 
 **Desligar as perguntas livres.** Apague a linha `OPENROUTER_API_KEY` do `.env` e reinicie o robô. Os comandos e o sorteio continuam; uma pergunta livre passa a responder "As perguntas livres não estão ligadas.".
 

@@ -4,6 +4,11 @@ import type { Ferramenta } from './ferramentas';
 const URL_OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_VOLTAS = 3;
 const PRAZO_PADRAO_MS = 30_000;
+// Tetos de custo: resposta do modelo, texto que vai ao grupo, pergunta enviada e ferramentas por volta.
+const MAX_TOKENS = 400;
+const MAX_RESPOSTA = 1000;
+const MAX_PERGUNTA = 500;
+const MAX_FERRAMENTAS_POR_VOLTA = 6;
 export const ERRO_IA = 'Não consegui responder agora.';
 
 type ChamadaDeFerramenta = { id: string; function: { name: string; arguments: string } };
@@ -49,6 +54,7 @@ async function chamarModelo(
       messages: mensagens,
       tools: op.ferramentas.map((f) => ({ type: 'function', function: { name: f.nome, description: f.descricao, parameters: f.parametros } })),
       tool_choice: 'auto',
+      max_tokens: MAX_TOKENS,
     }),
     signal: sinal,
   });
@@ -62,16 +68,17 @@ async function chamarModelo(
 async function conversar(pergunta: string, op: OpcoesIA, sinal: AbortSignal): Promise<string> {
   const mensagens: Mensagem[] = [
     { role: 'system', content: sistema((op.agora ?? (() => new Date()))()) },
-    { role: 'user', content: pergunta },
+    { role: 'user', content: pergunta.slice(0, MAX_PERGUNTA) },
   ];
   for (let volta = 0; volta <= MAX_VOLTAS; volta++) {
     const msg = await chamarModelo(op, mensagens, sinal);
     if (!msg.tool_calls?.length) {
       const texto = msg.content?.trim();
       if (!texto) throw new Error('resposta vazia');
-      return texto;
+      return texto.length > MAX_RESPOSTA ? `${texto.slice(0, MAX_RESPOSTA - 1).trimEnd()}…` : texto;
     }
     if (volta === MAX_VOLTAS) throw new Error('voltas de ferramenta demais');
+    if (msg.tool_calls.length > MAX_FERRAMENTAS_POR_VOLTA) throw new Error(`ferramentas demais numa volta: ${msg.tool_calls.length}`);
     mensagens.push({ role: 'assistant', content: msg.content, tool_calls: msg.tool_calls });
     for (const c of msg.tool_calls) {
       const ferramenta = op.ferramentas.find((f) => f.nome === c.function.name);

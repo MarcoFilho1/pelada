@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, partidas, peladas, presencas, times } from '@/db/schema';
-import { confirmarSorteio, ehAdmin, proporSorteio, TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
+import { confirmarSorteio, ehAdmin, paraWhatsApp, proporSorteio, TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
 import { timesDaPelada } from '@/server/times';
 import { createTestDb } from '../helpers/db';
 
@@ -128,5 +128,12 @@ describe('confirmarSorteio', () => {
     const r = await confirmarSorteio(db, mais(2), ADMIN, p);
     expect(r).toEqual({ erro: 'Tem partida em andamento; encerre antes de sortear de novo.' });
     expect(await tudo()).toBe(antes);
+  });
+});
+
+describe('paraWhatsApp (textos de erro do site)', () => {
+  it('troca o "Recarregue a página." por "Tente de novo."', () => {
+    expect(paraWhatsApp('Essa pelada não existe mais. Recarregue a página.')).toBe('Essa pelada não existe mais. Tente de novo.');
+    expect(paraWhatsApp('Times definitivos salvos.')).toBe('Times definitivos salvos.');
   });
 });

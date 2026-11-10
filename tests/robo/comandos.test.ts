@@ -42,6 +42,9 @@ describe('interpretar', () => {
     ['sortear', 'sortear'],
     ['Sorteia', 'sortear'],
     ['sorteio', 'sortear'],
+    ['sortear de novo', 'sortear'],
+    ['Sorteia de novo!', 'sortear'],
+    ['sortear novamente', 'sortear'],
     ['sim', 'sim'],
     ['SIM.', 'sim'],
   ])('"%s" -> %s', (texto, tipo) => {

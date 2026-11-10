@@ -17,6 +17,10 @@ const PALAVRAS: Record<string, 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' 
   sortear: 'sortear',
   sorteia: 'sortear',
   sorteio: 'sortear',
+  // As mensagens de erro do sorteio pedem "Peça *sortear* de novo".
+  'sortear de novo': 'sortear',
+  'sorteia de novo': 'sortear',
+  'sortear novamente': 'sortear',
   sim: 'sim',
 };
 

@@ -15,6 +15,8 @@ export type MensagemRecebida = {
   remetenteTelefone: string | null;
   texto: string;
   mencionaORobo: boolean;
+  /** A mensagem cita (responde a) uma mensagem do robô. Só vale para o "sim" do sorteio. */
+  respondeAoRobo: boolean;
   quando: Date;
 };
 
@@ -126,13 +128,18 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
  * O sorteio só sai pelo comando `sortear`, nunca pela IA. Erro ao enviar: registra no log, não tenta de novo.
  */
 export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
-  if (!m.mencionaORobo || !c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return null;
-  if (emSilencio(m.quando)) return null;
+  if (!c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return null;
   const cmd = interpretar(m.texto);
+  // Sem marcação, só o "sim" respondendo à mensagem do robô com proposta guardada (citar o robô não é marcar).
+  if (!m.mencionaORobo && !(m.respondeAoRobo && cmd.tipo === 'sim' && c.proposta.atual)) return null;
+  if (emSilencio(m.quando)) return null;
   // O "sim" de quem pediu o sorteio costuma vir no mesmo minuto da proposta: não passa pelo freio.
   const p = c.proposta.atual;
   const simDeQuemPediu = cmd.tipo === 'sim' && p !== null && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, [p.adminTelefone]);
   if (!simDeQuemPediu && !c.freio.podeResponder()) return null;
+  if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim') && m.remetenteTelefone === null) {
+    c.log('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
+  }
 
   let r: Omit<Resposta, 'ehListaCompleta'>;
   switch (cmd.tipo) {

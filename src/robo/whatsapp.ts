@@ -153,8 +153,10 @@ export function lerMensagemRecebida(
   const textoLimpo = texto.replace(/@(\d+)/g, (inteiro, u: string) => (doRobo.has(u) ? ' ' : outros.has(u) ? '@alguém' : inteiro));
   const ts = msg.messageTimestamp;
   const segundos = typeof ts === 'number' ? ts : ts ? ts.toNumber() : null;
+  const citado = semAparelho(contexto?.participant);
   return {
     grupoId,
+    respondeAoRobo: citado !== null && eu.has(citado),
     remetenteTelefone: telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant),
     texto: textoLimpo.replace(/\s+/g, ' ').trim(),
     mencionaORobo,

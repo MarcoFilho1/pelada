@@ -77,6 +77,7 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
       remetenteTelefone: '5581990000001',
       texto: 'tá na lista? lista',
       mencionaORobo: true,
+      respondeAoRobo: false,
       quando: new Date(1_762_800_000 * 1000),
     });
   });
@@ -99,6 +100,13 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     expect(m?.mencionaORobo).toBe(false);
     const outra = lerMensagemRecebida({ ...base, message: texto('@5581990000003 lista', ['5581990000003@s.whatsapp.net']) }, robo);
     expect(outra?.mencionaORobo).toBe(false);
+  });
+
+  it('resposta (citação) a uma mensagem do robô: marca respondeAoRobo, sem contar como menção', () => {
+    const cita = (participant: string) => ({ extendedTextMessage: { text: 'sim', contextInfo: { participant, stanzaId: 'X', mentionedJid: [] } } });
+    expect(lerMensagemRecebida({ ...base, message: cita('111111111111111:7@lid') }, robo)).toMatchObject({ respondeAoRobo: true, mencionaORobo: false, texto: 'sim' });
+    expect(lerMensagemRecebida({ ...base, message: cita('5581990000000@s.whatsapp.net') }, robo)?.respondeAoRobo).toBe(true);
+    expect(lerMensagemRecebida({ ...base, message: cita('5581990000003@s.whatsapp.net') }, robo)?.respondeAoRobo).toBe(false);
   });
 
   it('texto simples (conversation) não tem menção', () => {

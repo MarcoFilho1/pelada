@@ -45,6 +45,11 @@ export function ehAdmin(telefone: string, admins: string[]): boolean {
   return t !== '' && admins.some((a) => canonico(a) === t);
 }
 
+/** Textos de erro do site que mandam recarregar a página viram algo que faz sentido no WhatsApp. */
+export function paraWhatsApp(texto: string): string {
+  return texto.replace(/Recarregue a página\./g, 'Tente de novo.');
+}
+
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** Propõe os times da noite (mesma regra do site) sem gravar nada. */
@@ -100,7 +105,7 @@ export async function confirmarSorteio(
     }
     await salvarTimesDefinitivos(db, proposta.peladaId, proposta.elencos, proposta.completes, now);
   } catch (e) {
-    return { erro: mensagemParaUsuario(e) };
+    return { erro: paraWhatsApp(mensagemParaUsuario(e)) };
   }
   return { ok: 'Times definitivos salvos.' };
 }

@@ -30,7 +30,7 @@ const lista: EstadoDaSemana = {
 };
 
 function msg(texto: string, over: Partial<MensagemRecebida> = {}): MensagemRecebida {
-  return { grupoId: GRUPO, remetenteTelefone: QUALQUER, texto, mencionaORobo: true, quando: t('2026-11-10T15:40:00'), ...over };
+  return { grupoId: GRUPO, remetenteTelefone: QUALQUER, texto, mencionaORobo: true, respondeAoRobo: false, quando: t('2026-11-10T15:40:00'), ...over };
 }
 
 function proposta(over: Partial<Proposta> = {}): Proposta {
@@ -273,6 +273,40 @@ describe('responder: sorteio', () => {
     await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
     expect(await responder(msg('sim', { remetenteTelefone: QUALQUER, quando }), c)).toBeNull();
     expect(c.confirmar).not.toHaveBeenCalled();
+  });
+
+  it('"sim" respondendo (citando) a proposta, sem marcar o robô: confirma', async () => {
+    const c = ctx({}, relogio.agora);
+    await passo('sortear', c, ADMIN);
+    relogio.andar();
+    const r = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: relogio.agora(), mencionaORobo: false, respondeAoRobo: true }), c);
+    expect(r?.texto).toBe('Times definitivos salvos.');
+  });
+
+  it('citação do robô sem marcação: só o "sim" com proposta guardada conta', async () => {
+    const c = ctx({}, relogio.agora);
+    const cita = (texto: string) => {
+      relogio.andar();
+      return responder(msg(texto, { remetenteTelefone: ADMIN, quando: relogio.agora(), mencionaORobo: false, respondeAoRobo: true }), c);
+    };
+    expect(await cita('sim')).toBeNull(); // sem proposta
+    expect(await cita('lista')).toBeNull();
+    expect(await cita('quem é o artilheiro?')).toBeNull();
+    await passo('sortear', c, ADMIN);
+    expect(await cita('legal')).toBeNull();
+    expect(c.enviar).toHaveBeenCalledTimes(1);
+  });
+
+  it('sortear ou sim de remetente sem telefone (só LID): registra uma linha no log', async () => {
+    const c = ctx({}, relogio.agora);
+    await passo('sortear', c, null);
+    expect(c.log).toHaveBeenCalledWith('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
+    vi.mocked(c.log).mockClear();
+    await passo('sim', c, null);
+    expect(c.log).toHaveBeenCalledWith('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
+    vi.mocked(c.log).mockClear();
+    await passo('fila', c, null);
+    expect(c.log).not.toHaveBeenCalled();
   });
 
   it('pedido de sorteio como pergunta livre vai para a IA, nunca para o sorteio', async () => {

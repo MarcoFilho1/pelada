@@ -258,8 +258,8 @@ async function laco(): Promise<void> {
     }
   };
   const aoReceber = (m: MensagemRecebida) => {
-    // Filtro barato antes da fila: só marcação no grupo configurado.
-    if (m.mencionaORobo && m.grupoId === grupoId) void emFila(() => tratar(m));
+    // Filtro barato antes da fila: só marcação (ou resposta ao robô) no grupo configurado.
+    if ((m.mencionaORobo || m.respondeAoRobo) && m.grupoId === grupoId) void emFila(() => tratar(m));
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).
