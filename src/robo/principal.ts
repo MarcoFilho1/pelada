@@ -10,10 +10,15 @@ import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
 import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
-import { gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
+import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
+import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
+import { Freio } from './freio';
+import { perguntar } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { montarMensagem } from './mensagem';
+import { configDasRespostas, responder, type MensagemRecebida } from './responder';
+import { confirmarSorteio, proporSorteio, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -40,9 +45,11 @@ function argumento(nome: string): string | undefined {
   return process.argv.find((a) => a.startsWith(pref))?.slice(pref.length);
 }
 
-/** DATABASE_URL do ambiente (ex.: ensaio com o banco local) ou do `.env` da pasta do robô. */
+/**
+ * Lê o `.env` da pasta do robô (DATABASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL, ROBO_ADMINS).
+ * O que já está no ambiente vale mais (ex.: ensaio com o banco local).
+ */
 function carregarBanco(): void {
-  if (process.env.DATABASE_URL) return;
   const arquivo = join(pasta, '.env');
   if (existsSync(arquivo)) process.loadEnvFile(arquivo);
   if (!process.env.DATABASE_URL) {
@@ -63,7 +70,7 @@ function lerEstadoOuParar(arquivo: string) {
 }
 
 /** No laço, `prazoMs` evita ficar preso esperando a rede (a volta seguinte tenta de novo). */
-async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number): Promise<WhatsApp> {
+async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
   const { conectar, ErroFatalWhatsApp } = await import('./whatsapp');
   try {
     return await conectar({
@@ -71,6 +78,7 @@ async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number): Promise<W
       mostrarQr,
       prazoMs,
       log,
+      aoReceber,
       aoFalhar: (e) => {
         log(e.message);
         process.exit(1);
@@ -185,22 +193,87 @@ function manterAcordado(sim: boolean): void {
   }
 }
 
+/** Uma tarefa por vez: as respostas e a volta automática mexem no mesmo `estado`. */
+function criarFila() {
+  let fim: Promise<unknown> = Promise.resolve();
+  return <T>(tarefa: () => Promise<T>): Promise<T> => {
+    const r = fim.then(tarefa, tarefa);
+    fim = r.catch(() => {});
+    return r;
+  };
+}
+
 async function laco(): Promise<void> {
   carregarBanco();
   let estado = lerEstadoOuParar(arquivoEstado);
   const grupoId = estado.grupoId;
   if (!grupoId) parar('O robô ainda não sabe em qual grupo mandar. Rode `pnpm robo:configurar` primeiro.');
   const db = getDb();
+  const emFila = criarFila();
 
-  let wa: WhatsApp | null = await conectarWhatsApp(false, 2 * 60_000); // confere a sessão já ao ligar
+  const { ia, admins } = configDasRespostas(process.env);
+  const freio = new Freio(() => new Date());
+  const proposta = { atual: null as Proposta | null };
+  const gravar = (novo: typeof estado) => {
+    try {
+      gravarEstado(arquivoEstado, novo);
+    } catch (err) {
+      log(`ATENÇÃO: lista enviada, mas o estado não foi gravado (${(err as Error).message}).`);
+    }
+  };
+  // Uma conexão só, aberta abaixo; mensagens que chegam enquanto ela abre esperam por ela.
+  let conexao: Promise<WhatsApp> | null = null;
+  /** Envio com ack, só no grupo configurado; a conexão pode ter demorado: nada depois das 23:00. */
+  const enviarNoGrupo = async (texto: string) => {
+    const wa = await conexao!;
+    if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
+    await wa.enviar(grupoId, texto);
+  };
+
+  const tratar = async (m: MensagemRecebida) => {
+    try {
+      const r = await responder(m, {
+        estadoGrupoId: grupoId,
+        freio,
+        admins,
+        ia,
+        ultimo: estado.ultimo,
+        proposta,
+        // Fora da janela só lê (nunca cria a pelada da semana), como o ensaio.
+        lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
+        propor: (n, tel) => proporSorteio(db, n, tel),
+        confirmar: (n, tel, p) => confirmarSorteio(db, n, tel, p),
+        perguntar: (texto, { agora }) => perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, ferramentas: ferramentasDeLeitura(db, agora), agora }),
+        enviar: enviarNoGrupo,
+        log,
+      });
+      if (!r) return;
+      log(`respondeu a uma marcação (${r.texto.split('\n')[0].slice(0, 60)})`);
+      if (r.ehListaCompleta && r.gravar) {
+        estado = aposEnvio(estado, new Date(), r.gravar.tipo, r.gravar.foto);
+        gravar(estado);
+      }
+    } catch (err) {
+      log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
+    }
+  };
+  const aoReceber = (m: MensagemRecebida) => {
+    // Filtro barato antes da fila: só marcação no grupo configurado.
+    if (m.mencionaORobo && m.grupoId === grupoId) void emFila(() => tratar(m));
+  };
+
+  // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).
+  conexao = conectarWhatsApp(false, 2 * 60_000, aoReceber);
+  const wa = await conexao;
   const sair = async () => {
     manterAcordado(false);
-    await wa?.fechar().catch(() => {});
+    await wa.fechar().catch(() => {});
     process.exit(0);
   };
   process.on('SIGTERM', sair);
   process.on('SIGINT', sair);
   log(`Robô ligado. Vai mandar em: ${nomeDoGrupo(estado)}. Estado em ${arquivoEstado}.`);
+  log(`Respostas: perguntas livres ${ia ? 'ligadas' : 'desligadas'}; ${admins.length} admin(s) para sortear.`);
 
   let estavaDentro: boolean | null = null;
   for (;;) {
@@ -208,25 +281,18 @@ async function laco(): Promise<void> {
     const dentro = dentroDaJanela(now);
     if (!dentro) {
       manterAcordado(false);
-      if (wa) {
-        await wa.fechar().catch(() => {});
-        wa = null;
-      }
       // Uma linha só ao sair da janela (não uma por minuto a semana toda).
-      if (estavaDentro !== false) log(`fora da janela; próxima começa ${hora(proximaJanela(now))}`);
+      if (estavaDentro !== false) log(`fora da janela (só responde marcações); próxima começa ${hora(proximaJanela(now))}`);
     } else {
       if (estavaDentro !== true) log('janela aberta: o Mac fica acordado até quarta 20:30.');
       manterAcordado(true);
-      estado = await umaVolta(now, estado, {
-        lerLista: (n) => estadoDaSemana(db, n),
-        enviar: async (texto) => {
-          wa ??= await conectarWhatsApp(false, 2 * 60_000);
-          // A conexão pode ter demorado: não manda depois das 23:00 (não grava; tenta de manhã).
-          if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
-          await wa.enviar(grupoId, texto);
-        },
-        gravar: (e) => gravarEstado(arquivoEstado, e),
-        log,
+      await emFila(async () => {
+        estado = await umaVolta(now, estado, {
+          lerLista: (n) => estadoDaSemana(db, n),
+          enviar: enviarNoGrupo,
+          gravar: (e) => gravarEstado(arquivoEstado, e),
+          log,
+        });
       });
     }
     estavaDentro = dentro;

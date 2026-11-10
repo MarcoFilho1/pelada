@@ -92,7 +92,7 @@ describe('responder: quando não responde', () => {
     await responder(msg('ajuda'), c);
     expect(c.enviar).toHaveBeenCalledWith(TEXTO_AJUDA);
     expect(registrar).toHaveBeenCalledTimes(1);
-    expect(c.enviar.mock.invocationCallOrder[0]).toBeLessThan(registrar.mock.invocationCallOrder[0]);
+    expect(vi.mocked(c.enviar).mock.invocationCallOrder[0]).toBeLessThan(registrar.mock.invocationCallOrder[0]);
 
     const f = ctx({ enviar: vi.fn(async () => Promise.reject(new Error('sem rede'))) });
     const registrarF = vi.spyOn(f.freio, 'registrarResposta');
