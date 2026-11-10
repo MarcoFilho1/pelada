@@ -111,7 +111,7 @@ Nomes juntados em pt-BR ("A, B e C"). Mensagem curta: cabeçalho, linha em branc
 - Lembrete das 12:00 não sai se todos os mensalistas já confirmaram.
 - Pelada cancelada: uma mensagem e para; lista fechada à mão vai no cabeçalho.
 - Horários fixos perdidos (Mac desligado) não saem atrasados, exceto "lista aberta" no mesmo dia.
-- Quarta 14:00 sem ninguém que perdeu a vaga: "Prazo encerrado: todos os mensalistas confirmaram." + a lista.
+- Quarta 14:00 sem ninguém que perdeu a vaga: "Prazo dos mensalistas encerrado." e "Todos os mensalistas confirmaram." + a lista.
 - Pelada cancelada e depois reaberta pelo admin: o robô volta a falar, com "A pelada de quarta, 11/11
   voltou." + a lista.
 - Dois grupos com o nome "Pelada 3.0": o robô para e pede para escolher na primeira configuração.
