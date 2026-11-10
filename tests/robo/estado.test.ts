@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EstadoDoRobo } from '@/robo/agenda';
-import { aposEnvio, gravarEstado, lerEstado, pastaDoRobo } from '@/robo/estado';
+import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from '@/robo/estado';
 
 const foto = { dataQuarta: '2026-11-11', estadoManual: null, jogadores: { 1: { nome: 'Ana', onde: 'confirmado' as const, tipo: 'M' as const } } };
 const cheio: EstadoDoRobo = {
   ultimo: { quando: '2026-11-09T17:00:12.000Z', rodada: '2026-11-09T17:00:00.000Z', tipo: 'abertura', foto },
   aberturaEnviada: '2026-11-11',
   grupoId: '120363000000000000@g.us',
+  grupoNome: 'Pelada 3.0',
 };
 
 let pasta: string;
@@ -27,13 +28,18 @@ describe('estado do robô', () => {
   });
 
   it('arquivo inexistente: estado vazio', () => {
-    expect(lerEstado(arquivo)).toEqual({ ultimo: null, aberturaEnviada: null, grupoId: null });
+    expect(lerEstado(arquivo)).toEqual({ ultimo: null, aberturaEnviada: null, grupoId: null, grupoNome: null });
   });
 
   it('cria a pasta se ainda não existe', () => {
     const fundo = join(pasta, 'a', 'b', 'estado.json');
     gravarEstado(fundo, cheio);
     expect(lerEstado(fundo)).toEqual(cheio);
+  });
+
+  it('estado antigo sem grupoNome: lê como null', () => {
+    writeFileSync(arquivo, JSON.stringify({ ultimo: null, aberturaEnviada: null, grupoId: 'g@g.us' }));
+    expect(lerEstado(arquivo).grupoNome).toBeNull();
   });
 
   it('JSON corrompido: erro claro com o caminho, sem zerar em silêncio', () => {
@@ -89,5 +95,14 @@ describe('pastaDoRobo', () => {
   it('usa PELADA_ROBO_DIR quando definido, senão a pasta do usuário', () => {
     expect(pastaDoRobo({ PELADA_ROBO_DIR: '/tmp/x' }, '/Users/u')).toBe('/tmp/x');
     expect(pastaDoRobo({}, '/Users/u')).toBe('/Users/u/Library/Application Support/PeladaRobo');
+  });
+});
+
+describe('nomeDoGrupo', () => {
+  it('mostra o nome guardado no configurar', () => {
+    expect(nomeDoGrupo(cheio)).toBe('"Pelada 3.0"');
+    expect(nomeDoGrupo({ ...cheio, grupoNome: 'Teste robô' })).toBe('"Teste robô"');
+    expect(nomeDoGrupo({ ...cheio, grupoNome: null })).toMatch(/120363000000000000@g\.us.*robo:configurar/);
+    expect(nomeDoGrupo({ ...cheio, grupoId: null })).toMatch(/nenhum grupo/);
   });
 });

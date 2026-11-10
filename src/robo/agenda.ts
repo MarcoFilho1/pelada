@@ -11,6 +11,8 @@ export type EstadoDoRobo = {
   /** `dataQuarta` da semana cuja abertura já foi anunciada. */
   aberturaEnviada: string | null;
   grupoId: string | null;
+  /** Nome do grupo na hora do `robo:configurar` (só para mostrar ao usuário). */
+  grupoNome?: string | null;
 };
 
 const MEIA_HORA_MS = 30 * 60 * 1000;

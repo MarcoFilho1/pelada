@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gerarPlist, ROTULO } from '@/robo/instalar';
+import { gerarPlist, pastaProtegida, ROTULO } from '@/robo/instalar';
 
 describe('plist do LaunchAgent', () => {
   const plist = gerarPlist({
@@ -27,5 +27,20 @@ describe('plist do LaunchAgent', () => {
   it('pasta do robô personalizada vai junto para o serviço', () => {
     const outro = gerarPlist({ repo: '/r', pnpm: '/b/pnpm', node: '/b/node', log: '/l', pastaDoRobo: '/Users/u/RoboTeste' });
     expect(outro).toMatch(/<key>PELADA_ROBO_DIR<\/key>\s*<string>\/Users\/u\/RoboTeste<\/string>/);
+  });
+});
+
+describe('pasta do projeto que o launchd não alcança', () => {
+  const home = '/Users/u';
+  it('recusa Mesa, Documentos, Downloads e iCloud', () => {
+    expect(pastaProtegida('/Users/u/Desktop/things/pelada', home)).toBe('/Users/u/Desktop');
+    expect(pastaProtegida('/Users/u/Documents/pelada', home)).toBe('/Users/u/Documents');
+    expect(pastaProtegida('/Users/u/Downloads/pelada', home)).toBe('/Users/u/Downloads');
+    expect(pastaProtegida('/Users/u/Library/Mobile Documents/com~apple~CloudDocs/pelada', home)).toBe('/Users/u/Library/Mobile Documents');
+  });
+  it('aceita ~/pelada e nomes parecidos que não são as pastas protegidas', () => {
+    expect(pastaProtegida('/Users/u/pelada', home)).toBeNull();
+    expect(pastaProtegida('/Users/u/Desktops/pelada', home)).toBeNull();
+    expect(pastaProtegida('/Users/u/code/Desktop/pelada', home)).toBeNull();
   });
 });

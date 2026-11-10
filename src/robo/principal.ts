@@ -10,14 +10,15 @@ import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
 import { estadoDaSemana } from '@/server/presencas';
 import { decidir } from './agenda';
-import { gravarEstado, lerEstado, pastaDoRobo } from './estado';
+import { gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { fotografar } from './foto';
-import { dentroDaJanela, esperaAte, proximaJanela } from './janela';
+import { dentroDaJanela, proximaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
 const NOME_DO_GRUPO = 'Pelada 3.0';
+const VOLTA_MS = 60_000;
 
 const pasta = pastaDoRobo(process.env, homedir());
 const arquivoEstado = join(pasta, 'estado.json');
@@ -121,7 +122,10 @@ async function configurar(): Promise<void> {
     }
   }
   // Grupo novo começa do zero: a próxima mensagem dele é a primeira da semana.
-  const novo = estado.grupoId === escolhido.id ? estado : { ultimo: null, aberturaEnviada: null, grupoId: escolhido.id };
+  const novo =
+    estado.grupoId === escolhido.id
+      ? { ...estado, grupoNome: escolhido.nome }
+      : { ultimo: null, aberturaEnviada: null, grupoId: escolhido.id, grupoNome: escolhido.nome };
   gravarEstado(arquivoEstado, novo);
   console.log(`Pronto: o robô vai mandar no grupo "${escolhido.nome}" (${escolhido.participantes} participantes).`);
   await new Promise((r) => setTimeout(r, 2_000)); // deixa a Baileys terminar de salvar o login
@@ -162,18 +166,22 @@ async function laco(): Promise<void> {
   };
   process.on('SIGTERM', sair);
   process.on('SIGINT', sair);
-  log(`Robô ligado. Estado em ${arquivoEstado}.`);
+  log(`Robô ligado. Vai mandar em: ${nomeDoGrupo(estado)}. Estado em ${arquivoEstado}.`);
 
+  let estavaDentro: boolean | null = null;
   for (;;) {
     const now = new Date();
-    if (!dentroDaJanela(now)) {
+    const dentro = dentroDaJanela(now);
+    if (!dentro) {
       manterAcordado(false);
       if (wa) {
         await wa.fechar().catch(() => {});
         wa = null;
       }
-      log(`fora da janela; próxima começa ${hora(proximaJanela(now))}`);
+      // Uma linha só ao sair da janela (não uma por minuto a semana toda).
+      if (estavaDentro !== false) log(`fora da janela; próxima começa ${hora(proximaJanela(now))}`);
     } else {
+      if (estavaDentro !== true) log('janela aberta: o Mac fica acordado até quarta 20:30.');
       manterAcordado(true);
       estado = await umaVolta(now, estado, {
         lerLista: (n) => estadoDaSemana(db, n),
@@ -185,7 +193,10 @@ async function laco(): Promise<void> {
         log,
       });
     }
-    await new Promise((r) => setTimeout(r, esperaAte(new Date())));
+    estavaDentro = dentro;
+    // Sempre 60 s, também fora da janela (só confere o relógio): um timer longo atrasaria a
+    // abertura depois do Mac dormir, porque o tempo dormindo não conta para o setTimeout.
+    await new Promise((r) => setTimeout(r, VOLTA_MS));
   }
 }
 

@@ -8,7 +8,7 @@ export function pastaDoRobo(env: Record<string, string | undefined>, home: strin
   return env.PELADA_ROBO_DIR || join(home, 'Library', 'Application Support', 'PeladaRobo');
 }
 
-const VAZIO: EstadoDoRobo = { ultimo: null, aberturaEnviada: null, grupoId: null };
+const VAZIO: EstadoDoRobo = { ultimo: null, aberturaEnviada: null, grupoId: null, grupoNome: null };
 
 /** Lê o estado. Sem arquivo → estado vazio. Arquivo estragado → erro (nunca zera em silêncio). */
 export function lerEstado(arquivo: string): EstadoDoRobo {
@@ -24,7 +24,12 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
     throw new Error(`O arquivo de estado do robô está corrompido (não é um objeto): ${arquivo}.`);
   }
   const d = dados as Partial<EstadoDoRobo>;
-  return { ultimo: d.ultimo ?? null, aberturaEnviada: d.aberturaEnviada ?? null, grupoId: d.grupoId ?? null };
+  return {
+    ultimo: d.ultimo ?? null,
+    aberturaEnviada: d.aberturaEnviada ?? null,
+    grupoId: d.grupoId ?? null,
+    grupoNome: d.grupoNome ?? null,
+  };
 }
 
 /** Grava de forma atômica: escreve num temporário na mesma pasta e renomeia por cima. */
@@ -47,4 +52,10 @@ export function aposEnvio(estado: EstadoDoRobo, now: Date, tipo: TipoMensagem, f
     ultimo: { quando: now.toISOString(), rodada: rodadaDe(now).toISOString(), tipo, foto },
     aberturaEnviada: tipo === 'abertura' ? foto.dataQuarta : estado.aberturaEnviada,
   };
+}
+
+/** Como mostrar o grupo escolhido ao usuário (instalar e log do laço). */
+export function nomeDoGrupo(estado: EstadoDoRobo): string {
+  if (!estado.grupoId) return 'nenhum grupo (rode `pnpm robo:configurar`)';
+  return estado.grupoNome ? `"${estado.grupoNome}"` : `grupo ${estado.grupoId} (nome não guardado; rode \`pnpm robo:configurar\` para ver)`;
 }

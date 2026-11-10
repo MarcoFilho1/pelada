@@ -3,12 +3,25 @@
 //   pnpm robo:desinstalar                    desliga e apaga o plist
 //   pnpm robo:instalar --so-gerar=<arquivo>  só escreve o plist nesse arquivo (para conferir)
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { lerEstado, pastaDoRobo } from './estado';
+import { dirname, join, sep } from 'node:path';
+import { lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 
 export const ROTULO = 'com.pelada.robo';
+
+// Pastas que o macOS protege (TCC): um serviço do launchd em geral não consegue nem entrar nelas,
+// e o erro nem chega ao robo.log (só aparece como saída 78 no `launchctl print`).
+const PROTEGIDAS = ['Desktop', 'Documents', 'Downloads', join('Library', 'Mobile Documents')];
+
+/** A pasta protegida que contém o projeto, ou `null` se o projeto está num lugar que o serviço alcança. */
+export function pastaProtegida(repo: string, home: string): string | null {
+  for (const p of PROTEGIDAS) {
+    const base = join(home, p);
+    if (repo === base || repo.startsWith(base + sep)) return base;
+  }
+  return null;
+}
 
 export type OpcoesPlist = { repo: string; pnpm: string; node: string; log: string; pastaDoRobo?: string };
 
@@ -56,7 +69,7 @@ function opcoesDestaMaquina(): OpcoesPlist {
   // `which` (e não process.execPath) para pegar o atalho estável, que sobrevive a atualizar o node.
   const achar = (cmd: string) => execFileSync('which', [cmd], { encoding: 'utf8' }).trim();
   return {
-    repo: process.cwd(),
+    repo: realpathSync(process.cwd()),
     pnpm: achar('pnpm'),
     node: achar('node'),
     log: join(homedir(), 'Library', 'Logs', 'PeladaRobo', 'robo.log'),
@@ -78,14 +91,23 @@ function desligar(): void {
 function instalar(): void {
   const pasta = pastaDoRobo(process.env, homedir());
   if (!existsSync(join(pasta, '.env'))) throw new Error(`Falta o arquivo ${join(pasta, '.env')} com a DATABASE_URL (veja docs/operacao.md).`);
-  if (!lerEstado(join(pasta, 'estado.json')).grupoId) throw new Error('Rode `pnpm robo:configurar` antes de instalar.');
+  const estado = lerEstado(join(pasta, 'estado.json'));
+  if (!estado.grupoId) throw new Error('Rode `pnpm robo:configurar` antes de instalar.');
   const o = opcoesDestaMaquina();
+  const protegida = pastaProtegida(o.repo, homedir());
+  if (protegida) {
+    throw new Error(
+      `O projeto está em ${protegida}, uma pasta que o macOS não deixa o serviço do robô abrir.\n` +
+        'Mova (ou clone) o projeto para ~/pelada, rode `pnpm install` lá e `pnpm robo:instalar` de novo.',
+    );
+  }
   mkdirSync(dirname(o.log), { recursive: true });
   mkdirSync(dirname(plistInstalado()), { recursive: true });
   desligar();
   writeFileSync(plistInstalado(), gerarPlist(o));
   execFileSync('launchctl', ['bootstrap', dominio(), plistInstalado()], { stdio: 'inherit' });
   console.log(`Robô instalado: liga sozinho com o Mac. Log em ${o.log}`);
+  console.log(`Vai mandar em: ${nomeDoGrupo(estado)}`);
 }
 
 function desinstalar(): void {

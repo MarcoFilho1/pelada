@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentroDaJanela, esperaAte, proximaJanela } from '@/robo/janela';
+import { dentroDaJanela, proximaJanela } from '@/robo/janela';
 
 const t = (s: string) => new Date(`${s}-03:00`);
 
@@ -18,11 +18,5 @@ describe('janela do robô (segunda 14:00 → quarta 20:30)', () => {
     expect(proximaJanela(t('2026-11-11T21:00:00'))).toEqual(t('2026-11-16T14:00:00'));
     expect(proximaJanela(t('2026-11-11T23:00:00'))).toEqual(t('2026-11-16T14:00:00'));
     expect(proximaJanela(t('2026-11-14T12:00:00'))).toEqual(t('2026-11-16T14:00:00'));
-  });
-
-  it('espera: 60 s dentro; fora, até a janela com teto de 1 h', () => {
-    expect(esperaAte(t('2026-11-10T10:00:00'))).toBe(60_000);
-    expect(esperaAte(t('2026-11-09T13:45:00'))).toBe(15 * 60_000);
-    expect(esperaAte(t('2026-11-12T10:00:00'))).toBe(60 * 60_000);
   });
 });

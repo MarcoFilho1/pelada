@@ -20,9 +20,3 @@ export function proximaJanela(now: Date): Date {
   if (now < fim) return now;
   return new Date(inicio.getTime() + SEMANA_MS);
 }
-
-/** Quanto dormir até a próxima volta: 60 s dentro da janela; fora, até a janela, no máximo 1 h. */
-export function esperaAte(now: Date): number {
-  if (dentroDaJanela(now)) return 60_000;
-  return Math.max(1_000, Math.min(HORA_MS, proximaJanela(now).getTime() - now.getTime()));
-}
