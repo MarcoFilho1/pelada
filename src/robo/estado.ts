@@ -4,7 +4,7 @@ import { rodadaDe, type EstadoDoRobo, type TipoMensagem } from './agenda';
 import type { FotoDaLista } from './foto';
 
 /** Pasta do robô no Mac (fora do repositório): `estado.json`, `auth/` e `.env`. */
-export function pastaDoRobo(env: NodeJS.ProcessEnv, home: string): string {
+export function pastaDoRobo(env: Record<string, string | undefined>, home: string): string {
   return env.PELADA_ROBO_DIR || join(home, 'Library', 'Application Support', 'PeladaRobo');
 }
 

@@ -38,7 +38,7 @@ describe('estado do robô', () => {
 
   it('JSON corrompido: erro claro com o caminho, sem zerar em silêncio', () => {
     writeFileSync(arquivo, '{"ultimo": nu');
-    expect(() => lerEstado(arquivo)).toThrow(/corrompido.*estado\.json/s);
+    expect(() => lerEstado(arquivo)).toThrow(/corrompido[\s\S]*estado\.json/);
     expect(readFileSync(arquivo, 'utf8')).toBe('{"ultimo": nu');
   });
 
@@ -58,7 +58,7 @@ describe('estado do robô', () => {
 
   it('gravação que falha no meio não estraga o arquivo que já existia', () => {
     gravarEstado(arquivo, cheio);
-    const ruim = { ...cheio, grupoId: 10n } as unknown as EstadoDoRobo; // BigInt: JSON.stringify lança
+    const ruim = { ...cheio, grupoId: BigInt(10) } as unknown as EstadoDoRobo; // BigInt: JSON.stringify lança
     expect(() => gravarEstado(arquivo, ruim)).toThrow();
     expect(lerEstado(arquivo)).toEqual(cheio);
     expect(readdirSync(pasta)).toEqual(['estado.json']);
