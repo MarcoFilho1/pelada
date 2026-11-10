@@ -1,5 +1,5 @@
 // Banco novo do e2e: migrações, o admin, 8 jogadores com times, 7 sem time (sorteio com COMPLETE),
-// 3 novatos de PIN padrão, as peladas
+// os novatos de PIN padrão (um por teste de jogador), as peladas
 // de hoje/amanhã e da lista da semana, e um histórico de duas partidas para o ranking.
 import { rmSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
