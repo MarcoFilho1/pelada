@@ -17,7 +17,7 @@ import { Freio } from './freio';
 import { perguntar } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { montarMensagem } from './mensagem';
-import { configDasRespostas, responder, type MensagemRecebida } from './responder';
+import { configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
 import { confirmarSorteio, proporSorteio, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
@@ -249,7 +249,7 @@ async function laco(): Promise<void> {
       });
       if (!r) return;
       log(`respondeu a uma marcação (${r.texto.split('\n')[0].slice(0, 60)})`);
-      if (r.ehListaCompleta && r.gravar) {
+      if (r.ehListaCompleta && r.gravar && podeGravarLista(new Date(), r.gravar.foto, estado)) {
         estado = aposEnvio(estado, new Date(), r.gravar.tipo, r.gravar.foto);
         gravar(estado);
       }

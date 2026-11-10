@@ -143,16 +143,20 @@ export function lerMensagemRecebida(
   if (texto == null) return null;
   const contexto = c.extendedTextMessage?.contextInfo ?? c.imageMessage?.contextInfo ?? c.videoMessage?.contextInfo ?? c.documentMessage?.contextInfo;
   const eu = new Set([semAparelho(robo.id), semAparelho(robo.lid)].filter((j): j is string => j !== null));
-  const mencionaORobo = (contexto?.mentionedJid ?? []).some((j) => {
-    const n = semAparelho(j);
-    return n !== null && eu.has(n);
-  });
+  const mencionados = (contexto?.mentionedJid ?? []).map(semAparelho).filter((j): j is string => j !== null);
+  const mencionaORobo = mencionados.some((j) => eu.has(j));
+  // No texto a marcação aparece como "@<usuário do JID/LID>": a do robô sai; a de outra pessoa vira
+  // "@alguém" (a Baileys não traz o nome de quem foi marcado). Outros "@123" ficam como estão.
+  const usuario = (j: string) => j.slice(0, j.indexOf('@'));
+  const doRobo = new Set([...eu].map(usuario));
+  const outros = new Set(mencionados.filter((j) => !eu.has(j)).map(usuario));
+  const textoLimpo = texto.replace(/@(\d+)/g, (inteiro, u: string) => (doRobo.has(u) ? ' ' : outros.has(u) ? '@alguém' : inteiro));
   const ts = msg.messageTimestamp;
   const segundos = typeof ts === 'number' ? ts : ts ? ts.toNumber() : null;
   return {
     grupoId,
     remetenteTelefone: telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant),
-    texto: texto.replace(/@\d+/g, ' ').replace(/\s+/g, ' ').trim(),
+    texto: textoLimpo.replace(/\s+/g, ' ').trim(),
     mencionaORobo,
     quando: segundos ? new Date(segundos * 1000) : new Date(),
   };

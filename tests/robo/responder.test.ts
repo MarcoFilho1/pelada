@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { EstadoDaSemana } from '@/server/presencas';
-import type { Envio } from '@/robo/agenda';
+import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { configDasRespostas, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -154,8 +154,7 @@ describe('responder: lista', () => {
     const r = await responder(msg('lista', { quando: t('2026-11-14T10:00:00') }), c);
     expect(c.enviar).toHaveBeenCalledTimes(1);
     expect(r?.texto).toContain('Ana');
-    expect(r).toMatchObject({ ehListaCompleta: false });
-    expect(r?.gravar).toBeUndefined();
+    expect(podeGravarLista(t('2026-11-14T10:00:05'), r!.gravar!.foto, { ultimo: null, aberturaEnviada: null, grupoId: GRUPO })).toBe(false);
     expect(c.lerLista).toHaveBeenCalledWith(t('2026-11-14T10:00:00'));
   });
 
@@ -257,6 +256,25 @@ describe('responder: sorteio', () => {
     expect(c.confirmar).not.toHaveBeenCalled();
   });
 
+  it('"sim" de quem pediu, no mesmo minuto do sortear: o freio não bloqueia e a resposta conta', async () => {
+    const c = ctx({}, relogio.agora);
+    relogio.andar();
+    const quando = relogio.agora();
+    await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
+    const registrar = vi.spyOn(c.freio, 'registrarResposta');
+    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('Times definitivos salvos.');
+    expect(registrar).toHaveBeenCalledTimes(1);
+  });
+
+  it('"sim" de outra pessoa no mesmo minuto continua barrado pelo freio', async () => {
+    const c = ctx({}, relogio.agora);
+    relogio.andar();
+    const quando = relogio.agora();
+    await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
+    expect(await responder(msg('sim', { remetenteTelefone: QUALQUER, quando }), c)).toBeNull();
+    expect(c.confirmar).not.toHaveBeenCalled();
+  });
+
   it('pedido de sorteio como pergunta livre vai para a IA, nunca para o sorteio', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sorteia os times aí', c, ADMIN);
@@ -276,5 +294,29 @@ describe('configDasRespostas (.env)', () => {
   it('sem chave ou sem modelo: perguntas desligadas; sem admins: lista vazia', () => {
     expect(configDasRespostas({ OPENROUTER_MODEL: 'm/x' })).toEqual({ ia: null, admins: [] });
     expect(configDasRespostas({ OPENROUTER_API_KEY: 'k', OPENROUTER_MODEL: '  ' })).toEqual({ ia: null, admins: [] });
+  });
+});
+
+describe('podeGravarLista (resposta com a lista não engole as mensagens fixas)', () => {
+  const foto = fotografar(lista);
+  const antes = fotografar({ ...lista, fila: [] });
+  const envio = (iso: string, f = antes): Envio => ({ quando: t(iso).toISOString(), rodada: t(iso.slice(0, 14) + (Number(iso.slice(14, 16)) >= 30 ? '30' : '00') + ':00').toISOString(), tipo: 'rodada', foto: f });
+  const estado = (over: Partial<EstadoDoRobo> = {}): EstadoDoRobo => ({ ultimo: envio('2026-11-11T11:30:00'), aberturaEnviada: '2026-11-11', grupoId: GRUPO, ...over });
+
+  it('quarta 12:00:05 com mensalista pendente: não grava (o lembrete ainda vai sair)', () => {
+    expect(podeGravarLista(t('2026-11-11T12:00:05'), foto, estado())).toBe(false);
+  });
+
+  it('quarta 14:00:05: não grava (o aviso do prazo ainda vai sair)', () => {
+    expect(podeGravarLista(t('2026-11-11T14:00:05'), foto, estado({ ultimo: envio('2026-11-11T13:30:00') }))).toBe(false);
+  });
+
+  it('segunda 14:00:05 sem abertura enviada: não grava (o "lista abriu" ainda vai sair)', () => {
+    expect(podeGravarLista(t('2026-11-09T14:00:05'), foto, estado({ ultimo: null, aberturaEnviada: null }))).toBe(false);
+  });
+
+  it('rodada comum ou rodada já enviada: grava', () => {
+    expect(podeGravarLista(t('2026-11-10T15:30:05'), foto, estado({ ultimo: envio('2026-11-10T15:00:00') }))).toBe(true);
+    expect(podeGravarLista(t('2026-11-10T15:40:00'), foto, estado({ ultimo: envio('2026-11-10T15:30:10', foto) }))).toBe(true);
   });
 });

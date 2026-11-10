@@ -81,6 +81,14 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     });
   });
 
+  it('tira só a marcação do robô; a de outro jogador vira @alguém', () => {
+    const m = lerMensagemRecebida(
+      { ...base, message: texto('@111111111111111 o @333333333333333 está na lista? liga @81 99', ['111111111111111@lid', '333333333333333@lid']) },
+      robo,
+    );
+    expect(m?.texto).toBe('o @alguém está na lista? liga @81 99');
+  });
+
   it('marcação pelo número do robô (JID sem o sufixo do aparelho)', () => {
     const m = lerMensagemRecebida({ ...base, message: texto('@5581990000000 fila', ['5581990000000@s.whatsapp.net']) }, robo);
     expect(m).toMatchObject({ mencionaORobo: true, texto: 'fila' });

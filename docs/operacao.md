@@ -141,7 +141,9 @@ Comandos (escritos depois da marcação, com ou sem acento e maiúscula):
 - `@robô sortear`: só para os organizadores. Ele sorteia os times como o site, **sem salvar**, e mostra no grupo. Quem pediu responde `@robô sim` em até 10 minutos para marcar como definitivo (igual ao botão do site). Outra pessoa pedindo recebe "Só os organizadores podem sortear pelo WhatsApp.".
 - Qualquer outro texto é uma **pergunta livre**, respondida por uma IA que só consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times). Ela não muda nada.
 
-Ele responde no máximo uma vez por minuto (marcações a mais nesse minuto ficam sem resposta).
+Ele responde no máximo uma vez por minuto (marcações a mais nesse minuto ficam sem resposta). A exceção é o `sim` de quem pediu o sorteio, que sempre é respondido.
+
+Marcações feitas enquanto o Mac estava dormindo ou desligado, ou enquanto o robô reconectava, ficam sem resposta mesmo quando ele volta: é só marcar de novo.
 
 **Ligar as perguntas livres e o sorteio.** Acrescente três linhas ao arquivo `~/Library/Application Support/PeladaRobo/.env` (o mesmo do banco). Os valores abaixo são só exemplos; use os seus:
 

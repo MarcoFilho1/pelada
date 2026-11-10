@@ -1,7 +1,7 @@
 // Resposta a uma marcação no grupo: decide o texto, envia e cuida do freio e da proposta de sorteio.
 // Sem WhatsApp, banco ou IA aqui dentro: tudo chega pelo contexto (os testes usam falsos).
 import type { EstadoDaSemana } from '@/server/presencas';
-import { emSilencio, type Envio, type TipoMensagem } from './agenda';
+import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
 import { interpretar, respostaFalta, respostaFila, respostaListaSemMudanca, TEXTO_AJUDA } from './comandos';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { TEXTO_LIMITE, type Freio } from './freio';
@@ -39,7 +39,7 @@ export type ContextoDaResposta = {
 
 export type Resposta = {
   texto: string;
-  /** Foi a lista completa dentro da janela: o chamador grava `estado.ultimo` como num envio automático. */
+  /** Foi a lista completa: o chamador grava `estado.ultimo` como num envio automático, se `podeGravarLista`. */
   ehListaCompleta: boolean;
   gravar?: { tipo: TipoMensagem; foto: FotoDaLista };
 };
@@ -55,6 +55,17 @@ export function configDasRespostas(env: Record<string, string | undefined>): { i
     .map((a) => a.trim())
     .filter(Boolean);
   return { ia: chave && modelo ? { chave, modelo } : null, admins };
+}
+
+/**
+ * A lista respondida pode virar a "última lista" (as rodadas comparam com ela)? Só quando a volta
+ * automática deste momento seria uma rodada comum ou nada: gravar levaria a rodada atual e engoliria
+ * a abertura, o lembrete das 12:00, o aviso do prazo, a primeira da semana ou o aviso de cancelamento.
+ */
+export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): boolean {
+  if (!dentroDaJanela(now)) return false;
+  const tipo = decidir(now, foto, estado);
+  return tipo === null || tipo === 'rodada';
 }
 
 /** "15:30" no horário de Recife (sempre UTC-3). */
@@ -117,9 +128,12 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
 export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   if (!m.mencionaORobo || !c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return null;
   if (emSilencio(m.quando)) return null;
-  if (!c.freio.podeResponder()) return null;
-
   const cmd = interpretar(m.texto);
+  // O "sim" de quem pediu o sorteio costuma vir no mesmo minuto da proposta: não passa pelo freio.
+  const p = c.proposta.atual;
+  const simDeQuemPediu = cmd.tipo === 'sim' && p !== null && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, [p.adminTelefone]);
+  if (!simDeQuemPediu && !c.freio.podeResponder()) return null;
+
   let r: Omit<Resposta, 'ehListaCompleta'>;
   switch (cmd.tipo) {
     case 'lista':
@@ -152,7 +166,6 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     return null;
   }
   c.freio.registrarResposta();
-  // Fora da janela a lista não vira a "última lista": gravar ali (ex.: segunda de manhã) pularia a abertura das 14:00.
-  if (r.gravar && dentroDaJanela(m.quando)) return { texto: r.texto, ehListaCompleta: true, gravar: r.gravar };
-  return { texto: r.texto, ehListaCompleta: false };
+  // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
+  return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
 }
