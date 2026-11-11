@@ -48,10 +48,10 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     proposta: { atual: null as Proposta | null },
     lerLista: vi.fn(async () => lista),
     propor: vi.fn(async (now: Date, tel: string) => proposta({ adminTelefone: tel, criadaEm: now })),
-    confirmar: vi.fn(async (): Promise<{ ok: string } | { erro: string }> => ({ ok: 'Times definitivos salvos.' })),
+    confirmar: vi.fn(async (): Promise<{ ok: string } | { erro: string }> => ({ ok: '🏆 Times definitivos salvos!' })),
     perguntar: vi.fn(async () => 'O João está na lista.'),
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
-    consultar: vi.fn(async () => 'Artilheiros (novembro):\n1. Pepe 5'),
+    consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
     enviar: vi.fn(async () => {}),
     log: vi.fn(),
     ...over,
@@ -83,8 +83,8 @@ describe('responder: quando não responde', () => {
   it('sem espera por minuto: marcações seguidas são todas respondidas', async () => {
     const c = ctx();
     expect((await responder(msg('ajuda'), c))?.texto).toContain(TEXTO_AJUDA);
-    expect((await responder(msg('fila'), c))?.texto).toBe('Fila:\n1. Caio');
-    expect((await responder(msg('falta'), c))?.texto).toBe('Ainda não confirmaram: Bia.');
+    expect((await responder(msg('fila'), c))?.texto).toBe('📝 Fila:\n1. Caio');
+    expect((await responder(msg('falta'), c))?.texto).toBe('⏳ Ainda não confirmaram: Bia.');
   });
 
   it('limite de 10 por minuto: a 11ª não responde e não registra resposta', async () => {
@@ -93,7 +93,7 @@ describe('responder: quando não responde', () => {
     const registrar = vi.spyOn(c.freio, 'registrarResposta');
     expect(await responder(msg('fila'), c)).toBeNull();
     expect(registrar).not.toHaveBeenCalled();
-    expect(vi.mocked(c.enviar).mock.calls.filter((x) => x[0] === 'Fila:\n1. Caio')).toHaveLength(LIMITE_RESPOSTAS);
+    expect(vi.mocked(c.enviar).mock.calls.filter((x) => x[0] === '📝 Fila:\n1. Caio')).toHaveLength(LIMITE_RESPOSTAS);
   });
 
   it('registra a resposta só depois de enviar; envio que falha é registrado no log e não conta', async () => {
@@ -116,8 +116,8 @@ describe('responder: quando não responde', () => {
 describe('responder: comandos fixos', () => {
   it('ajuda, falta confirmar e fila', async () => {
     expect((await responder(msg('ajuda'), ctx({ ia: null })))?.texto).toBe(TEXTO_AJUDA);
-    expect((await responder(msg('falta confirmar'), ctx()))?.texto).toBe('Ainda não confirmaram: Bia.');
-    expect((await responder(msg('fila'), ctx()))?.texto).toBe('Fila:\n1. Caio');
+    expect((await responder(msg('falta confirmar'), ctx()))?.texto).toBe('⏳ Ainda não confirmaram: Bia.');
+    expect((await responder(msg('fila'), ctx()))?.texto).toBe('📝 Fila:\n1. Caio');
   });
 
   it('respostas que não são a lista completa não marcam ehListaCompleta', async () => {
@@ -129,10 +129,10 @@ describe('responder: comandos fixos', () => {
 describe('responder: lista', () => {
   const ultimoSemMudanca: Envio = { quando: t('2026-11-10T15:30:10').toISOString(), rodada: t('2026-11-10T15:30:00').toISOString(), tipo: 'rodada', foto: fotografar(lista) };
 
-  it('sem mudança desde a última mensagem do robô: "Status: sem nenhuma atualização." + linha em branco + lista completa', async () => {
+  it('sem mudança desde a última mensagem do robô: "🔄 Status: sem nenhuma atualização." + linha em branco + lista completa', async () => {
     const c = ctx({ ultimo: ultimoSemMudanca });
     const r = await responder(msg('lista'), c);
-    expect(r?.texto).toBe(`Status: sem nenhuma atualização.\n\n${textoWhatsApp(lista, lista.data)}`);
+    expect(r?.texto).toBe(`🔄 Status: sem nenhuma atualização.\n\n${textoWhatsApp(lista, lista.data)}`);
     expect(r?.texto).toContain('Ana');
     expect(r?.texto).toContain('Caio');
     // Reenvio sem mudança não precisa virar a última lista.
@@ -143,7 +143,7 @@ describe('responder: lista', () => {
 
   it('marcação sem texto também é a lista', async () => {
     const r = await responder(msg(''), ctx({ ultimo: ultimoSemMudanca }));
-    expect(r?.texto.startsWith('Status: sem nenhuma atualização.\n\n')).toBe(true);
+    expect(r?.texto.startsWith('🔄 Status: sem nenhuma atualização.\n\n')).toBe(true);
   });
 
   it('nunca manda a frase curta antiga', async () => {
@@ -156,7 +156,7 @@ describe('responder: lista', () => {
     const c = ctx({ ultimo: { ...ultimoSemMudanca, foto: antes } });
     const r = await responder(msg('lista'), c);
     expect(r?.ehListaCompleta).toBe(true);
-    expect(r?.texto.split('\n')[0]).toBe('Entraram na fila: Caio.');
+    expect(r?.texto.split('\n')[0]).toBe('📝 Entraram na fila: Caio.');
     expect(r?.texto).toContain('Ana');
     expect(r?.texto).toContain('Caio');
     expect(r?.gravar).toEqual({ tipo: 'rodada', foto: fotografar(lista) });
@@ -165,7 +165,7 @@ describe('responder: lista', () => {
   it('sem mensagem anterior da semana: lista completa com o título da semana', async () => {
     const c = ctx({ ultimo: { ...ultimoSemMudanca, foto: { ...fotografar(lista), dataQuarta: '2026-11-04' } } });
     const r = await responder(msg('lista'), c);
-    expect(r?.texto.startsWith('Lista de quarta, 11/11:')).toBe(true);
+    expect(r?.texto.startsWith('📋 Lista de quarta, 11/11:')).toBe(true);
     expect(r).toMatchObject({ ehListaCompleta: true, gravar: { tipo: 'primeira' } });
   });
 
@@ -181,7 +181,7 @@ describe('responder: lista', () => {
   it('pelada cancelada desde a última mensagem: avisa o cancelamento e grava como cancelada', async () => {
     const c = ctx({ ultimo: ultimoSemMudanca, lerLista: vi.fn(async () => ({ ...lista, estadoManual: 'cancelada' as const })) });
     const r = await responder(msg('lista'), c);
-    expect(r?.texto).toBe('A pelada de quarta, 11/11 foi cancelada.');
+    expect(r?.texto).toBe('🌧️ A pelada de quarta, 11/11 foi cancelada.');
     expect(r?.gravar?.tipo).toBe('cancelada');
   });
 });
@@ -239,8 +239,8 @@ describe('responder: sorteio', () => {
   });
 
   it('erro ao propor: responde o erro e não guarda nada', async () => {
-    const c = ctx({ propor: vi.fn(async () => ({ erro: 'Hoje não tem pelada para sortear.' })) }, relogio.agora);
-    expect((await passo('sortear', c, ADMIN))?.texto).toBe('Hoje não tem pelada para sortear.');
+    const c = ctx({ propor: vi.fn(async () => ({ erro: '📅 Hoje não tem pelada para sortear.' })) }, relogio.agora);
+    expect((await passo('sortear', c, ADMIN))?.texto).toBe('📅 Hoje não tem pelada para sortear.');
     expect(c.proposta.atual).toBeNull();
   });
 
@@ -248,31 +248,31 @@ describe('responder: sorteio', () => {
     const c = ctx({}, relogio.agora);
     await passo('sortear', c, ADMIN);
     const guardada = c.proposta.atual;
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('Times definitivos salvos.');
+    expect((await passo('sim', c, ADMIN))?.texto).toBe('🏆 Times definitivos salvos!');
     expect(c.confirmar).toHaveBeenCalledWith(expect.any(Date), ADMIN, guardada);
     expect(c.proposta.atual).toBeNull();
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('Não tem sorteio esperando confirmação.');
+    expect((await passo('sim', c, ADMIN))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
     expect(c.confirmar).toHaveBeenCalledTimes(1);
   });
 
   it('"sim" de outra pessoa: não apaga a proposta (quem pediu ainda pode confirmar)', async () => {
-    const c = ctx({ confirmar: vi.fn(async () => ({ erro: 'Só quem pediu o sorteio pode confirmar.' })) }, relogio.agora);
+    const c = ctx({ confirmar: vi.fn(async () => ({ erro: '🔐 Só quem pediu o sorteio pode confirmar.' })) }, relogio.agora);
     await passo('sortear', c, ADMIN);
-    expect((await passo('sim', c, QUALQUER))?.texto).toBe('Só quem pediu o sorteio pode confirmar.');
+    expect((await passo('sim', c, QUALQUER))?.texto).toBe('🔐 Só quem pediu o sorteio pode confirmar.');
     expect(c.proposta.atual).not.toBeNull();
   });
 
   it('proposta expirada: responde a expiração e apaga; o "sim" seguinte não tem o que confirmar', async () => {
-    const c = ctx({ confirmar: vi.fn(async () => ({ erro: 'A proposta expirou. Peça *sortear* de novo.' })) }, relogio.agora);
+    const c = ctx({ confirmar: vi.fn(async () => ({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' })) }, relogio.agora);
     c.proposta.atual = proposta({ criadaEm: new Date(relogio.agora().getTime() - 20 * 60_000) });
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('A proposta expirou. Peça *sortear* de novo.');
+    expect((await passo('sim', c, ADMIN))?.texto).toBe('⌛ A proposta expirou. Peça *sortear* de novo.');
     expect(c.proposta.atual).toBeNull();
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('Não tem sorteio esperando confirmação.');
+    expect((await passo('sim', c, ADMIN))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
   });
 
   it('"sim" de quem não é admin, sem proposta: não tem o que confirmar', async () => {
     const c = ctx({}, relogio.agora);
-    expect((await passo('sim', c, QUALQUER))?.texto).toBe('Não tem sorteio esperando confirmação.');
+    expect((await passo('sim', c, QUALQUER))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
     expect(c.confirmar).not.toHaveBeenCalled();
   });
 
@@ -282,7 +282,7 @@ describe('responder: sorteio', () => {
     const quando = relogio.agora();
     await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
     const registrar = vi.spyOn(c.freio, 'registrarResposta');
-    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('Times definitivos salvos.');
+    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('🏆 Times definitivos salvos!');
     expect(registrar).toHaveBeenCalledTimes(1);
   });
 
@@ -294,7 +294,7 @@ describe('responder: sorteio', () => {
     for (let i = 1; i < LIMITE_RESPOSTAS; i++) await responder(msg('fila', { quando }), c);
     expect(await responder(msg('sim', { remetenteTelefone: QUALQUER, quando }), c)).toBeNull();
     expect(c.confirmar).not.toHaveBeenCalled();
-    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('Times definitivos salvos.');
+    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('🏆 Times definitivos salvos!');
   });
 
   it('"sim" respondendo (citando) a proposta, sem marcar o robô: confirma', async () => {
@@ -302,7 +302,7 @@ describe('responder: sorteio', () => {
     await passo('sortear', c, ADMIN);
     relogio.andar();
     const r = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: relogio.agora(), mencionaORobo: false, respondeAoRobo: true }), c);
-    expect(r?.texto).toBe('Times definitivos salvos.');
+    expect(r?.texto).toBe('🏆 Times definitivos salvos!');
   });
 
   it('citação do robô sem marcação: só o "sim" com proposta guardada conta', async () => {
@@ -401,9 +401,9 @@ describe('responder: mexer na lista pelo nome', () => {
     expect(vazio?.texto).toBe('Pepe entrou na lista. (pedido por alguém)');
   });
 
-  it('nome comprido demais: "Nome muito comprido.", sem chamar o site', async () => {
+  it('nome comprido demais: "🤔 Nome muito comprido.", sem chamar o site', async () => {
     const c = ctx();
-    expect((await responder(msg(`adicionar ${'x'.repeat(100)}`), c))?.texto).toBe('Nome muito comprido.');
+    expect((await responder(msg(`adicionar ${'x'.repeat(100)}`), c))?.texto).toBe('🤔 Nome muito comprido.');
     expect(c.mexerNaLista).not.toHaveBeenCalled();
   });
 
@@ -440,7 +440,7 @@ describe('responder: consultas', () => {
     const c = ctx();
     const r = await responder(msg(texto), c);
     expect(c.consultar).toHaveBeenCalledWith(tipo, t('2026-11-10T15:40:00'));
-    expect(r?.texto).toBe('Artilheiros (novembro):\n1. Pepe 5');
+    expect(r?.texto).toBe('⚽ Artilheiros (novembro):\n1. Pepe 5');
     expect(c.perguntar).not.toHaveBeenCalled();
   });
 });
@@ -461,7 +461,7 @@ describe('responder: comando desconhecido', () => {
 });
 
 describe('responder: marcação ignorada (log) e aviso do limite', () => {
-  const AVISO = 'Muita gente me chamando agora. Mande de novo daqui a pouco.';
+  const AVISO = '🙏 Muita gente me chamando agora. Mande de novo daqui a pouco.';
   function relogio(inicio: string) {
     let ms = t(inicio).getTime();
     return { agora: () => new Date(ms), andar: (s: number) => (ms += s * 1000) };
@@ -502,7 +502,7 @@ describe('responder: marcação ignorada (log) e aviso do limite', () => {
     r.andar(50);
     await responder(msg('fila', { quando: r.agora() }), c); // aviso aos 50 s
     r.andar(10);
-    expect((await responder(msg('fila', { quando: r.agora() }), c))?.texto).toBe('Fila:\n1. Caio');
+    expect((await responder(msg('fila', { quando: r.agora() }), c))?.texto).toBe('📝 Fila:\n1. Caio');
   });
 
   it('aviso que não sai: registra no log e não conta como aviso', async () => {

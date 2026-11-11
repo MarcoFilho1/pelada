@@ -59,20 +59,20 @@ describe('mudancas', () => {
   it('confirmou', () => {
     const m = mudancas(foto({ principal: [it_(1, 'Ana')] }), foto({ principal: [it_(1, 'Ana', true)] }));
     expect(m.confirmaram).toEqual(['Ana']);
-    expect(linhasDoCabecalho(m)).toEqual(['Confirmaram: Ana.']);
+    expect(linhasDoCabecalho(m)).toEqual(['✅ Confirmaram: Ana.']);
   });
 
   it('confirmou e saiu no mesmo intervalo: só saiu', () => {
     const m = mudancas(foto({ principal: [it_(1, 'Ana')] }), foto({}));
     expect(m.sairam).toEqual(['Ana']);
     expect(m.confirmaram).toEqual([]);
-    expect(linhasDoCabecalho(m)).toEqual(['Saíram: Ana.']);
+    expect(linhasDoCabecalho(m)).toEqual(['👋 Saíram: Ana.']);
   });
 
   it('mensalista sai e diarista sobe', () => {
     const antes = foto({ principal: [it_(1, 'X')], fila: [it_(2, 'Y', false, 'D')] });
     const depois = foto({ principal: [it_(2, 'Y', false, 'D')] });
-    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['Saíram: X.', 'Subiram da fila: Y.']);
+    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['👋 Saíram: X.', '⬆️ Subiram da fila: Y.']);
   });
 
   it('renomeado não vira saiu/entrou', () => {
@@ -88,32 +88,32 @@ describe('mudancas', () => {
   it('entrou na lista com vaga', () => {
     const m = mudancas(vazia, foto({ principal: [it_(1, 'Ana', false, 'D')] }));
     expect(m.entraramNaLista).toEqual(['Ana']);
-    expect(linhasDoCabecalho(m)).toEqual(['Entraram na lista: Ana.']);
+    expect(linhasDoCabecalho(m)).toEqual(['➕ Entraram na lista: Ana.']);
   });
 
   it('rebaixado para a fila', () => {
     const antes = foto({ principal: [it_(1, 'X', false, 'D')] });
     const depois = foto({ fila: [it_(1, 'X', false, 'D')] });
-    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['Foram para a fila: X.']);
+    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['⬇️ Foram para a fila: X.']);
   });
 
   it('troca de lugar entre lista e fila', () => {
     const antes = foto({ principal: [it_(1, 'X', false, 'D')], fila: [it_(2, 'Y', false, 'D')] });
     const depois = foto({ principal: [it_(2, 'Y', false, 'D')], fila: [it_(1, 'X', false, 'D')] });
-    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['Subiram da fila: Y.', 'Foram para a fila: X.']);
+    expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual(['⬆️ Subiram da fila: Y.', '⬇️ Foram para a fila: X.']);
   });
 
   it('entrou na fila', () => {
     const m = mudancas(vazia, foto({ fila: [it_(1, 'Ana', false, 'D')] }));
     expect(m.entraramNaFila).toEqual(['Ana']);
-    expect(linhasDoCabecalho(m)).toEqual(['Entraram na fila: Ana.']);
+    expect(linhasDoCabecalho(m)).toEqual(['📝 Entraram na fila: Ana.']);
   });
 
   it('perdeu o prazo', () => {
     const m = mudancas(foto({ principal: [it_(1, 'Ana')] }), foto({ foraDoPrazo: [it_(1, 'Ana')] }));
     expect(m.perderamPrazo).toEqual(['Ana']);
     expect(m.sairam).toEqual([]);
-    expect(linhasDoCabecalho(m)).toEqual(['Perderam o prazo: Ana.']);
+    expect(linhasDoCabecalho(m)).toEqual(['⌛ Perderam o prazo: Ana.']);
   });
 
   it('quem já estava fora do prazo não repete', () => {
@@ -125,9 +125,9 @@ describe('mudancas', () => {
     const aberta = foto({});
     const fechada = foto({ estadoManual: 'fechada' });
     expect(mudancas(aberta, fechada).manual).toBe('fechou');
-    expect(linhasDoCabecalho(mudancas(aberta, fechada))).toEqual(['O admin fechou a lista.']);
+    expect(linhasDoCabecalho(mudancas(aberta, fechada))).toEqual(['🔒 O admin fechou a lista.']);
     expect(mudancas(fechada, aberta).manual).toBe('reabriu');
-    expect(linhasDoCabecalho(mudancas(fechada, aberta))).toEqual(['O admin reabriu a lista.']);
+    expect(linhasDoCabecalho(mudancas(fechada, aberta))).toEqual(['🔓 O admin reabriu a lista.']);
     expect(mudancas(fechada, foto({ estadoManual: 'aberta' })).manual).toBe('reabriu');
     expect(haMudanca(mudancas(fechada, fechada))).toBe(false);
   });
@@ -149,14 +149,14 @@ describe('mudancas', () => {
       estadoManual: 'fechada',
     });
     expect(linhasDoCabecalho(mudancas(antes, depois))).toEqual([
-      'Confirmaram: A.',
-      'Saíram: B e I.',
-      'Entraram na lista: D.',
-      'Subiram da fila: C.',
-      'Foram para a fila: F.',
-      'Entraram na fila: E.',
-      'Perderam o prazo: H.',
-      'O admin fechou a lista.',
+      '✅ Confirmaram: A.',
+      '👋 Saíram: B e I.',
+      '➕ Entraram na lista: D.',
+      '⬆️ Subiram da fila: C.',
+      '⬇️ Foram para a fila: F.',
+      '📝 Entraram na fila: E.',
+      '⌛ Perderam o prazo: H.',
+      '🔒 O admin fechou a lista.',
     ]);
   });
 });

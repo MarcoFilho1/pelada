@@ -82,7 +82,7 @@ export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRo
   return tipo === null || tipo === 'rodada';
 }
 
-export const STATUS_SEM_ATUALIZACAO = 'Status: sem nenhuma atualização.';
+export const STATUS_SEM_ATUALIZACAO = '🔄 Status: sem nenhuma atualização.';
 
 /**
  * `lista`: sempre a lista completa. Sem mudança desde a última lista do robô, o cabeçalho é
@@ -121,7 +121,7 @@ async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta): Prom
 
 async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   const guardada = c.proposta.atual;
-  if (!guardada) return 'Não tem sorteio esperando confirmação.';
+  if (!guardada) return '🤔 Não tem sorteio esperando confirmação.';
   const r = await c.confirmar(m.quando, m.remetenteTelefone ?? '', guardada);
   // Confirmada ou vencida, a proposta acaba: um segundo "sim" não tem o que confirmar.
   if ('ok' in r || m.quando.getTime() - guardada.criadaEm.getTime() >= VALIDADE_MS) {

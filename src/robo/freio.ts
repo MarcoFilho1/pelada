@@ -1,11 +1,11 @@
 import { dataDe } from '@/domain/tempo';
 
 export const LIMITE_PERGUNTAS = 30;
-export const TEXTO_LIMITE = 'Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.';
+export const TEXTO_LIMITE = '🛑 Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.';
 
 /** Contra enxurrada: no máximo 10 respostas em 60 s corridos no grupo. */
 export const LIMITE_RESPOSTAS = 10;
-export const TEXTO_MUITA_GENTE = 'Muita gente me chamando agora. Mande de novo daqui a pouco.';
+export const TEXTO_MUITA_GENTE = '🙏 Muita gente me chamando agora. Mande de novo daqui a pouco.';
 
 const MINUTO_MS = 60_000;
 

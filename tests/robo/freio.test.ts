@@ -55,6 +55,6 @@ describe('Freio', () => {
   it('textos', () => {
     expect(LIMITE_PERGUNTAS).toBe(30);
     expect(LIMITE_RESPOSTAS).toBe(10);
-    expect(TEXTO_LIMITE).toBe('Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.');
+    expect(TEXTO_LIMITE).toBe('🛑 Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.');
   });
 });

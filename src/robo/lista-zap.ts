@@ -38,7 +38,7 @@ export function acharJogador<T extends { nome: string }>(texto: string, candidat
 /** O que a pessoa digitou, para repetir no grupo: no máximo 30 caracteres. */
 const eco = (texto: string) => (texto.length > MAX_ECO ? `${texto.slice(0, MAX_ECO)}…` : texto);
 
-const textoVarios = (js: { nome: string }[]) => `Tem mais de um jogador com esse nome: ${juntarNomes(js.map((j) => j.nome))}. Mande o nome inteiro.`;
+const textoVarios = (js: { nome: string }[]) => `🤔 Tem mais de um jogador com esse nome: ${juntarNomes(js.map((j) => j.nome))}. Mande o nome inteiro.`;
 
 /** Recusa do site em texto de WhatsApp (sem "Recarregue a página."). */
 const recusa = (e: unknown): ResultadoNaLista => ({ texto: paraWhatsApp(mensagemParaUsuario(e)), mudou: false });
@@ -52,7 +52,7 @@ function onde(estado: EstadoDaSemana, jogadorId: number): { lugar: 'lista' | 'fi
 
 async function adicionar(db: DB, texto: string, now: Date): Promise<ResultadoNaLista> {
   const achado = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
-  if (!achado) return { texto: `${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
+  if (!achado) return { texto: `🤔 ${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   try {
@@ -60,13 +60,13 @@ async function adicionar(db: DB, texto: string, now: Date): Promise<ResultadoNaL
   } catch (e) {
     if (e instanceof ErroLista && e.motivo === 'ja_na_lista') {
       const ja = onde(await estadoDaSemana(db, now), j.id);
-      return { texto: `${j.nome} já está na ${ja?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: false };
+      return { texto: `👍 ${j.nome} já está na ${ja?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: false };
     }
     return recusa(e);
   }
   const agora = onde(await estadoDaSemana(db, now), j.id);
-  if (agora?.lugar === 'fila') return { texto: `${j.nome} entrou na fila (${agora.posicao}º).`, mudou: true };
-  return { texto: `${j.nome} entrou na lista.`, mudou: true };
+  if (agora?.lugar === 'fila') return { texto: `📝 ${j.nome} entrou na fila (${agora.posicao}º).`, mudou: true };
+  return { texto: `✅ ${j.nome} entrou na lista!`, mudou: true };
 }
 
 async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: string, now: Date): Promise<ResultadoNaLista> {
@@ -75,18 +75,18 @@ async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: 
   // Para confirmar, quem perdeu o prazo das 14h também é achado: o site recusa com a mensagem dele.
   const candidatos = [...estado.principal, ...estado.fila, ...(acao === 'confirmar' ? estado.foraDoPrazo : [])];
   const achado = acharJogador(texto, candidatos);
-  if (!achado) return { texto: `${eco(texto)} não está na lista.`, mudou: false };
+  if (!achado) return { texto: `🤔 ${eco(texto)} não está na lista.`, mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   const antes = onde(estado, j.jogadorId);
   try {
     if (acao === 'confirmar') {
-      if (antes?.lugar === 'lista' && antes.confirmado) return { texto: `${j.nome} já estava confirmado.`, mudou: false };
+      if (antes?.lugar === 'lista' && antes.confirmado) return { texto: `👍 ${j.nome} já estava confirmado.`, mudou: false };
       await confirmar(db, j.jogadorId, now);
-      return { texto: `${j.nome} confirmado.`, mudou: true };
+      return { texto: `✅ ${j.nome} confirmado!`, mudou: true };
     }
     await remover(db, j.jogadorId, now);
-    return { texto: `${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true };
+    return { texto: `👋 ${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true };
   } catch (e) {
     return recusa(e);
   }
