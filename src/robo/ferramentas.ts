@@ -2,6 +2,7 @@ import { desc, inArray, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { jogadores, peladas } from '@/db/schema';
 import { nomeDoPeriodo, periodoDaUrl } from '@/domain/periodo';
+import type { LinhaRankingComNota, Periodo } from '@/domain/ranking';
 import { dataDe, mesDe } from '@/domain/tempo';
 import { previaMensalistasDoMes } from '@/server/mensalistas';
 import { historicoDaPelada } from '@/server/partidas';
@@ -41,7 +42,7 @@ function lerPeriodo(args: unknown): string | undefined {
 }
 
 /** Só leitura (nunca cria pelada): a pelada de hoje ou, fora da quarta, a última até hoje. */
-async function peladaDaNoite(db: DB, agora: Date): Promise<{ id: number; data: string } | null> {
+export async function peladaDaNoite(db: DB, agora: Date): Promise<{ id: number; data: string } | null> {
   const [p] = await db
     .select({ id: peladas.id, data: peladas.data })
     .from(peladas)
@@ -51,11 +52,23 @@ async function peladaDaNoite(db: DB, agora: Date): Promise<{ id: number; data: s
   return p ?? null;
 }
 
+/** Ranking do período pedido; sem período (ou inválido), o padrão da tela de Ranking: mês atual se teve partida, senão geral. */
+export async function rankingDoPeriodoPedido(db: DB, agora: Date, periodoTxt?: string): Promise<{ periodo: Periodo; linhas: LinhaRankingComNota[] }> {
+  const periodo = periodoDaUrl(periodoTxt, await periodosDisponiveis(db), agora);
+  return { periodo, linhas: await rankingDoPeriodo(db, periodo) };
+}
+
+/** Quem fez gol, por gols, depois assistências, depois nome. */
+export function ordenarArtilharia<T extends { nome: string; gols: number; assistencias: number }>(linhas: T[]): T[] {
+  return linhas
+    .filter((l) => l.gols > 0)
+    .sort((a, b) => b.gols - a.gols || b.assistencias - a.assistencias || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
 export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
   const ranking = async (periodoTxt: string | undefined) => {
-    const disp = await periodosDisponiveis(db);
-    const periodo = periodoDaUrl(periodoTxt, disp, agora());
-    return { periodo: nomeDoPeriodo(periodo), linhas: await rankingDoPeriodo(db, periodo) };
+    const { periodo, linhas } = await rankingDoPeriodoPedido(db, agora(), periodoTxt);
+    return { periodo: nomeDoPeriodo(periodo), linhas };
   };
 
   return [
@@ -118,9 +131,7 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
       parametros: comPeriodo,
       async executar(args) {
         const { periodo, linhas } = await ranking(lerPeriodo(args));
-        const artilheiros = linhas
-          .filter((l) => l.gols > 0)
-          .sort((a, b) => b.gols - a.gols || b.assistencias - a.assistencias || a.nome.localeCompare(b.nome, 'pt-BR'))
+        const artilheiros = ordenarArtilharia(linhas)
           .slice(0, TOPO)
           .map((l, i) => ({ posicao: i + 1, nome: l.nome, gols: l.gols, assistencias: l.assistencias, jogos: l.jogos }));
         return { periodo, artilheiros };

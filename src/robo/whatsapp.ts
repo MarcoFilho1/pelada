@@ -112,6 +112,8 @@ function telefoneDoJid(jid: string | null | undefined): string | null {
 export type MensagemDaBaileys = {
   key: Pick<WAMessageKey, 'remoteJid' | 'fromMe' | 'participant' | 'participantAlt'>;
   message?: proto.IMessage | null;
+  /** Nome que a pessoa pôs no próprio WhatsApp. */
+  pushName?: string | null;
   messageTimestamp?: number | { toNumber(): number } | null;
 };
 
@@ -158,6 +160,7 @@ export function lerMensagemRecebida(
     grupoId,
     respondeAoRobo: citado !== null && eu.has(citado),
     remetenteTelefone: telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant),
+    remetenteNome: msg.pushName?.trim() || null,
     texto: textoLimpo.replace(/\s+/g, ' ').trim(),
     mencionaORobo,
     quando: segundos ? new Date(segundos * 1000) : new Date(),
