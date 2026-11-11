@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
-import { TEXTO_AJUDA } from '@/robo/comandos';
+import { TEXTO_AJUDA, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
 import { calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVO_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
@@ -738,5 +738,41 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
     const todas = [...Object.values(PREFIXOS_CALVINHO).flat(), PREFIXO_NAO_ENTENDI, SALVO_CALVINHO, ...Object.values(CALVINHO).flat()];
     expect(todas.length).toBeGreaterThan(25);
     for (const v of todas) expect(v!.toLowerCase()).not.toContain('careca');
+  });
+});
+
+describe('responder: vários nomes numa mensagem', () => {
+  it('cada nome pelo caminho de um só, "(pedido por X)" em cada mudança, tudo numa mensagem', async () => {
+    const c = ctx({
+      mexerNaLista: vi.fn(async (_a: AcaoNaLista, nome: string) => (nome === 'Zé' ? { texto: '🤔 Zé não está na lista.', mudou: false } : { texto: `✅ ${nome} confirmado!`, mudou: true })),
+    });
+    const r = await responder(msg('confirmar Ana, Zé e Beto'), c);
+    const esperado = '✅ Ana confirmado! (pedido por Zeca)\n🤔 Zé não está na lista.\n✅ Beto confirmado! (pedido por Zeca)';
+    expect(r?.texto).toBe(esperado);
+    expect(c.mexerNaLista).toHaveBeenCalledTimes(3);
+    expect(c.enviar).toHaveBeenCalledTimes(1);
+    expect(c.enviar).toHaveBeenCalledWith(esperado);
+  });
+  it('mais de 3 nomes: só os 3 primeiros e o aviso', async () => {
+    const c = ctx();
+    const r = await responder(msg('adicionar A1, B2, C3 e D4'), c);
+    expect(c.mexerNaLista).toHaveBeenCalledTimes(3);
+    expect(r?.texto?.split('\n')).toHaveLength(4);
+    expect(r?.texto?.endsWith('\nSó mudo até 3 nomes por mensagem.')).toBe(true);
+  });
+  it('nome comprido no meio: só aquela linha recusa', async () => {
+    const c = ctx();
+    const r = await responder(msg(`adicionar Ana, ${'x'.repeat(41)}`), c);
+    expect(c.mexerNaLista).toHaveBeenCalledTimes(1);
+    expect(r?.texto).toBe('Pepe entrou na lista. (pedido por Zeca)\n🤔 Nome muito comprido.');
+  });
+});
+
+describe('responder: nome repetido na mesma mensagem', () => {
+  it('"Ana, Ana": o segundo já está na lista', async () => {
+    let n = 0;
+    const c = ctx({ mexerNaLista: vi.fn(async () => (n++ === 0 ? { texto: '✅ Ana entrou na lista!', mudou: true } : { texto: '👍 Ana já está na lista.', mudou: false })) });
+    const r = await responder(msg('adicionar Ana, Ana'), c);
+    expect(r?.texto).toBe('✅ Ana entrou na lista! (pedido por Zeca)\n👍 Ana já está na lista.');
   });
 });

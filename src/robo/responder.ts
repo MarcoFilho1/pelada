@@ -21,7 +21,7 @@ import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
-import { MODELO_PADRAO } from './ia';
+import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
 import { ehAdmin, TEXTO_SO_ADMIN, VALIDADE_MS, type Proposta } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -205,6 +205,16 @@ async function respostaNaLista(acao: AcaoNaLista, nome: string, m: MensagemReceb
   return feito.mudou ? `${feito.texto} (pedido por ${quemPediu(m)})` : feito.texto;
 }
 
+/** Vários nomes: cada um pelo caminho de um só (teto de tamanho por nome), numa única mensagem. */
+async function respostaVariosNomes(acao: AcaoNaLista, nomes: string[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+  const linhas: string[] = [];
+  for (const nome of nomes) {
+    linhas.push(nome.length > TAM_MAX_NOME_PEDIDO ? TEXTO_NOME_COMPRIDO : await respostaNaLista(acao, nome, m, c));
+  }
+  if (excedeu) linhas.push(TEXTO_MAX_MUDANCAS);
+  return linhas.join('\n');
+}
+
 const comNome: Parametros = {
   type: 'object',
   properties: { nome: { type: 'string', description: 'O nome do jogador como a pessoa escreveu (pode ser só o começo).' } },
@@ -355,7 +365,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     case 'adicionar':
     case 'confirmar':
     case 'remover':
-      r = { texto: await respostaNaLista(cmd.tipo, cmd.nome, m, c) };
+      r = { texto: 'nomes' in cmd ? await respostaVariosNomes(cmd.tipo, cmd.nomes, cmd.excedeu, m, c) : await respostaNaLista(cmd.tipo, cmd.nome, m, c) };
       break;
     case 'artilheiro':
     case 'garcom':

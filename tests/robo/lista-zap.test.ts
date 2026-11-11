@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
-import { acharJogador, CALVINHO, mexerNaLista } from '@/robo/lista-zap';
+import { acharJogador, CALVINHO, levenshtein, mexerNaLista } from '@/robo/lista-zap';
 import { definirMensalistas } from '@/server/mensalistas';
 import { definirEstadoManual, obterPeladaDaSemana } from '@/server/pelada';
 import { estadoDaSemana } from '@/server/presencas';
@@ -245,5 +245,57 @@ describe('brincadeira do calvinho (Jonas)', () => {
     await criar(['Caio']);
     expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA, rng0)).toEqual({ texto: '✅ Caio entrou na lista!', mudou: true });
     expect((await mexerNaLista(db, 'remover', 'Caio', TERCA, rng0)).texto).toBe('👋 Caio saiu da lista.');
+  });
+});
+
+describe('sugestão de nome parecido', () => {
+  it('levenshtein', () => {
+    expect(levenshtein('gabriel', 'gabrel')).toBe(1);
+    expect(levenshtein('abc', 'xyz')).toBe(3);
+    expect(levenshtein('', 'ab')).toBe(2);
+  });
+  it('adicionar: nome inteiro parecido', async () => {
+    await criar(['Mateus Borges', 'Gabriel', 'Pedro']);
+    expect(await mexerNaLista(db, 'adicionar', 'mateu borges', TERCA)).toEqual({ texto: '🤔 Não achei "mateu borges". Você quis dizer Mateus Borges?', mudou: false });
+    expect((await mexerNaLista(db, 'adicionar', 'gabrel', TERCA)).texto).toBe('🤔 Não achei "gabrel". Você quis dizer Gabriel?');
+    expect((await mexerNaLista(db, 'adicionar', 'borgs', TERCA)).texto).toBe('🤔 Não achei "borgs". Você quis dizer Mateus Borges?');
+  });
+  it('não age sobre a sugestão', async () => {
+    await criar(['Gabriel']);
+    await mexerNaLista(db, 'adicionar', 'gabrel', TERCA);
+    const e = await estadoDaSemana(db, TERCA);
+    expect(e.principal.length + e.fila.length).toBe(0);
+  });
+  it('nada parecido, curto demais ou empate: texto de sempre', async () => {
+    await criar(['Gabriel', 'Gabriela', 'Pedro']);
+    expect((await mexerNaLista(db, 'adicionar', 'Zézinho', TERCA)).texto).toBe('🤔 Zézinho não está cadastrado. Peça para um admin cadastrar no site.');
+    expect((await mexerNaLista(db, 'adicionar', 'Xa', TERCA)).texto).toContain('não está');
+    // "gabrie" é começo de dois: ambíguo (não é sugestão)
+    expect((await mexerNaLista(db, 'adicionar', 'gabrie', TERCA)).texto).toContain('mais de um');
+    // "gabrll": distância 2 de Gabriel e 3 de Gabriela → um só
+    expect((await mexerNaLista(db, 'adicionar', 'gabrll', TERCA)).texto).toContain('Você quis dizer Gabriel?');
+  });
+  it('confirmar e remover sugerem entre quem está na lista ou fila', async () => {
+    await criar(['Gabriel']);
+    await criar(['Pedro']);
+    await mexerNaLista(db, 'adicionar', 'Gabriel', TERCA);
+    expect((await mexerNaLista(db, 'confirmar', 'gabrel', TERCA)).texto).toBe('🤔 Não achei "gabrel". Você quis dizer Gabriel?');
+    expect((await mexerNaLista(db, 'remover', 'gabrel', TERCA)).mudou).toBe(false);
+    // Pedro é cadastrado mas fora da lista: não é sugerido
+    expect((await mexerNaLista(db, 'remover', 'pedr0', TERCA)).texto).toBe('🤔 pedr0 não está na lista.');
+  });
+  it('texto curto (menos de 5 letras) só sugere com 1 de diferença', async () => {
+    await criar(['Ana', 'Beto']);
+    expect((await mexerNaLista(db, 'adicionar', 'bia', TERCA)).texto).toBe('🤔 bia não está cadastrado. Peça para um admin cadastrar no site.');
+    expect((await mexerNaLista(db, 'adicionar', 'anx', TERCA)).texto).toBe('🤔 Não achei "anx". Você quis dizer Ana?');
+  });
+  it('sobrenome sozinho pode sugerir o nome completo', async () => {
+    await criar(['Mateus Borges']);
+    expect((await mexerNaLista(db, 'adicionar', 'borjes', TERCA)).texto).toBe('🤔 Não achei "borjes". Você quis dizer Mateus Borges?');
+  });
+  it('eco de 30 caracteres na sugestão', async () => {
+    await criar(['Maximiliano Fernandes de Albuquerque']);
+    const digitado = 'Maximiliano Fernandes de Albukerque';
+    expect((await mexerNaLista(db, 'adicionar', digitado, TERCA)).texto).toBe(`🤔 Não achei "${digitado.slice(0, 30)}…". Você quis dizer Maximiliano Fernandes de Albuquerque?`);
   });
 });

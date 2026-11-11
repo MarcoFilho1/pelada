@@ -62,6 +62,47 @@ export function acharJogador<T extends { nome: string }>(texto: string, candidat
 }
 
 
+/** Distância de edição (inserir, apagar, trocar) entre dois textos já normalizados. */
+export function levenshtein(a: string, b: string): number {
+  let ant = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const atual = [i];
+    for (let j = 1; j <= b.length; j++) atual[j] = Math.min(ant[j] + 1, atual[j - 1] + 1, ant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    ant = atual;
+  }
+  return ant[b.length];
+}
+
+const DIST_MAX_SUGESTAO = 2;
+/** Texto curto (menos de 5 letras) só sugere com 1 de diferença: "bia" não vira "Ana". */
+const CURTO = 5;
+const MIN_SUGESTAO = 3;
+
+/**
+ * Nome parecido com o escrito (distância ≤ 2 contra o nome inteiro ou, se foi escrita uma palavra só,
+ * contra cada palavra do nome). Só devolve se um único candidato for o mais próximo; nunca age sobre ele.
+ */
+export function sugerirNome<T extends { nome: string }>(texto: string, candidatos: T[]): T | null {
+  const alvo = normalizarNome(texto);
+  if (alvo.length < MIN_SUGESTAO) return null;
+  const umaPalavra = !alvo.includes(' ');
+  const dist = (c: T) => {
+    const n = normalizarNome(c.nome);
+    const ds = [levenshtein(alvo, n)];
+    if (umaPalavra) for (const p of n.split(' ')) if (p.length >= MIN_SUGESTAO) ds.push(levenshtein(alvo, p));
+    return Math.min(...ds);
+  };
+  const corte = alvo.length < CURTO ? 1 : DIST_MAX_SUGESTAO;
+  const com = candidatos.map((c) => ({ c, d: dist(c) })).filter((x) => x.d <= corte);
+  if (!com.length) return null;
+  const menor = Math.min(...com.map((x) => x.d));
+  const melhores = com.filter((x) => x.d === menor);
+  return melhores.length === 1 ? melhores[0].c : null;
+}
+
+const naoAchei = (texto: string, sugestao: { nome: string } | null, padrao: string) =>
+  sugestao ? `🤔 Não achei "${eco(texto)}". Você quis dizer ${sugestao.nome}?` : padrao;
+
 /** O que a pessoa digitou, para repetir no grupo: no máximo 30 caracteres. */
 const eco = (texto: string) => (texto.length > MAX_ECO ? `${texto.slice(0, MAX_ECO)}…` : texto);
 
@@ -78,8 +119,9 @@ function onde(estado: EstadoDaSemana, jogadorId: number): { lugar: 'lista' | 'fi
 }
 
 async function adicionar(db: DB, texto: string, now: Date, rng: () => number): Promise<ResultadoNaLista> {
-  const achado = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
-  if (!achado) return { texto: `🤔 ${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
+  const ativos = await listarJogadores(db, { incluirInativos: false });
+  const achado = acharJogador(texto, ativos);
+  if (!achado) return { texto: naoAchei(texto, sugerirNome(texto, ativos), `🤔 ${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`), mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   try {
@@ -112,7 +154,7 @@ async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: 
     // O Jonas fora da lista também ganha a brincadeira: ele é achado entre todos os cadastrados.
     const todos = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
     if (todos && 'jogador' in todos && ehJonas(todos.jogador.nome)) return { texto: sortear(CALVINHO.foraDaLista, rng), mudou: false };
-    return { texto: `🤔 ${eco(texto)} não está na lista.`, mudou: false };
+    return { texto: naoAchei(texto, sugerirNome(texto, candidatos), `🤔 ${eco(texto)} não está na lista.`), mudou: false };
   }
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
