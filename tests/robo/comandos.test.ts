@@ -74,8 +74,8 @@ describe('interpretar', () => {
 
   it('nome com mais de 40 caracteres: recusa sem repetir o texto', () => {
     const longo = 'a'.repeat(41);
-    expect(interpretar(`adicionar ${longo}`)).toEqual({ tipo: 'recusa', texto: 'Nome muito comprido.' });
-    expect(interpretar(`remover ${'b'.repeat(5000)}`)).toEqual({ tipo: 'recusa', texto: 'Nome muito comprido.' });
+    expect(interpretar(`adicionar ${longo}`)).toEqual({ tipo: 'recusa', texto: '🤔 Nome muito comprido.' });
+    expect(interpretar(`remover ${'b'.repeat(5000)}`)).toEqual({ tipo: 'recusa', texto: '🤔 Nome muito comprido.' });
     expect(interpretar(`confirmar ${'c'.repeat(40)}`)).toEqual({ tipo: 'confirmar', nome: 'c'.repeat(40) });
   });
 
@@ -94,21 +94,21 @@ describe('interpretar', () => {
 describe('respostas fixas', () => {
   it('falta: pendentes da principal', () => {
     const e = estado([it_('Ana', true, 1), it_('Bia', false, 2), it_('Caio', false, 3), it_('Davi', false, 4)]);
-    expect(respostaFalta(e)).toBe('Ainda não confirmaram: Bia, Caio e Davi.');
+    expect(respostaFalta(e)).toBe('⏳ Ainda não confirmaram: Bia, Caio e Davi.');
   });
   it('falta: um só', () => {
-    expect(respostaFalta(estado([it_('Ana', false)]))).toBe('Ainda não confirmaram: Ana.');
+    expect(respostaFalta(estado([it_('Ana', false)]))).toBe('⏳ Ainda não confirmaram: Ana.');
   });
   it('falta: todos confirmaram', () => {
-    expect(respostaFalta(estado([it_('Ana', true)]))).toBe('Todo mundo da lista já confirmou.');
-    expect(respostaFalta(estado([]))).toBe('Todo mundo da lista já confirmou.');
+    expect(respostaFalta(estado([it_('Ana', true)]))).toBe('🙌 Todo mundo da lista já confirmou!');
+    expect(respostaFalta(estado([]))).toBe('🙌 Todo mundo da lista já confirmou!');
   });
   it('fila numerada', () => {
     const e = estado([], [it_('X', false, 1), it_('Y', false, 2)]);
-    expect(respostaFila(e)).toBe('Fila:\n1. X\n2. Y');
+    expect(respostaFila(e)).toBe('📝 Fila:\n1. X\n2. Y');
   });
   it('fila vazia', () => {
-    expect(respostaFila(estado([]))).toBe('Ninguém na fila.');
+    expect(respostaFila(estado([]))).toBe('📝 Ninguém na fila.');
   });
   it('ajuda cita todos os comandos, em texto simples', () => {
     for (const c of ['lista', 'falta confirmar', 'fila', 'sortear', 'adicionar', 'confirmar', 'remover', 'artilheiro', 'garçom', 'ranking', 'times']) {

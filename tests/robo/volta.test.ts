@@ -32,7 +32,7 @@ describe('uma volta do laço', () => {
     const d = deps();
     const now = t('2026-11-09T14:00:30');
     const novo = await umaVolta(now, vazio, d);
-    expect(d.enviar).toHaveBeenCalledWith(expect.stringContaining('A lista de quarta, 11/11 está aberta.'));
+    expect(d.enviar).toHaveBeenCalledWith(expect.stringContaining('📋 A lista de quarta, 11/11 está aberta! Bora confirmar ⚽'));
     expect(novo.ultimo).toMatchObject({ tipo: 'abertura', quando: now.toISOString(), rodada: t('2026-11-09T14:00:00').toISOString() });
     expect(novo.aberturaEnviada).toBe('2026-11-11');
     expect(d.gravar).toHaveBeenCalledWith(novo);

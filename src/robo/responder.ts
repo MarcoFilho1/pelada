@@ -1,5 +1,6 @@
 // Resposta a uma marcação no grupo: decide o texto, envia e cuida do freio e da proposta de sorteio.
 // Sem WhatsApp, banco ou IA aqui dentro: tudo chega pelo contexto (os testes usam falsos).
+import { normalizarNome } from '@/domain/nome';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
@@ -10,6 +11,7 @@ import {
   TEXTO_AJUDA,
   TEXTO_AJUDA_PERGUNTA,
   type AcaoNaLista,
+  type Comando,
   type Consulta,
 } from './comandos';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
@@ -35,6 +37,10 @@ export type ContextoDaResposta = {
   estadoGrupoId: string | null;
   freio: Freio;
   admins: string[];
+  /** Números (do `ROBO_CALVINHO`) do Jonas, o "calvinho" do grupo; ausente ou vazio: só o nome do WhatsApp vale. */
+  calvinho?: string[];
+  /** Sorteio das brincadeiras; nos testes, fixo. */
+  rng?: () => number;
   /** `null`: perguntas livres desligadas (sem chave ou sem modelo no `.env`). */
   ia: { chave: string; modelo: string } | null;
   /** `estado.ultimo`: a última lista que o robô mandou. */
@@ -71,6 +77,51 @@ export function configDasRespostas(env: Record<string, string | undefined>): { i
   return { ia: chave && modelo ? { chave, modelo } : null, admins };
 }
 
+/** Lê `ROBO_CALVINHO` (opcional): o número do Jonas, o "calvinho" do grupo, como o `ROBO_ADMINS`. */
+export function calvinhoDoEnv(env: Record<string, string | undefined>): string[] {
+  return (env.ROBO_CALVINHO ?? '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
+/** Apelido carinhoso do Jonas no grupo: brincadeira, não ofensa. */
+export const PREFIXOS_CALVINHO: Partial<Record<Comando['tipo'], string[]>> = {
+  lista: ['😎 Pra você, calvinho, a lista brilhando igual sua cabeça:', '📋 Aqui, calvo! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
+  falta: ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
+  fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:'],
+  times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:'],
+  artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:'],
+  garcom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:'],
+  ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:'],
+  ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
+  sortear: ['🍀 Sorteando com a sorte do calvinho:'],
+};
+export const PREFIXO_NAO_ENTENDI = '🤔 Não entendi, calvinho. Os comandos são esses:';
+export const SALVO_CALVINHO = '🏆 Times definitivos salvos! Valeu, calvinho 😎';
+
+/** Quem mandou é o Jonas? Pelo telefone, se o número está configurado e veio; senão, pelo primeiro nome do WhatsApp. */
+function remetenteEhJonas(m: MensagemRecebida, c: ContextoDaResposta): boolean {
+  if (m.remetenteTelefone !== null && c.calvinho?.length) return ehAdmin(m.remetenteTelefone, c.calvinho);
+  return normalizarNome((m.remetenteNome ?? '').trim().split(/\s+/)[0] ?? '') === 'jonas';
+}
+
+/** Uma linha de brincadeira antes da resposta normal, só quando o Jonas pede e a resposta deu certo. */
+function comBrincadeira(cmd: Comando, texto: string, c: ContextoDaResposta): string {
+  const sortear = (v: string[]) => v[Math.floor((c.rng ?? Math.random)() * v.length)];
+  if (cmd.tipo === 'pergunta') return c.ia ? texto : `${sortear([PREFIXO_NAO_ENTENDI])}\n${texto}`;
+  const variantes = PREFIXOS_CALVINHO[cmd.tipo];
+  if (!variantes) return texto;
+  // Erro, "não tem nada" e aviso de cancelamento ficam sérios.
+  const ok =
+    cmd.tipo === 'lista' ? !texto.startsWith('🌧️')
+    : cmd.tipo === 'times' ? texto.startsWith('👕 Times de hoje:')
+    : cmd.tipo === 'artilheiro' || cmd.tipo === 'garcom' || cmd.tipo === 'ranking' ? /^[⚽🎯🏆] \S+ \(/u.test(texto)
+    : cmd.tipo === 'sortear' ? c.proposta.atual?.texto === texto
+    : true;
+  return ok ? `${sortear(variantes)}\n${texto}` : texto;
+}
+
 /**
  * A lista respondida pode virar a "última lista" (as rodadas comparam com ela)? Só quando a volta
  * automática deste momento seria uma rodada comum ou nada: gravar levaria a rodada atual e engoliria
@@ -82,7 +133,7 @@ export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRo
   return tipo === null || tipo === 'rodada';
 }
 
-export const STATUS_SEM_ATUALIZACAO = 'Status: sem nenhuma atualização.';
+export const STATUS_SEM_ATUALIZACAO = '🔄 Status: sem nenhuma atualização.';
 
 /**
  * `lista`: sempre a lista completa. Sem mudança desde a última lista do robô, o cabeçalho é
@@ -119,15 +170,16 @@ async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta): Prom
   return r.texto;
 }
 
-async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: boolean): Promise<string> {
   const guardada = c.proposta.atual;
-  if (!guardada) return 'Não tem sorteio esperando confirmação.';
+  if (!guardada) return '🤔 Não tem sorteio esperando confirmação.';
   const r = await c.confirmar(m.quando, m.remetenteTelefone ?? '', guardada);
   // Confirmada ou vencida, a proposta acaba: um segundo "sim" não tem o que confirmar.
   if ('ok' in r || m.quando.getTime() - guardada.criadaEm.getTime() >= VALIDADE_MS) {
     if (c.proposta.atual === guardada) c.proposta.atual = null;
   }
-  return 'ok' in r ? r.ok : r.erro;
+  if ('ok' in r) return jonas ? SALVO_CALVINHO : r.ok;
+  return r.erro;
 }
 
 /** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
@@ -202,7 +254,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       r = { texto: await respostaSortear(m, c) };
       break;
     case 'sim':
-      r = { texto: await respostaSim(m, c) };
+      r = { texto: await respostaSim(m, c, remetenteEhJonas(m, c)) };
       break;
     case 'adicionar':
     case 'confirmar':
@@ -225,6 +277,9 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       r = { texto: cmd.texto };
       break;
   }
+
+  // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
+  if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
   try {
     await c.enviar(r.texto);

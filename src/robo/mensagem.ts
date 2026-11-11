@@ -20,14 +20,14 @@ export function montarMensagem(
 
   switch (tipo) {
     case 'abertura':
-      return juntar([`A lista de quarta, ${dia} está aberta.`], estadoDaSemana, data);
+      return juntar([`📋 A lista de quarta, ${dia} está aberta! Bora confirmar ⚽`], estadoDaSemana, data);
     case 'primeira':
-      return juntar([`Lista de quarta, ${dia}:`], estadoDaSemana, data);
+      return juntar([`📋 Lista de quarta, ${dia}:`], estadoDaSemana, data);
     case 'rodada':
       return juntar(cabecalho(), estadoDaSemana, data);
     case 'lembrete': {
       const pendentes = estadoDaSemana.principal.filter((i) => i.tipo === 'M' && !i.confirmado).map((i) => i.nome);
-      const fixo = `Faltam 2 horas para os mensalistas confirmarem. Ainda não confirmaram: ${juntarNomes(pendentes)}.`;
+      const fixo = `⏰ Faltam 2 horas pros mensalistas confirmarem! Ainda não confirmaram: ${juntarNomes(pendentes)}.`;
       return juntar([fixo, ...cabecalho()], estadoDaSemana, data);
     }
     case 'prazo': {
@@ -35,12 +35,12 @@ export function montarMensagem(
         ? mudancas(anterior, foto).perderamPrazo
         : Object.values(foto.jogadores).filter((j) => j.onde === 'prazo').map((j) => j.nome);
       const resto = anterior ? linhasDoCabecalho({ ...mudancas(anterior, foto), perderamPrazo: [] }) : [];
-      const meio = perderam.length ? [`Perderam a vaga: ${juntarNomes(perderam)}.`] : ['Todos os mensalistas confirmaram.'];
-      return juntar(['Prazo dos mensalistas encerrado.', ...meio, ...resto], estadoDaSemana, data);
+      const meio = perderam.length ? [`❌ Perderam a vaga: ${juntarNomes(perderam)}.`] : ['🙌 Todos os mensalistas confirmaram!'];
+      return juntar(['🔒 Prazo dos mensalistas encerrado.', ...meio, ...resto], estadoDaSemana, data);
     }
     case 'cancelada':
-      return `A pelada de quarta, ${dia} foi cancelada.`;
+      return `🌧️ A pelada de quarta, ${dia} foi cancelada.`;
     case 'voltou':
-      return juntar([`A pelada de quarta, ${dia} voltou.`], estadoDaSemana, data);
+      return juntar([`⚽ A pelada de quarta, ${dia} voltou!`], estadoDaSemana, data);
   }
 }

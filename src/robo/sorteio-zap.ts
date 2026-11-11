@@ -6,7 +6,7 @@ import { dataDe } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { participantesPadrao, salvarTimesDefinitivos } from '@/server/times';
 
-export const TEXTO_SO_ADMIN = 'Só os organizadores podem sortear pelo WhatsApp.';
+export const TEXTO_SO_ADMIN = '🔐 Só os organizadores podem sortear pelo WhatsApp.';
 
 /** Mesma regra do site: o sorteio completa cada time com COMPLETE até 4. */
 const POR_TIME = 4;
@@ -47,9 +47,10 @@ export function ehAdmin(telefone: string, admins: string[]): boolean {
 
 /** Textos de erro do site que mandam recarregar a página viram algo que faz sentido no WhatsApp. */
 export function paraWhatsApp(texto: string): string {
-  return texto.replace(/Recarregue a página\./g, 'Tente de novo.');
+  return `⚠️ ${texto.replace(/Recarregue a página\./g, 'Tente de novo.')}`;
 }
 
+export const EMOJI_COR: Record<string, string> = { azul: '🔵', laranja: '🟠', verde: '🟢', preto: '⚫' };
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** Propõe os times da noite (mesma regra do site) sem gravar nada. */
@@ -62,20 +63,20 @@ export async function proporSorteio(
   const hoje = dataDe(now);
   // Só lê e só a pelada de hoje: o `peladaDoDia` do site cria a da quarta e, nos outros dias, devolve a última.
   const [p] = await db.select().from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1);
-  if (!p || p.data !== hoje) return { erro: 'Hoje não tem pelada para sortear.' };
+  if (!p || p.data !== hoje) return { erro: '📅 Hoje não tem pelada para sortear.' };
 
   const participantes = await participantesPadrao(db, p.id, now);
-  if (participantes.length < 2) return { erro: 'Poucos confirmados para sortear.' };
+  if (participantes.length < 2) return { erro: '👥 Poucos confirmados para sortear.' };
 
   const sorteados = sortearComCompletes(participantes, { times: Math.min(CORES.length, participantes.length), porTime: POR_TIME, rng });
   const blocos = sorteados.map((t, i) =>
     [
-      `${maiuscula(CORES[i])} (${formatarNota(t.soma)})`,
+      `${EMOJI_COR[CORES[i]]} ${maiuscula(CORES[i])} (${formatarNota(t.soma)})`,
       ...t.jogadores.map((j) => `- ${j.nome} ${formatarNota(j.nota)}`),
       ...t.completes.map((n) => `- COMPLETE ${formatarNota(n)}`),
     ].join('\n'),
   );
-  const texto = `${blocos.join('\n\n')}\n\nDiferença: ${formatarNota(diferenca(sorteados))}\nConfirma? Responda *sim* em até 10 minutos.`;
+  const texto = `🎲 Times sorteados:\n\n${blocos.join('\n\n')}\n\nDiferença: ${formatarNota(diferenca(sorteados))}\nConfirma? Responda *sim* em até 10 minutos ✅`;
   return {
     adminTelefone,
     criadaEm: now,
@@ -93,19 +94,19 @@ export async function confirmarSorteio(
   telefone: string,
   proposta: Proposta | null,
 ): Promise<{ ok: string } | { erro: string }> {
-  if (!proposta) return { erro: 'Não tem sorteio esperando confirmação.' };
+  if (!proposta) return { erro: '🤔 Não tem sorteio esperando confirmação.' };
   const quem = canonicoRemetente(telefone);
-  if (quem === '' || quem !== canonico(proposta.adminTelefone)) return { erro: 'Só quem pediu o sorteio pode confirmar.' };
-  if (now.getTime() - proposta.criadaEm.getTime() >= VALIDADE_MS) return { erro: 'A proposta expirou. Peça *sortear* de novo.' };
+  if (quem === '' || quem !== canonico(proposta.adminTelefone)) return { erro: '🔐 Só quem pediu o sorteio pode confirmar.' };
+  if (now.getTime() - proposta.criadaEm.getTime() >= VALIDADE_MS) return { erro: '⌛ A proposta expirou. Peça *sortear* de novo.' };
   try {
     const hoje = new Set((await participantesPadrao(db, proposta.peladaId, now)).map((j) => j.id));
     const propostos = proposta.elencos.flat();
     if (hoje.size !== propostos.length || !propostos.every((id) => hoje.has(id))) {
-      return { erro: 'A lista mudou desde o sorteio. Peça *sortear* de novo.' };
+      return { erro: '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.' };
     }
     await salvarTimesDefinitivos(db, proposta.peladaId, proposta.elencos, proposta.completes, now);
   } catch (e) {
     return { erro: paraWhatsApp(mensagemParaUsuario(e)) };
   }
-  return { ok: 'Times definitivos salvos.' };
+  return { ok: '🏆 Times definitivos salvos!' };
 }

@@ -15,7 +15,7 @@ export type Comando =
 
 /** Nome maior que isto nem é procurado (e nunca é repetido no grupo). */
 export const TAM_MAX_NOME_PEDIDO = 40;
-export const TEXTO_NOME_COMPRIDO = 'Nome muito comprido.';
+export const TEXTO_NOME_COMPRIDO = '🤔 Nome muito comprido.';
 
 export const CONSULTAS: readonly Consulta[] = ['artilheiro', 'garcom', 'ranking', 'times'];
 
@@ -81,27 +81,27 @@ export function interpretar(textoSemMarcacao: string): Comando {
 
 export function respostaFalta(estado: EstadoDaSemana): string {
   const pendentes = estado.principal.filter((i) => !i.confirmado).map((i) => i.nome);
-  if (!pendentes.length) return 'Todo mundo da lista já confirmou.';
-  return `Ainda não confirmaram: ${juntarNomes(pendentes)}.`;
+  if (!pendentes.length) return '🙌 Todo mundo da lista já confirmou!';
+  return `⏳ Ainda não confirmaram: ${juntarNomes(pendentes)}.`;
 }
 
 export function respostaFila(estado: EstadoDaSemana): string {
-  if (!estado.fila.length) return 'Ninguém na fila.';
-  return `Fila:\n${estado.fila.map((i, n) => `${n + 1}. ${i.nome}`).join('\n')}`;
+  if (!estado.fila.length) return '📝 Ninguém na fila.';
+  return `📝 Fila:\n${estado.fila.map((i, n) => `${n + 1}. ${i.nome}`).join('\n')}`;
 }
 
 export const TEXTO_AJUDA = [
-  'Me marque com um comando:',
-  '- lista: a lista completa da semana',
-  '- falta confirmar: quem ainda não confirmou',
-  '- fila: quem está na fila',
-  '- adicionar Nome: põe o jogador na lista (ou na fila, se estiver cheia)',
-  '- confirmar Nome: confirma quem está na lista',
-  '- remover Nome: tira da lista ou da fila',
-  '- artilheiro, garçom, ranking: os primeiros do mês',
-  '- times: os times de hoje',
-  '- sortear: só os organizadores',
+  '🤖 Oi! Me marque com um comando:',
+  '📋 lista — a lista completa da semana',
+  '⏳ falta confirmar — quem ainda não confirmou',
+  '📝 fila — quem está na fila',
+  '➕ adicionar Nome — põe na lista (ou na fila, se estiver cheia)',
+  '✅ confirmar Nome — confirma quem está na lista',
+  '👋 remover Nome — tira da lista ou da fila',
+  '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
+  '👕 times — os times de hoje',
+  '🎲 sortear — só os organizadores',
 ].join('\n');
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */
-export const TEXTO_AJUDA_PERGUNTA = 'Ou faça uma pergunta, por exemplo: @robô o João está na lista?';
+export const TEXTO_AJUDA_PERGUNTA = '💬 Ou faça uma pergunta, por exemplo: @robô o João está na lista?';

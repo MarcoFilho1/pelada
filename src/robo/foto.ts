@@ -103,14 +103,14 @@ export function linhasDoCabecalho(m: Mudancas): string[] {
   const add = (rotulo: string, nomes: string[]) => {
     if (nomes.length) linhas.push(`${rotulo}: ${juntarNomes(nomes)}.`);
   };
-  add('Confirmaram', m.confirmaram);
-  add('Saíram', m.sairam);
-  add('Entraram na lista', m.entraramNaLista);
-  add('Subiram da fila', m.subiramDaFila);
-  add('Foram para a fila', m.foramParaFila);
-  add('Entraram na fila', m.entraramNaFila);
-  add('Perderam o prazo', m.perderamPrazo);
-  if (m.manual === 'fechou') linhas.push('O admin fechou a lista.');
-  if (m.manual === 'reabriu') linhas.push('O admin reabriu a lista.');
+  add('✅ Confirmaram', m.confirmaram);
+  add('👋 Saíram', m.sairam);
+  add('➕ Entraram na lista', m.entraramNaLista);
+  add('⬆️ Subiram da fila', m.subiramDaFila);
+  add('⬇️ Foram para a fila', m.foramParaFila);
+  add('📝 Entraram na fila', m.entraramNaFila);
+  add('⌛ Perderam o prazo', m.perderamPrazo);
+  if (m.manual === 'fechou') linhas.push('🔒 O admin fechou a lista.');
+  if (m.manual === 'reabriu') linhas.push('🔓 O admin reabriu a lista.');
   return linhas;
 }

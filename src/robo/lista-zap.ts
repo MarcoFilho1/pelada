@@ -13,6 +13,33 @@ import { paraWhatsApp } from './sorteio-zap';
 /** `mudou`: a lista mudou (a resposta ganha o "pedido por"). */
 export type ResultadoNaLista = { texto: string; mudou: boolean };
 
+// Apelido carinhoso do Jonas no grupo ("calvinho"): brincadeira, não ofensa. Vale pelo jogador achado.
+const ehJonas = (nome: string) => normalizarNome(nome) === 'jonas';
+const sortear = (variantes: string[], rng: () => number) => variantes[Math.floor(rng() * variantes.length)];
+export const CALVINHO = {
+  confirmado: [
+    '✅ Clarinho que sim! Meu calvinho favorito tá confirmado 😎',
+    '✅ Confirmado! O calvo mais brilhante da pelada tá garantido ✨',
+    '✅ Jonas confirmado! Já pode passar o protetor solar na cabeça ☀️',
+    '✅ Calvinho confirmado! Os refletores agradecem a ajuda 💡',
+  ],
+  jaConfirmado: ['👍 Calma, calvinho, você já tá confirmado 😂', '👍 Já tá confirmado, calvinho! Relaxa que a vaga é sua 😎'],
+  entrouNaLista: [
+    '✅ Olha ele! Meu calvinho favorito entrou na lista 😎',
+    '✅ Jonas na lista! Separem os óculos escuros, o calvinho chegou ✨',
+    '✅ Entrou o calvinho! A quadra vai ficar mais iluminada hoje 💡',
+  ],
+  entrouNaFila: ['📝 Calvinho na fila ({n}º)… aguenta firme, calvo 🙏', '📝 Jonas na fila ({n}º). Torcendo pra abrir vaga pro meu calvinho favorito 🤞'],
+  jaNaLista: ['👍 Jonas já tá na lista, calvinho apressado 😂'],
+  jaNaFila: ['👍 Jonas já tá na fila, calvinho. Paciência 😂'],
+  saiu: [
+    '👋 Que pena, meu calvinho favorito não vai conseguir ir 😢',
+    '👋 Jonas saiu… a quadra vai ficar menos iluminada hoje 💡',
+    '👋 Sem o calvinho hoje? Os refletores vão ter que trabalhar dobrado 🔦',
+  ],
+  foraDaLista: ['🤔 Jonas não tá na lista… cadê o meu calvinho?'],
+};
+
 const MIN_COMECO = 2;
 const MAX_ECO = 30;
 
@@ -38,7 +65,7 @@ export function acharJogador<T extends { nome: string }>(texto: string, candidat
 /** O que a pessoa digitou, para repetir no grupo: no máximo 30 caracteres. */
 const eco = (texto: string) => (texto.length > MAX_ECO ? `${texto.slice(0, MAX_ECO)}…` : texto);
 
-const textoVarios = (js: { nome: string }[]) => `Tem mais de um jogador com esse nome: ${juntarNomes(js.map((j) => j.nome))}. Mande o nome inteiro.`;
+const textoVarios = (js: { nome: string }[]) => `🤔 Tem mais de um jogador com esse nome: ${juntarNomes(js.map((j) => j.nome))}. Mande o nome inteiro.`;
 
 /** Recusa do site em texto de WhatsApp (sem "Recarregue a página."). */
 const recusa = (e: unknown): ResultadoNaLista => ({ texto: paraWhatsApp(mensagemParaUsuario(e)), mudou: false });
@@ -50,9 +77,9 @@ function onde(estado: EstadoDaSemana, jogadorId: number): { lugar: 'lista' | 'fi
   return f >= 0 ? { lugar: 'fila', posicao: f + 1, confirmado: false } : null;
 }
 
-async function adicionar(db: DB, texto: string, now: Date): Promise<ResultadoNaLista> {
+async function adicionar(db: DB, texto: string, now: Date, rng: () => number): Promise<ResultadoNaLista> {
   const achado = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
-  if (!achado) return { texto: `${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
+  if (!achado) return { texto: `🤔 ${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   try {
@@ -60,39 +87,51 @@ async function adicionar(db: DB, texto: string, now: Date): Promise<ResultadoNaL
   } catch (e) {
     if (e instanceof ErroLista && e.motivo === 'ja_na_lista') {
       const ja = onde(await estadoDaSemana(db, now), j.id);
-      return { texto: `${j.nome} já está na ${ja?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: false };
+      const fila = ja?.lugar === 'fila';
+      const normal = `👍 ${j.nome} já está na ${fila ? 'fila' : 'lista'}.`;
+      return { texto: ehJonas(j.nome) ? sortear(fila ? CALVINHO.jaNaFila : CALVINHO.jaNaLista, rng) : normal, mudou: false };
     }
     return recusa(e);
   }
   const agora = onde(await estadoDaSemana(db, now), j.id);
-  if (agora?.lugar === 'fila') return { texto: `${j.nome} entrou na fila (${agora.posicao}º).`, mudou: true };
-  return { texto: `${j.nome} entrou na lista.`, mudou: true };
+  const jonas = ehJonas(j.nome);
+  if (agora?.lugar === 'fila') {
+    const texto = jonas ? sortear(CALVINHO.entrouNaFila, rng).replace('{n}', String(agora.posicao)) : `📝 ${j.nome} entrou na fila (${agora.posicao}º).`;
+    return { texto, mudou: true };
+  }
+  return { texto: jonas ? sortear(CALVINHO.entrouNaLista, rng) : `✅ ${j.nome} entrou na lista!`, mudou: true };
 }
 
-async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: string, now: Date): Promise<ResultadoNaLista> {
+async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: string, now: Date, rng: () => number): Promise<ResultadoNaLista> {
   // O caminho normal da semana, como o site: depois da abertura de segunda, cria a pelada se preciso.
   const estado = await estadoDaSemana(db, now);
   // Para confirmar, quem perdeu o prazo das 14h também é achado: o site recusa com a mensagem dele.
   const candidatos = [...estado.principal, ...estado.fila, ...(acao === 'confirmar' ? estado.foraDoPrazo : [])];
   const achado = acharJogador(texto, candidatos);
-  if (!achado) return { texto: `${eco(texto)} não está na lista.`, mudou: false };
+  if (!achado) {
+    // O Jonas fora da lista também ganha a brincadeira: ele é achado entre todos os cadastrados.
+    const todos = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
+    if (todos && 'jogador' in todos && ehJonas(todos.jogador.nome)) return { texto: sortear(CALVINHO.foraDaLista, rng), mudou: false };
+    return { texto: `🤔 ${eco(texto)} não está na lista.`, mudou: false };
+  }
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
+  const jonas = ehJonas(j.nome);
   const antes = onde(estado, j.jogadorId);
   try {
     if (acao === 'confirmar') {
-      if (antes?.lugar === 'lista' && antes.confirmado) return { texto: `${j.nome} já estava confirmado.`, mudou: false };
+      if (antes?.lugar === 'lista' && antes.confirmado) return { texto: jonas ? sortear(CALVINHO.jaConfirmado, rng) : `👍 ${j.nome} já estava confirmado.`, mudou: false };
       await confirmar(db, j.jogadorId, now);
-      return { texto: `${j.nome} confirmado.`, mudou: true };
+      return { texto: jonas ? sortear(CALVINHO.confirmado, rng) : `✅ ${j.nome} confirmado!`, mudou: true };
     }
     await remover(db, j.jogadorId, now);
-    return { texto: `${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true };
+    return { texto: jonas ? sortear(CALVINHO.saiu, rng) : `👋 ${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true };
   } catch (e) {
     return recusa(e);
   }
 }
 
 /** Uma ação na lista pedida pelo WhatsApp, com as regras do jogador no site. */
-export async function mexerNaLista(db: DB, acao: AcaoNaLista, texto: string, now: Date): Promise<ResultadoNaLista> {
-  return acao === 'adicionar' ? adicionar(db, texto, now) : confirmarOuRemover(db, acao, texto, now);
+export async function mexerNaLista(db: DB, acao: AcaoNaLista, texto: string, now: Date, rng: () => number = Math.random): Promise<ResultadoNaLista> {
+  return acao === 'adicionar' ? adicionar(db, texto, now, rng) : confirmarOuRemover(db, acao, texto, now, rng);
 }

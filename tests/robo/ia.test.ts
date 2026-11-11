@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { perguntar } from '@/robo/ia';
 import type { Ferramenta } from '@/robo/ferramentas';
 
-const ERRO = 'Não consegui responder agora.';
+const ERRO = '😕 Não consegui responder agora.';
 const resp = (corpo: unknown, status = 200) => new Response(JSON.stringify(corpo), { status });
 const texto = (content: string) => resp({ choices: [{ message: { role: 'assistant', content } }] });
 const chamada = (nome: string, args: string, id = 'c1') =>

@@ -9,7 +9,7 @@ const MAX_TOKENS = 400;
 const MAX_RESPOSTA = 1000;
 const MAX_PERGUNTA = 500;
 const MAX_FERRAMENTAS_POR_VOLTA = 6;
-export const ERRO_IA = 'Não consegui responder agora.';
+export const ERRO_IA = '😕 Não consegui responder agora.';
 
 type ChamadaDeFerramenta = { id: string; function: { name: string; arguments: string } };
 type Mensagem =
