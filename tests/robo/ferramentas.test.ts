@@ -28,14 +28,14 @@ beforeEach(async () => {
 describe('ferramentasDeLeitura', () => {
   it('expõe as seis ferramentas com schema', () => {
     const fs = ferramentas();
-    expect(fs.map((f) => f.nome)).toEqual(['lista_da_semana', 'mensalistas_do_mes', 'ranking', 'artilharia', 'partidas_da_noite', 'times_da_noite']);
+    expect(fs.map((f) => f.nome)).toEqual(['lista_da_semana', 'mensalistas_do_mes', 'ranking_detalhado', 'artilharia_detalhada', 'partidas_da_noite', 'times_da_noite']);
     for (const f of fs) expect(f.parametros).toMatchObject({ type: 'object' });
   });
 
   it('só lêem: nenhuma tabela muda, nem a pelada da semana é criada', async () => {
     const antes = await contagens();
     for (const f of ferramentas()) await f.executar({});
-    await achar('ranking').executar({ periodo: 'geral' });
+    await achar('ranking_detalhado').executar({ periodo: 'geral' });
     expect(await contagens()).toBe(antes);
   });
 
@@ -50,13 +50,13 @@ describe('ferramentasDeLeitura', () => {
   });
 
   it('ranking e artilharia sem partidas ficam vazios; período inválido não quebra', async () => {
-    expect(await achar('ranking').executar({ periodo: 'lixo' })).toMatchObject({ total: 0, jogadores: [] });
-    expect(await achar('artilharia').executar({})).toMatchObject({ artilheiros: [] });
+    expect(await achar('ranking_detalhado').executar({ periodo: 'lixo' })).toMatchObject({ total: 0, jogadores: [] });
+    expect(await achar('artilharia_detalhada').executar({})).toMatchObject({ artilheiros: [] });
   });
 
   it('argumentos inválidos lançam erro', async () => {
-    await expect(achar('ranking').executar({ periodo: 5 })).rejects.toThrow();
-    await expect(achar('ranking').executar('x')).rejects.toThrow();
+    await expect(achar('ranking_detalhado').executar({ periodo: 5 })).rejects.toThrow();
+    await expect(achar('ranking_detalhado').executar('x')).rejects.toThrow();
   });
 
   it('partidas e times da noite usam a última pelada sem criar nada', async () => {

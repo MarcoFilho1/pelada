@@ -15,7 +15,7 @@ import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
 import { Freio } from './freio';
-import { perguntar } from './ia';
+import { criarCliente, perguntar } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
@@ -48,7 +48,7 @@ function argumento(nome: string): string | undefined {
 }
 
 /**
- * Lê o `.env` da pasta do robô (DATABASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL, ROBO_ADMINS e, opcional, ROBO_CALVINHO).
+ * Lê o `.env` da pasta do robô (DATABASE_URL, ANTHROPIC_API_KEY, ROBO_ADMINS e, opcionais, ROBO_MODELO e ROBO_CALVINHO).
  * O que já está no ambiente vale mais (ex.: ensaio com o banco local).
  */
 function carregarBanco(): void {
@@ -214,6 +214,8 @@ async function laco(): Promise<void> {
   const emFila = criarFila();
 
   const { ia, admins } = configDasRespostas(process.env);
+  // Um cliente da Anthropic para o robô todo; a chave nunca vai para o log.
+  const clienteIA = ia ? criarCliente(ia.chave) : null;
   const freio = new Freio(() => new Date());
   const proposta = { atual: null as Proposta | null };
   const gravar = (novo: typeof estado) => {
@@ -249,7 +251,9 @@ async function laco(): Promise<void> {
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
         consultar: (tipo, n) => consultar(db, tipo, n),
-        perguntar: (texto, { agora }) => perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, ferramentas: ferramentasDeLeitura(db, agora), agora }),
+        // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
+        perguntar: (texto, { agora, acoes, quem, ehJonas }) =>
+          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora), ...acoes], agora, quem, ehJonas }),
         enviar: enviarNoGrupo,
         log,
       });
@@ -280,7 +284,7 @@ async function laco(): Promise<void> {
   process.on('SIGTERM', sair);
   process.on('SIGINT', sair);
   log(`Robô ligado. Vai mandar em: ${nomeDoGrupo(estado)}. Estado em ${arquivoEstado}.`);
-  log(`Respostas: perguntas livres ${ia ? 'ligadas' : 'desligadas'}; ${admins.length} admin(s) para sortear.`);
+  log(`Respostas: ${ia ? `IA ligada (${ia.modelo})` : 'IA desligada'}; ${admins.length} admin(s) para sortear.`);
 
   let estavaDentro: boolean | null = null;
   for (;;) {

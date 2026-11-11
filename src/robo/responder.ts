@@ -8,16 +8,20 @@ import {
   interpretar,
   respostaFalta,
   respostaFila,
+  TAM_MAX_NOME_PEDIDO,
   TEXTO_AJUDA,
   TEXTO_AJUDA_PERGUNTA,
+  TEXTO_NOME_COMPRIDO,
   type AcaoNaLista,
   type Comando,
   type Consulta,
 } from './comandos';
+import { semParametros, type Ferramenta, type Parametros } from './ferramentas';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
+import { MODELO_PADRAO } from './ia';
 import { ehAdmin, TEXTO_SO_ADMIN, VALIDADE_MS, type Proposta } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -41,7 +45,7 @@ export type ContextoDaResposta = {
   calvinho?: string[];
   /** Sorteio das brincadeiras; nos testes, fixo. */
   rng?: () => number;
-  /** `null`: perguntas livres desligadas (sem chave ou sem modelo no `.env`). */
+  /** `null`: perguntas livres desligadas (sem `ANTHROPIC_API_KEY` no `.env`). */
   ia: { chave: string; modelo: string } | null;
   /** `estado.ultimo`: a última lista que o robô mandou. */
   ultimo: Envio | null;
@@ -50,7 +54,8 @@ export type ContextoDaResposta = {
   lerLista: (now: Date) => Promise<EstadoDaSemana>;
   propor: (now: Date, telefone: string) => Promise<Proposta | { erro: string }>;
   confirmar: (now: Date, telefone: string, proposta: Proposta | null) => Promise<{ ok: string } | { erro: string }>;
-  perguntar: (texto: string, op: { agora: () => Date }) => Promise<string>;
+  /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
+  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean }) => Promise<string>;
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
@@ -66,15 +71,15 @@ export type Resposta = {
   gravar?: { tipo: TipoMensagem; foto: FotoDaLista };
 };
 
-/** Lê `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` e `ROBO_ADMINS` (separados por vírgula). */
+/** Lê `ANTHROPIC_API_KEY`, `ROBO_MODELO` (opcional; padrão `claude-haiku-5-5`) e `ROBO_ADMINS` (separados por vírgula). */
 export function configDasRespostas(env: Record<string, string | undefined>): { ia: ContextoDaResposta['ia']; admins: string[] } {
-  const chave = env.OPENROUTER_API_KEY?.trim() ?? '';
-  const modelo = env.OPENROUTER_MODEL?.trim() ?? '';
+  const chave = env.ANTHROPIC_API_KEY?.trim() ?? '';
+  const modelo = env.ROBO_MODELO?.trim() || MODELO_PADRAO;
   const admins = (env.ROBO_ADMINS ?? '')
     .split(',')
     .map((a) => a.trim())
     .filter(Boolean);
-  return { ia: chave && modelo ? { chave, modelo } : null, admins };
+  return { ia: chave ? { chave, modelo } : null, admins };
 }
 
 /** Lê `ROBO_CALVINHO` (opcional): o número do Jonas, o "calvinho" do grupo, como o `ROBO_ADMINS`. */
@@ -186,13 +191,91 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
 async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   if (!c.ia) return TEXTO_AJUDA;
   if (!c.freio.podePerguntar()) return TEXTO_LIMITE;
-  const r = await c.perguntar(texto, { agora: () => m.quando });
+  const r = await c.perguntar(texto, { agora: () => m.quando, acoes: ferramentasDeAcao(m, c), quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c) });
   c.freio.registrarPergunta();
   return r;
 }
 
 /** Quem pediu, para o "pedido por" (nunca o telefone). */
 const quemPediu = (m: MensagemRecebida) => m.remetenteNome?.trim() || 'alguém';
+
+/** adicionar/confirmar/remover: qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu. */
+async function respostaNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+  const feito = await c.mexerNaLista(acao, nome, m.quando);
+  return feito.mudou ? `${feito.texto} (pedido por ${quemPediu(m)})` : feito.texto;
+}
+
+const comNome: Parametros = {
+  type: 'object',
+  properties: { nome: { type: 'string', description: 'O nome do jogador como a pessoa escreveu (pode ser só o começo).' } },
+  required: ['nome'],
+  additionalProperties: false,
+};
+
+/** O `nome` do input da IA (já um objeto, vindo do SDK), com o mesmo teto do comando escrito. */
+function lerNome(args: unknown): string {
+  const nome = args && typeof args === 'object' && !Array.isArray(args) ? (args as { nome?: unknown }).nome : undefined;
+  if (typeof nome !== 'string' || !nome.trim()) throw new Error('nome inválido');
+  return nome.trim();
+}
+
+/**
+ * As ações que a IA pode pedir, cada uma pelo mesmo caminho do comando escrito: quem mandou e o
+ * telefone (para o sorteio) vêm da mensagem do WhatsApp, nunca do que o modelo escreve.
+ * Nenhuma confirma sorteio: o "sim" continua só pelo comando.
+ */
+export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): Ferramenta[] {
+  const naLista = (acao: AcaoNaLista, nome: string, descricao: string): Ferramenta => ({
+    nome,
+    descricao,
+    parametros: comNome,
+    altera: true,
+    async executar(args) {
+      const pedido = lerNome(args);
+      if (pedido.length > TAM_MAX_NOME_PEDIDO) return TEXTO_NOME_COMPRIDO;
+      return respostaNaLista(acao, pedido, m, c);
+    },
+  });
+  const consulta = (tipo: Consulta, nome: string, descricao: string): Ferramenta => ({
+    nome,
+    descricao,
+    parametros: semParametros,
+    executar: () => c.consultar(tipo, m.quando),
+  });
+  return [
+    naLista('adicionar', 'adicionar_jogador', 'Põe um jogador já cadastrado na lista da semana (ou na fila, se a lista estiver cheia). Devolve o texto para o grupo.'),
+    naLista('confirmar', 'confirmar_jogador', 'Confirma ("vou") um jogador que já está na lista da semana. Devolve o texto para o grupo.'),
+    naLista('remover', 'remover_jogador', 'Tira um jogador da lista ou da fila ("não vou"). Devolve o texto para o grupo.'),
+    {
+      nome: 'ver_lista',
+      descricao: 'A lista completa da semana, pronta para o grupo (com o que mudou desde a última). Repita o texto sem mudar nada.',
+      parametros: semParametros,
+      executar: async () => (await respostaLista(m, c)).texto,
+    },
+    {
+      nome: 'quem_falta_confirmar',
+      descricao: 'Quem da lista ainda não confirmou.',
+      parametros: semParametros,
+      executar: async () => respostaFalta(await c.lerLista(m.quando)),
+    },
+    {
+      nome: 'ver_fila',
+      descricao: 'A fila de espera da semana.',
+      parametros: semParametros,
+      executar: async () => respostaFila(await c.lerLista(m.quando)),
+    },
+    consulta('times', 'ver_times', 'Os times definitivos da pelada de hoje, se já foram sorteados e salvos.'),
+    consulta('artilheiro', 'artilheiros', 'Os 3 que mais fizeram gols no mês (ou no geral, se o mês não teve partida).'),
+    consulta('garcom', 'garcons', 'Os 3 com mais assistências no mês (ou no geral).'),
+    consulta('ranking', 'ranking', 'Os 5 primeiros em pontos no mês (ou no geral).'),
+    {
+      nome: 'pedir_sorteio',
+      descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
+      parametros: semParametros,
+      executar: () => respostaSortear(m, c),
+    },
+  ];
+}
 
 /** Linha do log para marcação sem resposta: o motivo e o nome do WhatsApp (nunca o telefone). */
 function ignorada(m: MensagemRecebida, c: ContextoDaResposta, motivo: string): null {
@@ -217,7 +300,7 @@ async function avisarLimite(m: MensagemRecebida, c: ContextoDaResposta): Promise
  * Responde a uma mensagem do grupo, se for marcação do robô no grupo configurado, fora do silêncio
  * e dentro do limite de respostas. Envia, registra a resposta no freio e devolve o que saiu (ou `null`).
  * Marcação sem resposta deixa uma linha no log com o motivo.
- * O sorteio só sai pelo comando `sortear`, nunca pela IA. Erro ao enviar: registra no log, não tenta de novo.
+ * A IA pode pedir o sorteio pelo mesmo caminho do `sortear` (com a checagem de admin pelo telefone); a confirmação só sai pelo `sim`. Erro ao enviar: registra no log, não tenta de novo.
  */
 export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   const chamou = m.mencionaORobo || m.respondeAoRobo;
@@ -258,12 +341,9 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       break;
     case 'adicionar':
     case 'confirmar':
-    case 'remover': {
-      // Qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu.
-      const feito = await c.mexerNaLista(cmd.tipo, cmd.nome, m.quando);
-      r = { texto: feito.mudou ? `${feito.texto} (pedido por ${quemPediu(m)})` : feito.texto };
+    case 'remover':
+      r = { texto: await respostaNaLista(cmd.tipo, cmd.nome, m, c) };
       break;
-    }
     case 'artilheiro':
     case 'garcom':
     case 'ranking':
