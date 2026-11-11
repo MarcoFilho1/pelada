@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
-import { acharJogador, mexerNaLista } from '@/robo/lista-zap';
+import { acharJogador, CALVINHO, mexerNaLista } from '@/robo/lista-zap';
 import { definirMensalistas } from '@/server/mensalistas';
 import { definirEstadoManual, obterPeladaDaSemana } from '@/server/pelada';
 import { estadoDaSemana } from '@/server/presencas';
@@ -208,5 +208,42 @@ describe('remover', () => {
     const p = await obterPeladaDaSemana(db, TERCA);
     await definirEstadoManual(db, p.id, 'cancelada');
     expect(await mexerNaLista(db, 'remover', 'M01', TERCA)).toEqual({ texto: '⚠️ A pelada desta semana foi cancelada.', mudou: false });
+  });
+});
+
+describe('brincadeira do calvinho (Jonas)', () => {
+  const rng0 = () => 0;
+  const rngFim = () => 0.999;
+
+  it('confirmar, já confirmado e remover: variante do Jonas, achado por "jon" também', async () => {
+    const [m] = await criar(['Jonas']);
+    await definirMensalistas(db, '2026-11', [m]);
+    const c = await mexerNaLista(db, 'confirmar', 'jon', TERCA, rng0);
+    expect(c).toEqual({ texto: CALVINHO.confirmado[0], mudou: true });
+    expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaConfirmado[0]);
+    expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rngFim)).texto).toBe(CALVINHO.jaConfirmado[1]);
+    const s = await mexerNaLista(db, 'remover', 'jonas', TERCA, rngFim);
+    expect(s).toEqual({ texto: CALVINHO.saiu[2], mudou: true });
+    expect((await mexerNaLista(db, 'remover', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.foraDaLista[0]);
+    expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.foraDaLista[0]);
+  });
+
+  it('adicionar: lista, já na lista, fila com posição e já na fila', async () => {
+    await listaCheia();
+    await criar(['Jonas', 'Caio']);
+    const f = await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0);
+    expect(f).toEqual({ texto: '📝 Calvinho na fila (1º)… aguenta firme, careca 🙏', mudou: true });
+    expect((await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaNaFila[0]);
+    await mexerNaLista(db, 'remover', 'M01', TERCA);
+    await mexerNaLista(db, 'remover', 'jonas', TERCA, rng0);
+    const l = await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rngFim);
+    expect(l).toEqual({ texto: CALVINHO.entrouNaLista[2], mudou: true });
+    expect((await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaNaLista[0]);
+  });
+
+  it('outros jogadores seguem com o texto normal', async () => {
+    await criar(['Caio']);
+    expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA, rng0)).toEqual({ texto: '✅ Caio entrou na lista!', mudou: true });
+    expect((await mexerNaLista(db, 'remover', 'Caio', TERCA, rng0)).texto).toBe('👋 Caio saiu da lista.');
   });
 });
