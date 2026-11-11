@@ -5,7 +5,8 @@ import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { calvinhoDoEnv, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVO_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { CALVINHO } from '@/robo/lista-zap';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -541,13 +542,13 @@ describe('responder: marcação ignorada (log) e aviso do limite', () => {
 describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
   const JONAS = '5581990000007'; // fictício
   const PREFIXOS: Record<string, string[]> = {
-    lista: ['😎 Pra você, calvinho, a lista brilhando igual sua careca:', '📋 Aqui, careca! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
+    lista: ['😎 Pra você, calvinho, a lista brilhando igual sua cabeça:', '📋 Aqui, calvo! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
     'falta confirmar': ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
-    fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu careca favorito:'],
-    times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, careca! Os times de hoje:'],
-    artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, careca:'],
-    garçom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, careca:'],
-    ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que a careca tá no pódio? Confere:'],
+    fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:'],
+    times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:'],
+    artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:'],
+    garçom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:'],
+    ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:'],
     ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
   };
   const doJonas = (texto: string, over: Partial<MensagemRecebida> = {}) => msg(texto, { remetenteTelefone: JONAS, remetenteNome: 'Jonas', ...over });
@@ -582,7 +583,7 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
 
   it('sortear: linha só com proposta; erro continua sério', async () => {
     const c = ctx({ calvinho: [JONAS], admins: [JONAS], rng: () => 0 });
-    expect((await responder(doJonas('sortear'), c))!.texto).toBe('🍀 Sorteando com a sorte da careca:\nTimes propostos');
+    expect((await responder(doJonas('sortear'), c))!.texto).toBe('🍀 Sorteando com a sorte do calvinho:\nTimes propostos');
     const erro = ctx({ calvinho: [JONAS], admins: [JONAS], propor: vi.fn(async () => ({ erro: '👥 Poucos confirmados para sortear.' })) });
     expect((await responder(doJonas('sortear'), erro))!.texto).toBe('👥 Poucos confirmados para sortear.');
     const naoAdmin = ctx({ calvinho: [JONAS] });
@@ -616,5 +617,11 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
   it('calvinhoDoEnv lê números separados por vírgula; ausente = vazio', () => {
     expect(calvinhoDoEnv({ ROBO_CALVINHO: ' 5581990000007 ,' })).toEqual(['5581990000007']);
     expect(calvinhoDoEnv({})).toEqual([]);
+  });
+
+  it('nenhuma variante do Jonas usa a palavra "careca"', () => {
+    const todas = [...Object.values(PREFIXOS_CALVINHO).flat(), PREFIXO_NAO_ENTENDI, SALVO_CALVINHO, ...Object.values(CALVINHO).flat()];
+    expect(todas.length).toBeGreaterThan(25);
+    for (const v of todas) expect(v!.toLowerCase()).not.toContain('careca');
   });
 });

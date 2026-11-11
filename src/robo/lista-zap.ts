@@ -19,18 +19,18 @@ const sortear = (variantes: string[], rng: () => number) => variantes[Math.floor
 export const CALVINHO = {
   confirmado: [
     '✅ Clarinho que sim! Meu calvinho favorito tá confirmado 😎',
-    '✅ Confirmado! A careca mais brilhante da pelada tá garantida ✨',
+    '✅ Confirmado! O calvo mais brilhante da pelada tá garantido ✨',
     '✅ Jonas confirmado! Já pode passar o protetor solar na cabeça ☀️',
     '✅ Calvinho confirmado! Os refletores agradecem a ajuda 💡',
   ],
-  jaConfirmado: ['👍 Calma, calvinho, você já tá confirmado 😂', '👍 Já tá confirmado, careca! Relaxa que a vaga é sua 😎'],
+  jaConfirmado: ['👍 Calma, calvinho, você já tá confirmado 😂', '👍 Já tá confirmado, calvinho! Relaxa que a vaga é sua 😎'],
   entrouNaLista: [
     '✅ Olha ele! Meu calvinho favorito entrou na lista 😎',
-    '✅ Jonas na lista! Separem os óculos escuros, a careca chegou ✨',
+    '✅ Jonas na lista! Separem os óculos escuros, o calvinho chegou ✨',
     '✅ Entrou o calvinho! A quadra vai ficar mais iluminada hoje 💡',
   ],
-  entrouNaFila: ['📝 Calvinho na fila ({n}º)… aguenta firme, careca 🙏', '📝 Jonas na fila ({n}º). Torcendo pra abrir vaga pro meu calvinho favorito 🤞'],
-  jaNaLista: ['👍 Jonas já tá na lista, careca apressada 😂'],
+  entrouNaFila: ['📝 Calvinho na fila ({n}º)… aguenta firme, calvo 🙏', '📝 Jonas na fila ({n}º). Torcendo pra abrir vaga pro meu calvinho favorito 🤞'],
+  jaNaLista: ['👍 Jonas já tá na lista, calvinho apressado 😂'],
   jaNaFila: ['👍 Jonas já tá na fila, calvinho. Paciência 😂'],
   saiu: [
     '👋 Que pena, meu calvinho favorito não vai conseguir ir 😢',

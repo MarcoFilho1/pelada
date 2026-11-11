@@ -232,7 +232,7 @@ describe('brincadeira do calvinho (Jonas)', () => {
     await listaCheia();
     await criar(['Jonas', 'Caio']);
     const f = await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0);
-    expect(f).toEqual({ texto: '📝 Calvinho na fila (1º)… aguenta firme, careca 🙏', mudou: true });
+    expect(f).toEqual({ texto: '📝 Calvinho na fila (1º)… aguenta firme, calvo 🙏', mudou: true });
     expect((await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaNaFila[0]);
     await mexerNaLista(db, 'remover', 'M01', TERCA);
     await mexerNaLista(db, 'remover', 'jonas', TERCA, rng0);

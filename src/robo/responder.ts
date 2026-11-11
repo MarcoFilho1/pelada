@@ -86,19 +86,19 @@ export function calvinhoDoEnv(env: Record<string, string | undefined>): string[]
 }
 
 /** Apelido carinhoso do Jonas no grupo: brincadeira, não ofensa. */
-const PREFIXOS_CALVINHO: Partial<Record<Comando['tipo'], string[]>> = {
-  lista: ['😎 Pra você, calvinho, a lista brilhando igual sua careca:', '📋 Aqui, careca! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
+export const PREFIXOS_CALVINHO: Partial<Record<Comando['tipo'], string[]>> = {
+  lista: ['😎 Pra você, calvinho, a lista brilhando igual sua cabeça:', '📋 Aqui, calvo! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
   falta: ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
-  fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu careca favorito:'],
-  times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, careca! Os times de hoje:'],
-  artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, careca:'],
-  garcom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, careca:'],
-  ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que a careca tá no pódio? Confere:'],
+  fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:'],
+  times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:'],
+  artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:'],
+  garcom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:'],
+  ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:'],
   ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
-  sortear: ['🍀 Sorteando com a sorte da careca:'],
+  sortear: ['🍀 Sorteando com a sorte do calvinho:'],
 };
-const PREFIXO_NAO_ENTENDI = '🤔 Não entendi, calvinho. Os comandos são esses:';
-const SALVO_CALVINHO = '🏆 Times definitivos salvos! Valeu, calvinho 😎';
+export const PREFIXO_NAO_ENTENDI = '🤔 Não entendi, calvinho. Os comandos são esses:';
+export const SALVO_CALVINHO = '🏆 Times definitivos salvos! Valeu, calvinho 😎';
 
 /** Quem mandou é o Jonas? Pelo telefone, se o número está configurado e veio; senão, pelo primeiro nome do WhatsApp. */
 function remetenteEhJonas(m: MensagemRecebida, c: ContextoDaResposta): boolean {
