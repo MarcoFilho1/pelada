@@ -1,13 +1,16 @@
 import { normalizarNome } from '@/domain/nome';
+import type { QtdDeTimes } from '@/domain/sorteio';
 import { juntarNomes } from '@/robo/foto';
 import type { EstadoDaSemana } from '@/server/presencas';
 
 export type AcaoNaLista = 'adicionar' | 'confirmar' | 'remover';
 export type Consulta = 'artilheiro' | 'garcom' | 'ranking' | 'times';
-type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim' | Consulta;
+type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sim' | Consulta;
 
 export type Comando =
   | { tipo: Simples }
+  /** "sortear" (4 times) ou "sortear 3 times". */
+  | { tipo: 'sortear'; times: QtdDeTimes }
   | { tipo: AcaoNaLista; nome: string }
   /** Vários nomes numa só mensagem: até `MAX_NOMES_POR_MENSAGEM` em `nomes`; `excedeu` se havia mais. */
   | { tipo: AcaoNaLista; nome: string; nomes: string[]; excedeu: boolean }
@@ -30,13 +33,6 @@ const PALAVRAS: Record<string, Simples> = {
   'quem falta confirmar': 'falta',
   fila: 'fila',
   ajuda: 'ajuda',
-  sortear: 'sortear',
-  sorteia: 'sortear',
-  sorteio: 'sortear',
-  // As mensagens de erro do sorteio pedem "Peça *sortear* de novo".
-  'sortear de novo': 'sortear',
-  'sorteia de novo': 'sortear',
-  'sortear novamente': 'sortear',
   sim: 'sim',
   artilheiro: 'artilheiro',
   artilheiros: 'artilheiro',
@@ -46,6 +42,24 @@ const PALAVRAS: Record<string, Simples> = {
   ranking: 'ranking',
   times: 'times',
 };
+
+export const TEXTO_SO_3_OU_4 = '🤔 Só sorteio em 3 ou 4 times.';
+
+const NUMEROS: Record<string, number> = { um: 1, dois: 2, tres: 3, quatro: 4, cinco: 5, seis: 6 };
+
+/**
+ * "sortear", "sorteia de novo", "sortear 3", "sortear em 3 times", "sortear de novo três times" (já sem acento e
+ * minúsculo). As mensagens de erro do sorteio pedem "Peça *sortear* de novo". Número que não é 3 nem 4: recusa curta.
+ * Outra coisa depois do "sortear" (ex.: "sortear os times aí"): `null`, vira pergunta livre.
+ */
+function comandoDeSortear(limpo: string): Extract<Comando, { tipo: 'sortear' | 'recusa' }> | null {
+  const m = /^(?:sortear|sorteia|sorteio)(?: (?:de novo|novamente))?(?: (?:em )?(\d{1,2}|[a-z]+)(?: times?)?)?$/.exec(limpo);
+  if (!m) return null;
+  if (m[1] === undefined) return { tipo: 'sortear', times: 4 };
+  const n = /^\d+$/.test(m[1]) ? Number(m[1]) : NUMEROS[m[1]];
+  if (n === undefined) return null;
+  return n === 3 || n === 4 ? { tipo: 'sortear', times: n } : { tipo: 'recusa', texto: TEXTO_SO_3_OU_4 };
+}
 
 /** Primeira palavra (já sem acento) → ação na lista. */
 const ACOES: Record<string, AcaoNaLista> = {
@@ -83,6 +97,8 @@ export function interpretar(textoSemMarcacao: string): Comando {
   if (limpo === '') return { tipo: 'lista' };
   const tipo = PALAVRAS[limpo];
   if (tipo) return { tipo };
+  const sortear = comandoDeSortear(limpo);
+  if (sortear) return sortear;
   const deLista = comandoDeLista(textoSemMarcacao);
   if (deLista) return deLista;
   return { tipo: 'pergunta', texto: textoSemMarcacao.trim().replace(/\s+/g, ' ') };
@@ -109,7 +125,7 @@ export const TEXTO_AJUDA = [
   '👋 remover Nome — tira da lista ou da fila — até 3 nomes: A, B e C',
   '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
   '👕 times — os times de hoje',
-  '🎲 sortear — só os organizadores',
+  '🎲 sortear (ou sortear 3 times) — só os organizadores',
 ].join('\n');
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */

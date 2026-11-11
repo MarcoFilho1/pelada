@@ -1,15 +1,13 @@
 import { desc, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { peladas } from '@/db/schema';
-import { CORES, diferenca, formatarNota, sortearComCompletes } from '@/domain/sorteio';
+import { CORES, diferenca, formatarNota, sortearDaNoite, type QtdDeTimes } from '@/domain/sorteio';
 import { dataDe } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { participantesPadrao, salvarTimesDefinitivos } from '@/server/times';
 
 export const TEXTO_SO_ADMIN = '🔐 Só os organizadores podem sortear pelo WhatsApp.';
 
-/** Mesma regra do site: o sorteio completa cada time com COMPLETE até 4. */
-const POR_TIME = 4;
 export const VALIDADE_MS = 10 * 60_000;
 
 export type Proposta = {
@@ -53,12 +51,16 @@ export function paraWhatsApp(texto: string): string {
 export const EMOJI_COR: Record<string, string> = { azul: '🔵', laranja: '🟠', verde: '🟢', preto: '⚫' };
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
-/** Propõe os times da noite (mesma regra do site) sem gravar nada. */
+/**
+ * Propõe os times da noite (mesma regra do site: `times` times, cada um completado com COMPLETE até 4) sem gravar
+ * nada. A quantidade fica na própria proposta (o tamanho de `elencos`), então o "sim" salva o que foi mostrado.
+ */
 export async function proporSorteio(
   db: DB,
   now: Date,
   adminTelefone: string,
   rng: () => number = Math.random,
+  times: QtdDeTimes = 4,
 ): Promise<Proposta | { erro: string }> {
   const hoje = dataDe(now);
   // Só lê e só a pelada de hoje: o `peladaDoDia` do site cria a da quarta e, nos outros dias, devolve a última.
@@ -68,7 +70,7 @@ export async function proporSorteio(
   const participantes = await participantesPadrao(db, p.id, now);
   if (participantes.length < 2) return { erro: '👥 Poucos confirmados para sortear.' };
 
-  const sorteados = sortearComCompletes(participantes, { times: Math.min(CORES.length, participantes.length), porTime: POR_TIME, rng });
+  const sorteados = sortearDaNoite(participantes, times, rng);
   const blocos = sorteados.map((t, i) =>
     [
       `${EMOJI_COR[CORES[i]]} ${maiuscula(CORES[i])} (${formatarNota(t.soma)})`,

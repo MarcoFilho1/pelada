@@ -35,6 +35,12 @@ test('sorteio: 14 confirmados viram 4 times com 2 COMPLETE, definitivo, e algué
   }
   await expect(page.getByRole('checkbox', { checked: true })).toHaveCount(14);
   await expect(page.getByText('2 vagas viram COMPLETE.')).toBeVisible();
+  // A escolha de quantos times fica acima da pílula; começa em 4. Com 3, os 14 cabem sem COMPLETE.
+  await expect(page.getByRole('radio', { name: '4 times' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: '3 times' }).click();
+  await expect(page.getByRole('button', { name: 'Sortear 14 em 3 times' })).toBeVisible();
+  await expect(page.getByText('2 vagas viram COMPLETE.')).toHaveCount(0);
+  await page.getByRole('radio', { name: '4 times' }).click();
   await page.getByRole('button', { name: 'Sortear 14 em 4 times' }).click();
 
   // 4 times: dois de 4 jogadores, dois de 3 + COMPLETE.

@@ -387,6 +387,11 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   tocar outro do mesmo time troca a escolha. Os dois trocados entram com o passo de pendurar (90ms, 2 quadros).
 - **Barra de baixo:** fixa no rodapé, fundo #000 (como a dos mensalistas): "Sortear 16 em 4 times" (pílula
   branca, conta o que vai fazer); na proposta, "Marcar como definitivo" em cima e "Sortear de novo" secundária.
+- **Quantos times:** antes de sortear, logo acima da pílula (na barra), a Escolha de estado em 2 colunas
+  (`role="radiogroup"` "Quantos times"): "3 times" e "4 times", 56px, placa #111, Inter 500 18px; a escolhida sobe
+  para placa alta com o check lima. Começa em 4. A pílula e a dica do COMPLETE seguem a escolha ("Sortear 13 em 3
+  times"; COMPLETE até times×4) e "Sortear de novo" usa a mesma. Na proposta ela sai da barra ("Mudar quem joga"
+  volta a ela). Com 3 times as cores são Azul, Laranja e Verde.
 - **Folha do escolhido:** com um jogador escolhido, a barra vira folha: placa #111, raio 20px só em cima,
   sombra para cima (ela flutua sobre os times; é a única sombra da tela). Na proposta: "Trocar Fulano" + "com
   alguém de outro time" e "Cancelar". Nos times definitivos: "Levar Fulano para" (ou "Pôr Fulano no"), os
@@ -594,6 +599,10 @@ Um corte só, em 1024px (`lg`). Abaixo dele a área admin e as telas do jogador 
   jogadores" e "Cancelar" numa linha embaixo.
 - **Sorteio:** abaixo do h1 (e da faixa de partida rolando), duas colunas: à esquerda uma de 304px (19rem), à direita
   os times, 40px entre elas. Sem a barra do rodapé e sem folha que sobe.
+  - **Quantos times:** a mesma escolha "3 times / 4 times" fica no alto da coluna dos times (até 384px de largura,
+    20px acima do que vem embaixo), antes e depois de sortear, com o mesmo estado do celular. Trocar com a proposta
+    na tela invalida a proposta como mexer em "Quem joga": as pílulas voltam a "Sortear 14 em 3 times" e o gesto vira
+    "Agora são 3 times. Sorteie de novo para ver os times." Com 3 times os cartões dividem a linha em 3 colunas.
   - **Antes de sortear:** à esquerda "Pôr mais alguém" e "Quem joga" (as mesmas linhas de marcar); à direita, no
     alto, a pílula "Sortear 14 em 4 times" do tamanho do texto com "2 vagas viram COMPLETE." em Giz ao lado e, abaixo,
     em #b4b4b4, "Os times aparecem aqui, equilibrados pela nota. Antes de marcar como definitivo, dá para trocar quem

@@ -5,13 +5,13 @@ import { useMemo, useRef, useState, useTransition } from 'react';
 import { NOME_DA_COR } from '@/components/colete';
 import { Marca } from '@/components/icones';
 import { TEXTO } from '@/components/pilula';
-import { CORES, formatarNota, rotuloDaDiferenca, type JogadorNota } from '@/domain/sorteio';
+import { CORES, formatarNota, rotuloDaDiferenca, type JogadorNota, type QtdDeTimes } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { TimeDaPelada } from '@/server/times';
 import { marcarDefinitivo, mover, porComplete, preencher, sortear, tirarComplete } from './acoes';
 import { BuscaDeJogador, Erro, useTermoDaBusca } from './busca-de-jogador';
 import { EscolherQuemEntra, FolhaDoComplete, NOTA_DO_COMPLETE_NOVO, useNotasDosCompletes } from './complete';
-import { AcoesDoSorteio, AvisoDoSorteio, LevarEscolhido, SortearDeNovo, TrocarEscolhido, type Aviso } from './folhas';
+import { AcoesDoSorteio, AvisoDoSorteio, EscolhaDeTimes, LevarEscolhido, SortearDeNovo, TrocarEscolhido, type Aviso } from './folhas';
 import {
   Barra,
   Equilibrio,
@@ -123,19 +123,23 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, startAcao] = useTransition();
   const [acao, setAcao] = useState<'sortear' | 'definir' | null>(null);
+  /** Quantos times o admin pediu (algumas noites só fecham 3). Um estado só para o celular e o PC. */
+  const [qtdTimes, setQtdTimes] = useState<QtdDeTimes>(4);
   /** O admin mexeu nas marcas com a proposta na tela (só dá no PC, onde "Quem joga" fica à vista). */
   const [marcouDepois, setMarcouDepois] = useState(false);
   const proximaChave = useRef(1);
 
   const visiveis = linhas.filter((id) => porId.has(id));
   const escolhidos = visiveis.filter((id) => marcados.has(id));
-  const nTimes = Math.min(CORES.length, escolhidos.length);
+  const nTimes = Math.min(qtdTimes, escolhidos.length);
   const viramComplete = Math.max(0, nTimes * VAGAS - escolhidos.length);
   // No PC "Quem joga" fica à vista com os times: mexeu nas marcas depois de sortear, a proposta não vale mais. Só conta
   // a marca mexida à mão (a lista que se atualiza sozinha não muda nada, como no celular).
   const naProposta = useMemo(() => proposta && new Set(proposta.flatMap((t) => t.jogadores.map((j) => j.id))), [proposta]);
   const quemJogaMudou =
     marcouDepois && !!naProposta && (naProposta.size !== escolhidos.length || escolhidos.some((id) => !naProposta.has(id)));
+  // No PC a escolha fica à vista com a proposta: trocou o número de times, a proposta também não vale mais.
+  const qtdMudou = !!proposta && !quemJogaMudou && proposta.length !== nTimes;
 
   function alternar(id: number) {
     setConfirmando(false);
@@ -167,7 +171,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
     fecharFolhas();
     setAcao('sortear');
     startAcao(async () => {
-      const r = await sortear(escolhidos);
+      const r = await sortear(escolhidos, qtdTimes);
       if (r.ok) {
         setProposta(
           r.times.map((t) => ({ jogadores: t.jogadores, completes: t.completes.map((nota) => ({ chave: proximaChave.current++, nota })) })),
@@ -254,11 +258,23 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
     ) : null;
   const temPainel = !!aberto || !!selecionado;
 
+  const escolha = (className: string) => (
+    <EscolhaDeTimes
+      valor={qtdTimes}
+      pendente={pendente}
+      className={className}
+      onEscolher={(n) => {
+        setConfirmando(false);
+        setQtdTimes(n);
+      }}
+    />
+  );
+
   // No PC "Voltar aos times salvos" fica na coluna da esquerda, logo abaixo do aviso dos times salvos.
   const acoes = (pc: boolean) => (
     <AcoesDoSorteio
       pc={pc}
-      fase={proposta && !quemJogaMudou ? 'proposta' : 'escolher'}
+      fase={proposta && !quemJogaMudou && !qtdMudou ? 'proposta' : 'escolher'}
       escolhidos={escolhidos.length}
       nTimes={nTimes}
       viramComplete={viramComplete}
@@ -271,6 +287,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
       onDefinir={definir}
       onVoltarDaConfirmacao={() => setConfirmando(false)}
       onVoltarAosSalvos={proposta || pc ? undefined : p.onVoltar}
+      escolha={pc ? undefined : escolha('mb-2')}
     />
   );
 
@@ -358,6 +375,10 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
         </div>
 
         <div className={`contents ${DIREITA}`}>
+          {/* No PC a escolha fica no alto da coluna dos times, antes e depois de sortear (no celular, na barra). */}
+          <SoNo pc>
+            <div className="hidden lg:block">{escolha('mb-5 max-w-sm')}</div>
+          </SoNo>
           {proposta ? (
             <>
               <Equilibrio
@@ -365,6 +386,8 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
                 dica={
                   quemJogaMudou ? (
                     'Quem joga mudou. Sorteie de novo para os times terem quem está marcado.'
+                  ) : qtdMudou ? (
+                    `Agora são ${nTimes} times. Sorteie de novo para ver os times.`
                   ) : proposta.some((t) => t.completes.length) ? (
                     'Toque em dois de times diferentes para trocar, ou num COMPLETE para mudar a nota.'
                   ) : (

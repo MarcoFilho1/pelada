@@ -90,7 +90,8 @@ export function GradeDeTimes({
 }) {
   return (
     <section aria-label="Times" className="mt-4">
-      <div className="grid grid-cols-2 gap-2 @[42rem]:grid-cols-4">
+      {/* Noite de 3 times: no PC os 3 cartões dividem a linha (sem uma coluna vazia no fim). */}
+      <div className={`grid grid-cols-2 gap-2 ${times.length === 3 ? '@[42rem]:grid-cols-3' : '@[42rem]:grid-cols-4'}`}>
         {times.map((t, i) => {
           const cor = cores[i];
           const nome = NOME_DA_COR[cor];

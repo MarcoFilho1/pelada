@@ -81,6 +81,31 @@ describe('proporSorteio', () => {
   });
 });
 
+describe('proporSorteio em 3 times', () => {
+  it('padrão 4; com 3: Azul, Laranja e Verde (10 jogadores: 4, 3, 3 com 2 COMPLETE)', async () => {
+    const quatro = (await proporSorteio(db, QUARTA, ADMIN, rng)) as Proposta;
+    expect(quatro.elencos).toHaveLength(4);
+    const p = (await proporSorteio(db, QUARTA, ADMIN, rng, 3)) as Proposta;
+    expect(p.elencos).toHaveLength(3);
+    expect(p.elencos.flat()).toHaveLength(10);
+    expect(p.completes.flat()).toHaveLength(2);
+    expect(p.elencos.map((e, i) => e.length + p.completes[i].length)).toEqual([4, 4, 4]);
+    expect(p.texto).toContain('🔵 Azul');
+    expect(p.texto).toContain('🟠 Laranja');
+    expect(p.texto).toContain('🟢 Verde');
+    expect(p.texto).not.toContain('⚫');
+  });
+
+  it('o "sim" salva exatamente os 3 times mostrados', async () => {
+    const p = (await proporSorteio(db, QUARTA, ADMIN, rng, 3)) as Proposta;
+    expect(await confirmarSorteio(db, new Date(QUARTA.getTime() + 60_000), ADMIN, p)).toEqual({ ok: '🏆 Times definitivos salvos!' });
+    const ts = await timesDaPelada(db, peladaId);
+    expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
+    expect(ts.map((t) => t.jogadores.map((j) => j.id).sort())).toEqual(p.elencos.map((e) => [...e].sort()));
+    expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual(p.completes);
+  });
+});
+
 describe('confirmarSorteio', () => {
   const proposta = async () => (await proporSorteio(db, QUARTA, ADMIN, rng)) as Proposta;
   const mais = (min: number, s = 0) => new Date(QUARTA.getTime() + min * 60_000 + s * 1000);

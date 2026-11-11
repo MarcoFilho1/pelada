@@ -13,7 +13,7 @@ import { timesDaPelada } from '@/server/times';
 /** JSON Schema dos argumentos, no formato estrito (`strict: true`) da API: sem propriedades extras. */
 export type Parametros = {
   type: 'object';
-  properties: Record<string, { type: 'string'; description?: string }>;
+  properties: Record<string, { type: 'string'; description?: string } | { type: 'integer'; enum: number[]; description?: string }>;
   required?: string[];
   additionalProperties: false;
 };
