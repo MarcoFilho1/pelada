@@ -2,11 +2,24 @@ import { normalizarNome } from '@/domain/nome';
 import { juntarNomes } from '@/robo/foto';
 import type { EstadoDaSemana } from '@/server/presencas';
 
-export type Comando =
-  | { tipo: 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim' }
-  | { tipo: 'pergunta'; texto: string };
+export type AcaoNaLista = 'adicionar' | 'confirmar' | 'remover';
+export type Consulta = 'artilheiro' | 'garcom' | 'ranking' | 'times';
+type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim' | Consulta;
 
-const PALAVRAS: Record<string, 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim'> = {
+export type Comando =
+  | { tipo: Simples }
+  | { tipo: AcaoNaLista; nome: string }
+  | { tipo: 'pergunta'; texto: string }
+  /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
+  | { tipo: 'recusa'; texto: string };
+
+/** Nome maior que isto nem é procurado (e nunca é repetido no grupo). */
+export const TAM_MAX_NOME_PEDIDO = 40;
+export const TEXTO_NOME_COMPRIDO = 'Nome muito comprido.';
+
+export const CONSULTAS: readonly Consulta[] = ['artilheiro', 'garcom', 'ranking', 'times'];
+
+const PALAVRAS: Record<string, Simples> = {
   lista: 'lista',
   falta: 'falta',
   'falta confirmar': 'falta',
@@ -22,7 +35,38 @@ const PALAVRAS: Record<string, 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' 
   'sorteia de novo': 'sortear',
   'sortear novamente': 'sortear',
   sim: 'sim',
+  artilheiro: 'artilheiro',
+  artilheiros: 'artilheiro',
+  artilharia: 'artilheiro',
+  garcom: 'garcom',
+  garcons: 'garcom',
+  ranking: 'ranking',
+  times: 'times',
 };
+
+/** Primeira palavra (já sem acento) → ação na lista. */
+const ACOES: Record<string, AcaoNaLista> = {
+  adicionar: 'adicionar',
+  confirmar: 'confirmar',
+  remover: 'remover',
+  remove: 'remover',
+};
+
+/** "adicionar [na] [lista] <nome>" → o nome como foi escrito (sem pontuação no fim); `null` sem nome. */
+function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | { tipo: 'recusa'; texto: string } | null {
+  const palavras = texto.trim().split(/\s+/);
+  const tipo = ACOES[normalizarNome(palavras[0] ?? '')];
+  if (!tipo) return null;
+  let resto = palavras.slice(1);
+  if (tipo === 'adicionar') {
+    if (normalizarNome(resto[0] ?? '') === 'na' && normalizarNome(resto[1] ?? '') === 'lista') resto = resto.slice(2);
+    else if (normalizarNome(resto[0] ?? '') === 'lista') resto = resto.slice(1);
+  }
+  const nome = resto.join(' ').replace(/[\s.,;:!?]+$/u, '').trim();
+  if (!nome) return null;
+  if (nome.length > TAM_MAX_NOME_PEDIDO) return { tipo: 'recusa', texto: TEXTO_NOME_COMPRIDO };
+  return { tipo, nome };
+}
 
 /** Texto da mensagem sem a marcação → comando. Sobra de texto depois do comando é pergunta livre. */
 export function interpretar(textoSemMarcacao: string): Comando {
@@ -30,6 +74,8 @@ export function interpretar(textoSemMarcacao: string): Comando {
   if (limpo === '') return { tipo: 'lista' };
   const tipo = PALAVRAS[limpo];
   if (tipo) return { tipo };
+  const deLista = comandoDeLista(textoSemMarcacao);
+  if (deLista) return deLista;
   return { tipo: 'pergunta', texto: textoSemMarcacao.trim().replace(/\s+/g, ' ') };
 }
 
@@ -46,13 +92,16 @@ export function respostaFila(estado: EstadoDaSemana): string {
 
 export const TEXTO_AJUDA = [
   'Me marque com um comando:',
-  '- lista: a lista da semana',
+  '- lista: a lista completa da semana',
   '- falta confirmar: quem ainda não confirmou',
   '- fila: quem está na fila',
-  '- sortear: admins propõem o sorteio dos times',
-  'Ou faça uma pergunta, por exemplo: @robô o João está na lista?',
+  '- adicionar Nome: põe o jogador na lista (ou na fila, se estiver cheia)',
+  '- confirmar Nome: confirma quem está na lista',
+  '- remover Nome: tira da lista ou da fila',
+  '- artilheiro, garçom, ranking: os primeiros do mês',
+  '- times: os times de hoje',
+  '- sortear: só os organizadores',
 ].join('\n');
 
-export function respostaListaSemMudanca(hora: string): string {
-  return `A lista não mudou desde as ${hora}.`;
-}
+/** Com as perguntas livres ligadas, o `ajuda` lembra delas. */
+export const TEXTO_AJUDA_PERGUNTA = 'Ou faça uma pergunta, por exemplo: @robô o João está na lista?';

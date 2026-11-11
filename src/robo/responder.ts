@@ -1,10 +1,19 @@
 // Resposta a uma marcação no grupo: decide o texto, envia e cuida do freio e da proposta de sorteio.
 // Sem WhatsApp, banco ou IA aqui dentro: tudo chega pelo contexto (os testes usam falsos).
+import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
-import { interpretar, respostaFalta, respostaFila, respostaListaSemMudanca, TEXTO_AJUDA } from './comandos';
+import {
+  interpretar,
+  respostaFalta,
+  respostaFila,
+  TEXTO_AJUDA,
+  TEXTO_AJUDA_PERGUNTA,
+  type AcaoNaLista,
+  type Consulta,
+} from './comandos';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
-import { TEXTO_LIMITE, type Freio } from './freio';
+import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { ehAdmin, TEXTO_SO_ADMIN, VALIDADE_MS, type Proposta } from './sorteio-zap';
@@ -13,6 +22,8 @@ export type MensagemRecebida = {
   grupoId: string;
   /** Telefone com DDI (só dígitos); `null` quando o WhatsApp só mostrou o LID de quem mandou. */
   remetenteTelefone: string | null;
+  /** Nome do WhatsApp de quem mandou (`pushName`); `null` se não veio. Vai no "pedido por" e no log. */
+  remetenteNome: string | null;
   texto: string;
   mencionaORobo: boolean;
   /** A mensagem cita (responde a) uma mensagem do robô. Só vale para o "sim" do sorteio. */
@@ -34,6 +45,9 @@ export type ContextoDaResposta = {
   propor: (now: Date, telefone: string) => Promise<Proposta | { erro: string }>;
   confirmar: (now: Date, telefone: string, proposta: Proposta | null) => Promise<{ ok: string } | { erro: string }>;
   perguntar: (texto: string, op: { agora: () => Date }) => Promise<string>;
+  /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
+  mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
+  consultar: (tipo: Consulta, now: Date) => Promise<string>;
   /** Resolve só com o envio confirmado pelo WhatsApp. */
   enviar: (texto: string) => Promise<void>;
   log: (linha: string) => void;
@@ -45,8 +59,6 @@ export type Resposta = {
   ehListaCompleta: boolean;
   gravar?: { tipo: TipoMensagem; foto: FotoDaLista };
 };
-
-export const TEXTO_SEM_IA = 'As perguntas livres não estão ligadas.';
 
 /** Lê `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` e `ROBO_ADMINS` (separados por vírgula). */
 export function configDasRespostas(env: Record<string, string | undefined>): { ia: ContextoDaResposta['ia']; admins: string[] } {
@@ -70,12 +82,12 @@ export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRo
   return tipo === null || tipo === 'rodada';
 }
 
-/** "15:30" no horário de Recife (sempre UTC-3). */
-function horaMinuto(iso: string): string {
-  return new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(11, 16);
-}
+export const STATUS_SEM_ATUALIZACAO = 'Status: sem nenhuma atualização.';
 
-/** `lista`: frase curta se nada mudou desde a última lista do robô; senão a lista com o cabeçalho. */
+/**
+ * `lista`: sempre a lista completa. Sem mudança desde a última lista do robô, o cabeçalho é
+ * "Status: sem nenhuma atualização." (e não vira a última lista); senão, o cabeçalho das mudanças.
+ */
 async function respostaLista(m: MensagemRecebida, c: ContextoDaResposta): Promise<Omit<Resposta, 'ehListaCompleta'>> {
   const lista = await c.lerLista(m.quando);
   const foto = fotografar(lista);
@@ -90,7 +102,11 @@ async function respostaLista(m: MensagemRecebida, c: ContextoDaResposta): Promis
   else tipo = 'rodada';
 
   const semMudanca = anterior && (cancelada ? eraCancelada : !eraCancelada && !haMudanca(mudancas(anterior, foto)));
-  if (semMudanca) return { texto: respostaListaSemMudanca(horaMinuto(c.ultimo!.quando)) };
+  if (semMudanca) {
+    // Cancelada sem mudança: o aviso de cancelamento de novo (não há lista para mostrar).
+    if (cancelada) return { texto: montarMensagem('cancelada', lista, foto, anterior) };
+    return { texto: `${STATUS_SEM_ATUALIZACAO}\n\n${textoWhatsApp(lista, lista.data)}` };
+  }
   return { texto: montarMensagem(tipo, lista, foto, anterior), gravar: { tipo, foto } };
 }
 
@@ -114,29 +130,56 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta): Promise<
   return 'ok' in r ? r.ok : r.erro;
 }
 
+/** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
 async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
-  if (!c.ia) return TEXTO_SEM_IA;
+  if (!c.ia) return TEXTO_AJUDA;
   if (!c.freio.podePerguntar()) return TEXTO_LIMITE;
   const r = await c.perguntar(texto, { agora: () => m.quando });
   c.freio.registrarPergunta();
   return r;
 }
 
+/** Quem pediu, para o "pedido por" (nunca o telefone). */
+const quemPediu = (m: MensagemRecebida) => m.remetenteNome?.trim() || 'alguém';
+
+/** Linha do log para marcação sem resposta: o motivo e o nome do WhatsApp (nunca o telefone). */
+function ignorada(m: MensagemRecebida, c: ContextoDaResposta, motivo: string): null {
+  c.log(`marcação ignorada (${motivo})${m.remetenteNome ? ` de ${m.remetenteNome}` : ''}`);
+  return null;
+}
+
+/** Passou do limite: um aviso de "muita gente" por 60 s, que não conta nas respostas. */
+async function avisarLimite(m: MensagemRecebida, c: ContextoDaResposta): Promise<null> {
+  ignorada(m, c, `limite de ${LIMITE_RESPOSTAS} por minuto`);
+  if (!c.freio.podeAvisar()) return null;
+  try {
+    await c.enviar(TEXTO_MUITA_GENTE);
+    c.freio.registrarAviso();
+  } catch (err) {
+    c.log(`aviso de limite não saiu: ${(err as Error).message}`);
+  }
+  return null;
+}
+
 /**
  * Responde a uma mensagem do grupo, se for marcação do robô no grupo configurado, fora do silêncio
- * e com o freio liberado. Envia, registra a resposta no freio e devolve o que saiu (ou `null`).
+ * e dentro do limite de respostas. Envia, registra a resposta no freio e devolve o que saiu (ou `null`).
+ * Marcação sem resposta deixa uma linha no log com o motivo.
  * O sorteio só sai pelo comando `sortear`, nunca pela IA. Erro ao enviar: registra no log, não tenta de novo.
  */
 export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
-  if (!c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return null;
+  const chamou = m.mencionaORobo || m.respondeAoRobo;
+  if (!c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return chamou ? ignorada(m, c, 'outro grupo') : null;
   const cmd = interpretar(m.texto);
   // Sem marcação, só o "sim" respondendo à mensagem do robô com proposta guardada (citar o robô não é marcar).
-  if (!m.mencionaORobo && !(m.respondeAoRobo && cmd.tipo === 'sim' && c.proposta.atual)) return null;
-  if (emSilencio(m.quando)) return null;
-  // O "sim" de quem pediu o sorteio costuma vir no mesmo minuto da proposta: não passa pelo freio.
+  if (!m.mencionaORobo && !(m.respondeAoRobo && cmd.tipo === 'sim' && c.proposta.atual)) {
+    return m.respondeAoRobo ? ignorada(m, c, 'resposta ao robô sem comando reconhecido') : null;
+  }
+  if (emSilencio(m.quando)) return ignorada(m, c, 'silêncio 23–08');
+  // O "sim" de quem pediu o sorteio nunca é barrado pelo limite.
   const p = c.proposta.atual;
   const simDeQuemPediu = cmd.tipo === 'sim' && p !== null && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, [p.adminTelefone]);
-  if (!simDeQuemPediu && !c.freio.podeResponder()) return null;
+  if (!simDeQuemPediu && !c.freio.podeResponder()) return avisarLimite(m, c);
   if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim') && m.remetenteTelefone === null) {
     c.log('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
   }
@@ -153,7 +196,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       r = { texto: respostaFila(await c.lerLista(m.quando)) };
       break;
     case 'ajuda':
-      r = { texto: TEXTO_AJUDA };
+      r = { texto: c.ia ? `${TEXTO_AJUDA}\n${TEXTO_AJUDA_PERGUNTA}` : TEXTO_AJUDA };
       break;
     case 'sortear':
       r = { texto: await respostaSortear(m, c) };
@@ -161,8 +204,25 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     case 'sim':
       r = { texto: await respostaSim(m, c) };
       break;
+    case 'adicionar':
+    case 'confirmar':
+    case 'remover': {
+      // Qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu.
+      const feito = await c.mexerNaLista(cmd.tipo, cmd.nome, m.quando);
+      r = { texto: feito.mudou ? `${feito.texto} (pedido por ${quemPediu(m)})` : feito.texto };
+      break;
+    }
+    case 'artilheiro':
+    case 'garcom':
+    case 'ranking':
+    case 'times':
+      r = { texto: await c.consultar(cmd.tipo, m.quando) };
+      break;
     case 'pergunta':
       r = { texto: await respostaPergunta(cmd.texto, m, c) };
+      break;
+    case 'recusa':
+      r = { texto: cmd.texto };
       break;
   }
 

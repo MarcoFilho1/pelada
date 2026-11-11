@@ -75,6 +75,7 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     expect(m).toEqual({
       grupoId: 'g@g.us',
       remetenteTelefone: '5581990000001',
+      remetenteNome: null,
       texto: 'tá na lista? lista',
       mencionaORobo: true,
       respondeAoRobo: false,
@@ -107,6 +108,13 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     expect(lerMensagemRecebida({ ...base, message: cita('111111111111111:7@lid') }, robo)).toMatchObject({ respondeAoRobo: true, mencionaORobo: false, texto: 'sim' });
     expect(lerMensagemRecebida({ ...base, message: cita('5581990000000@s.whatsapp.net') }, robo)?.respondeAoRobo).toBe(true);
     expect(lerMensagemRecebida({ ...base, message: cita('5581990000003@s.whatsapp.net') }, robo)?.respondeAoRobo).toBe(false);
+  });
+
+  it('nome do WhatsApp de quem mandou (pushName), sem espaços sobrando; vazio vira null', () => {
+    const m = { conversation: 'oi' };
+    expect(lerMensagemRecebida({ ...base, pushName: ' Zeca ', message: m }, robo)?.remetenteNome).toBe('Zeca');
+    expect(lerMensagemRecebida({ ...base, pushName: '  ', message: m }, robo)?.remetenteNome).toBeNull();
+    expect(lerMensagemRecebida({ ...base, pushName: null, message: m }, robo)?.remetenteNome).toBeNull();
   });
 
   it('texto simples (conversation) não tem menção', () => {

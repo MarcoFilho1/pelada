@@ -70,7 +70,9 @@ test('sorteio: 14 confirmados viram 4 times com 2 COMPLETE, definitivo, e algué
   await completes.first().click();
   await page.getByRole('button', { name: 'Pôr alguém no lugar' }).click();
   await expect(page.getByRole('heading', { name: `Quem entra no ${timeFixo}?` })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Buscar pelo nome' }).fill(E2E.semTime);
+  // Às quartas a pelada do dia é a da semana e outros testes põem gente na lista: aí o campo se chama
+  // "Outra pessoa" (há "Na lista, sem time" acima dele). Nos outros dias, "Buscar pelo nome".
+  await page.getByRole('textbox', { name: /^(Buscar pelo nome|Outra pessoa)$/ }).fill(E2E.semTime);
   await page.getByRole('button', { name: E2E.semTime, exact: true }).click();
 
   await expect(page.getByRole('status').filter({ hasText: `${E2E.semTime} entrou no ${timeFixo}.` })).toBeVisible();

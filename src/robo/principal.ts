@@ -11,11 +11,13 @@ import { getDb } from '@/db/client';
 import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
+import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
 import { Freio } from './freio';
 import { perguntar } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
+import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
 import { configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
 import { confirmarSorteio, proporSorteio, type Proposta } from './sorteio-zap';
@@ -243,6 +245,9 @@ async function laco(): Promise<void> {
         lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
         propor: (n, tel) => proporSorteio(db, n, tel),
         confirmar: (n, tel, p) => confirmarSorteio(db, n, tel, p),
+        // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
+        mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
+        consultar: (tipo, n) => consultar(db, tipo, n),
         perguntar: (texto, { agora }) => perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, ferramentas: ferramentasDeLeitura(db, agora), agora }),
         enviar: enviarNoGrupo,
         log,
@@ -258,8 +263,9 @@ async function laco(): Promise<void> {
     }
   };
   const aoReceber = (m: MensagemRecebida) => {
-    // Filtro barato antes da fila: só marcação (ou resposta ao robô) no grupo configurado.
-    if ((m.mencionaORobo || m.respondeAoRobo) && m.grupoId === grupoId) void emFila(() => tratar(m));
+    // Filtro barato antes da fila: só marcação (ou resposta ao robô). A de outro grupo vai ao
+    // `responder` só para deixar a linha "marcação ignorada (outro grupo)" no log.
+    if (m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).

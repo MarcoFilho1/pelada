@@ -4,7 +4,6 @@ import {
   interpretar,
   respostaFalta,
   respostaFila,
-  respostaListaSemMudanca,
 } from '@/robo/comandos';
 import type { ItemLista } from '@/domain/lista';
 import type { EstadoDaSemana } from '@/server/presencas';
@@ -47,8 +46,43 @@ describe('interpretar', () => {
     ['sortear novamente', 'sortear'],
     ['sim', 'sim'],
     ['SIM.', 'sim'],
+    ['artilheiro', 'artilheiro'],
+    ['Artilheiros?', 'artilheiro'],
+    ['artilharia', 'artilheiro'],
+    ['garçom', 'garcom'],
+    ['GARCOM', 'garcom'],
+    ['garçons', 'garcom'],
+    ['ranking', 'ranking'],
+    ['times', 'times'],
+    ['Times?', 'times'],
   ])('"%s" -> %s', (texto, tipo) => {
     expect(interpretar(texto)).toEqual({ tipo });
+  });
+
+  it.each([
+    ['adicionar Pepe', 'adicionar', 'Pepe'],
+    ['Adicionar   João  Pedro!', 'adicionar', 'João Pedro'],
+    ['adicionar lista Pepe', 'adicionar', 'Pepe'],
+    ['adicionar na lista Pepe', 'adicionar', 'Pepe'],
+    ['confirmar Ana Paula', 'confirmar', 'Ana Paula'],
+    ['CONFIRMAR bia.', 'confirmar', 'bia'],
+    ['remover Caio', 'remover', 'Caio'],
+    ['remove Caio', 'remover', 'Caio'],
+  ])('"%s" -> %s com o nome', (texto, tipo, nome) => {
+    expect(interpretar(texto)).toEqual({ tipo, nome });
+  });
+
+  it('nome com mais de 40 caracteres: recusa sem repetir o texto', () => {
+    const longo = 'a'.repeat(41);
+    expect(interpretar(`adicionar ${longo}`)).toEqual({ tipo: 'recusa', texto: 'Nome muito comprido.' });
+    expect(interpretar(`remover ${'b'.repeat(5000)}`)).toEqual({ tipo: 'recusa', texto: 'Nome muito comprido.' });
+    expect(interpretar(`confirmar ${'c'.repeat(40)}`)).toEqual({ tipo: 'confirmar', nome: 'c'.repeat(40) });
+  });
+
+  it('comando de lista sem nome vira pergunta (ajuda ou IA)', () => {
+    expect(interpretar('adicionar')).toEqual({ tipo: 'pergunta', texto: 'adicionar' });
+    expect(interpretar('adicionar lista')).toEqual({ tipo: 'pergunta', texto: 'adicionar lista' });
+    expect(interpretar('confirmar')).toEqual({ tipo: 'pergunta', texto: 'confirmar' });
   });
 
   it('texto extra depois do comando vira pergunta', () => {
@@ -76,11 +110,10 @@ describe('respostas fixas', () => {
   it('fila vazia', () => {
     expect(respostaFila(estado([]))).toBe('Ninguém na fila.');
   });
-  it('lista sem mudança', () => {
-    expect(respostaListaSemMudanca('15:30')).toBe('A lista não mudou desde as 15:30.');
-  });
-  it('ajuda cita os comandos e uma pergunta livre', () => {
-    for (const c of ['lista', 'falta confirmar', 'fila', 'sortear']) expect(TEXTO_AJUDA).toContain(c);
-    expect(TEXTO_AJUDA).toContain('?');
+  it('ajuda cita todos os comandos, em texto simples', () => {
+    for (const c of ['lista', 'falta confirmar', 'fila', 'sortear', 'adicionar', 'confirmar', 'remover', 'artilheiro', 'garçom', 'ranking', 'times']) {
+      expect(TEXTO_AJUDA).toContain(c);
+    }
+    expect(TEXTO_AJUDA).not.toMatch(/[*_~`]/);
   });
 });
