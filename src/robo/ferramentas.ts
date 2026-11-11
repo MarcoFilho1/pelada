@@ -10,18 +10,46 @@ import { estadoDaSemanaSemCriar } from '@/server/presencas';
 import { periodosDisponiveis, rankingDoPeriodo } from '@/server/ranking';
 import { timesDaPelada } from '@/server/times';
 
+/** JSON Schema dos argumentos, no formato estrito (`strict: true`) da API: sem propriedades extras. */
+export type Parametros = {
+  type: 'object';
+  properties: Record<string, { type: 'string'; description?: string }>;
+  required?: string[];
+  additionalProperties: false;
+};
+
+/**
+ * Texto que vai ao grupo palavra por palavra, mesmo que o modelo o reescreva ou a conversa falhe:
+ * `acao` (mudança na lista, com o "pedido por"), `lista` (a lista inteira, nunca cortada) e
+ * `sorteio` (a proposta que o "sim" salva). `descartar` desfaz o que ninguém vai ver.
+ */
+export class TextoPronto {
+  constructor(
+    readonly texto: string,
+    readonly como: 'acao' | 'lista' | 'sorteio',
+    readonly descartar?: () => void,
+  ) {}
+}
+
+/** Falha esperada de ferramenta: o texto volta ao modelo como `tool_result` com `is_error`. */
+export class ErroDeFerramenta extends Error {}
+
 export type Ferramenta = {
   nome: string;
   descricao: string;
-  /** JSON Schema dos argumentos. */
-  parametros: object;
+  parametros: Parametros;
+  /** Recebe o `input` já como objeto (o SDK faz o parse); valida antes de usar. */
   executar(args: unknown): Promise<unknown>;
+  /** Mexe na lista: no máximo 3 por conversa, contadas no código. */
+  altera?: boolean;
+  /** Pede o sorteio: no máximo 1 por conversa. */
+  sorteio?: boolean;
 };
 
 const TOPO = 20;
 
-const semParametros = { type: 'object', properties: {}, additionalProperties: false };
-const comPeriodo = {
+export const semParametros: Parametros = { type: 'object', properties: {}, additionalProperties: false };
+const comPeriodo: Parametros = {
   type: 'object',
   properties: {
     periodo: {
@@ -34,10 +62,10 @@ const comPeriodo = {
 
 function lerPeriodo(args: unknown): string | undefined {
   if (args == null) return undefined;
-  if (typeof args !== 'object' || Array.isArray(args)) throw new Error('argumentos inválidos');
+  if (typeof args !== 'object' || Array.isArray(args)) throw new ErroDeFerramenta('Argumentos inválidos.');
   const p = (args as { periodo?: unknown }).periodo;
   if (p === undefined || p === null) return undefined;
-  if (typeof p !== 'string') throw new Error('periodo inválido');
+  if (typeof p !== 'string') throw new ErroDeFerramenta('Período inválido.');
   return p;
 }
 
@@ -74,7 +102,7 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
   return [
     {
       nome: 'lista_da_semana',
-      descricao: 'A lista de presença da próxima pelada (quarta): quem está na lista, quem confirmou, a fila e as vagas.',
+      descricao: 'Dados da lista da próxima pelada (quarta): quem está na lista, quem confirmou, a fila e as vagas. Para perguntas sobre alguém; para mostrar a lista no grupo, use ver_lista.',
       parametros: semParametros,
       async executar() {
         const e = await estadoDaSemanaSemCriar(db, agora());
@@ -102,8 +130,8 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
       },
     },
     {
-      nome: 'ranking',
-      descricao: `Ranking de jogadores (pontos, jogos, vitórias, gols, assistências, aproveitamento) no período. Mostra os ${TOPO} primeiros.`,
+      nome: 'ranking_detalhado',
+      descricao: `Ranking detalhado (pontos, jogos, vitórias, gols, assistências, aproveitamento) em qualquer período, com os ${TOPO} primeiros. Para "o ranking" do mês, use a ferramenta ranking.`,
       parametros: comPeriodo,
       async executar(args) {
         const { periodo, linhas } = await ranking(lerPeriodo(args));
@@ -126,8 +154,8 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
       },
     },
     {
-      nome: 'artilharia',
-      descricao: `Artilharia: quem fez mais gols (e assistências) no período. Mostra os ${TOPO} primeiros.`,
+      nome: 'artilharia_detalhada',
+      descricao: `Artilharia detalhada (gols e assistências) em qualquer período, com os ${TOPO} primeiros. Para "os artilheiros" do mês, use a ferramenta artilheiros.`,
       parametros: comPeriodo,
       async executar(args) {
         const { periodo, linhas } = await ranking(lerPeriodo(args));

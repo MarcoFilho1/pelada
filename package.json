@@ -20,6 +20,7 @@
     "robo:desinstalar": "tsx src/robo/instalar.ts desinstalar"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
     "@electric-sql/pglite": "^0.5.15",
     "@vercel/functions": "^3.10.6",
     "baileys": "7.0.0-rc14",
