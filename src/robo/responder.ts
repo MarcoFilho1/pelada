@@ -16,7 +16,7 @@ import {
   type Comando,
   type Consulta,
 } from './comandos';
-import { semParametros, type Ferramenta, type Parametros } from './ferramentas';
+import { ErroDeFerramenta, semParametros, TextoPronto, type Ferramenta, type Parametros } from './ferramentas';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
@@ -215,7 +215,7 @@ const comNome: Parametros = {
 /** O `nome` do input da IA (já um objeto, vindo do SDK), com o mesmo teto do comando escrito. */
 function lerNome(args: unknown): string {
   const nome = args && typeof args === 'object' && !Array.isArray(args) ? (args as { nome?: unknown }).nome : undefined;
-  if (typeof nome !== 'string' || !nome.trim()) throw new Error('nome inválido');
+  if (typeof nome !== 'string' || !nome.trim()) throw new ErroDeFerramenta('Nome inválido.');
   return nome.trim();
 }
 
@@ -232,8 +232,11 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
     altera: true,
     async executar(args) {
       const pedido = lerNome(args);
-      if (pedido.length > TAM_MAX_NOME_PEDIDO) return TEXTO_NOME_COMPRIDO;
-      return respostaNaLista(acao, pedido, m, c);
+      if (pedido.length > TAM_MAX_NOME_PEDIDO) throw new ErroDeFerramenta(TEXTO_NOME_COMPRIDO);
+      const feito = await c.mexerNaLista(acao, pedido, m.quando);
+      // Não mudou (não achou, já estava, recusa do site): o modelo recebe o texto como erro e explica.
+      if (!feito.mudou) throw new ErroDeFerramenta(feito.texto);
+      return new TextoPronto(`${feito.texto} (pedido por ${quemPediu(m)})`, 'acao');
     },
   });
   const consulta = (tipo: Consulta, nome: string, descricao: string): Ferramenta => ({
@@ -250,7 +253,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
       nome: 'ver_lista',
       descricao: 'A lista completa da semana, pronta para o grupo (com o que mudou desde a última). Repita o texto sem mudar nada.',
       parametros: semParametros,
-      executar: async () => (await respostaLista(m, c)).texto,
+      executar: async () => new TextoPronto((await respostaLista(m, c)).texto, 'lista'),
     },
     {
       nome: 'quem_falta_confirmar',
@@ -272,7 +275,17 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
       nome: 'pedir_sorteio',
       descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
       parametros: semParametros,
-      executar: () => respostaSortear(m, c),
+      sorteio: true,
+      async executar() {
+        const antes = c.proposta.atual;
+        const texto = await respostaSortear(m, c);
+        const nova = c.proposta.atual;
+        // Recusa (não é admin) ou erro do sorteio: nada guardado, o modelo explica.
+        if (!nova || nova === antes || nova.texto !== texto) throw new ErroDeFerramenta(texto);
+        return new TextoPronto(texto, 'sorteio', () => {
+          if (c.proposta.atual === nova) c.proposta.atual = null;
+        });
+      },
     },
   ];
 }

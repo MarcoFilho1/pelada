@@ -7,6 +7,7 @@ import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
 import { calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVO_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
+import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -335,11 +336,13 @@ describe('responder: sorteio', () => {
     expect(c.log).not.toHaveBeenCalled();
   });
 
-  it('pedido de sorteio como pergunta livre vai para a IA, nunca para o sorteio', async () => {
+  it('pedido de sorteio em texto livre vai para a IA, que só pode sortear pela ferramenta pedir_sorteio (com a checagem de admin)', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sorteia os times aí', c, ADMIN);
+    // O comando não sorteia sozinho: quem decide chamar a ferramenta é a IA.
     expect(c.propor).not.toHaveBeenCalled();
-    expect(c.perguntar).toHaveBeenCalled();
+    expect(c.perguntar).toHaveBeenCalledWith('sorteia os times aí', expect.objectContaining({ acoes: expect.arrayContaining([expect.objectContaining({ nome: 'pedir_sorteio', sorteio: true })]) }));
+    expect(c.perguntar).toHaveBeenCalledWith('sorteia os times aí', expect.objectContaining({ acoes: expect.not.arrayContaining([expect.objectContaining({ nome: 'confirmar_sorteio' })]) }));
   });
 });
 
@@ -378,6 +381,8 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
       expect(achar(fs, n).parametros).toEqual({ type: 'object', properties: { nome: expect.objectContaining({ type: 'string' }) }, required: ['nome'], additionalProperties: false });
       expect(achar(fs, n).altera).toBe(true);
     }
+    expect(achar(fs, 'pedir_sorteio').sorteio).toBe(true);
+    expect(fs.filter((f) => f.altera || f.sorteio).map((f) => f.nome)).toEqual(['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'pedir_sorteio']);
   });
 
   it('as descrições não mudam com quem pergunta (prefixo do cache estável)', () => {
@@ -393,24 +398,24 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
   ] as const)('%s chama mexerNaLista com o nome e devolve o texto com "pedido por" de quem mandou', async (ferramenta, acao) => {
     const c = ctx();
     const m = msg('põe o pepe aí', { remetenteNome: 'Zeca' });
-    expect(await achar(ferramentasDeAcao(m, c), ferramenta).executar({ nome: 'Pepe' })).toBe('Pepe entrou na lista. (pedido por Zeca)');
+    expect(await achar(ferramentasDeAcao(m, c), ferramenta).executar({ nome: 'Pepe' })).toEqual(new TextoPronto('Pepe entrou na lista. (pedido por Zeca)', 'acao'));
     expect(c.mexerNaLista).toHaveBeenCalledWith(acao, 'Pepe', m.quando);
   });
 
-  it('ação que não muda a lista: sem "pedido por"; nome comprido ou inválido não chega ao site', async () => {
+  it('ação que não muda a lista (recusa do site, não achou) ou nome comprido/inválido: erro da ferramenta com o texto, sem "pedido por"', async () => {
     const c = ctx({ mexerNaLista: vi.fn(async () => ({ texto: '🤔 Zé não está cadastrado.', mudou: false })) });
     const fs = ferramentasDeAcao(msg('x'), c);
-    expect(await achar(fs, 'adicionar_jogador').executar({ nome: 'Zé' })).toBe('🤔 Zé não está cadastrado.');
-    expect(await achar(fs, 'adicionar_jogador').executar({ nome: 'x'.repeat(41) })).toBe('🤔 Nome muito comprido.');
-    await expect(achar(fs, 'adicionar_jogador').executar({ nome: 42 })).rejects.toThrow();
-    await expect(achar(fs, 'adicionar_jogador').executar({ nome: '   ' })).rejects.toThrow();
+    await expect(achar(fs, 'adicionar_jogador').executar({ nome: 'Zé' })).rejects.toEqual(new ErroDeFerramenta('🤔 Zé não está cadastrado.'));
+    await expect(achar(fs, 'adicionar_jogador').executar({ nome: 'x'.repeat(41) })).rejects.toEqual(new ErroDeFerramenta('🤔 Nome muito comprido.'));
+    await expect(achar(fs, 'adicionar_jogador').executar({ nome: 42 })).rejects.toBeInstanceOf(ErroDeFerramenta);
+    await expect(achar(fs, 'adicionar_jogador').executar({ nome: '   ' })).rejects.toBeInstanceOf(ErroDeFerramenta);
     expect(c.mexerNaLista).toHaveBeenCalledTimes(1);
   });
 
   it('sem pushName: "pedido por alguém", nunca o telefone', async () => {
-    const r = await achar(ferramentasDeAcao(msg('x', { remetenteNome: null }), ctx()), 'remover_jogador').executar({ nome: 'Pepe' });
-    expect(r).toBe('Pepe entrou na lista. (pedido por alguém)');
-    expect(r).not.toContain(QUALQUER);
+    const r = (await achar(ferramentasDeAcao(msg('x', { remetenteNome: null }), ctx()), 'remover_jogador').executar({ nome: 'Pepe' })) as TextoPronto;
+    expect(r.texto).toBe('Pepe entrou na lista. (pedido por alguém)');
+    expect(r.texto).not.toContain(QUALQUER);
   });
 
   it('consultas devolvem os mesmos textos dos comandos', async () => {
@@ -418,8 +423,9 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     const fs = ferramentasDeAcao(msg('x'), c);
     expect(await achar(fs, 'quem_falta_confirmar').executar({})).toBe('⏳ Ainda não confirmaram: Bia.');
     expect(await achar(fs, 'ver_fila').executar({})).toBe('📝 Fila:\n1. Caio');
-    const textoLista = (await achar(fs, 'ver_lista').executar({})) as string;
-    expect(textoLista).toContain(textoWhatsApp(lista, lista.data));
+    const textoLista = (await achar(fs, 'ver_lista').executar({})) as TextoPronto;
+    expect(textoLista.como).toBe('lista');
+    expect(textoLista.texto).toContain(textoWhatsApp(lista, lista.data));
     for (const [ferramenta, tipo] of [['ver_times', 'times'], ['artilheiros', 'artilheiro'], ['garcons', 'garcom'], ['ranking', 'ranking']] as const) {
       expect(await achar(fs, ferramenta).executar({})).toBe('⚽ Artilheiros (novembro):\n1. Pepe 5');
       expect(c.consultar).toHaveBeenLastCalledWith(tipo, expect.any(Date));
@@ -429,8 +435,8 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
   it('pedir_sorteio: admin pelo telefone da mensagem; guarda a proposta como o comando, e o "sim" confirma', async () => {
     const quando = t('2026-11-11T15:00:00');
     const c = ctx({}, () => quando);
-    const r = await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({});
-    expect(r).toBe('Times propostos');
+    const r = (await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
+    expect(r).toMatchObject({ texto: 'Times propostos', como: 'sorteio' });
     expect(c.propor).toHaveBeenCalledWith(quando, ADMIN);
     expect(c.proposta.atual).toMatchObject({ adminTelefone: ADMIN, texto: 'Times propostos' });
     const sim = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-11T15:02:00') }), c);
@@ -438,10 +444,25 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     expect(c.confirmar).toHaveBeenCalledWith(t('2026-11-11T15:02:00'), ADMIN, expect.objectContaining({ texto: 'Times propostos' }));
   });
 
+  it('pedir_sorteio: descartar a proposta (chegou depois do prazo) limpa só ela', async () => {
+    const quando = t('2026-11-11T15:00:00');
+    const c = ctx({}, () => quando);
+    const r = (await achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
+    expect(c.proposta.atual).not.toBeNull();
+    r.descartar?.();
+    expect(c.proposta.atual).toBeNull();
+  });
+
+  it('pedir_sorteio que dá erro do sorteio (hoje não tem pelada): erro da ferramenta, nada guardado', async () => {
+    const c = ctx({ propor: vi.fn(async () => ({ erro: '📅 Hoje não tem pelada para sortear.' })) });
+    await expect(achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN }), c), 'pedir_sorteio').executar({})).rejects.toEqual(new ErroDeFerramenta('📅 Hoje não tem pelada para sortear.'));
+    expect(c.proposta.atual).toBeNull();
+  });
+
   it('pedir_sorteio de quem não é admin (ou sem telefone): recusa, mesmo que a IA chame a ferramenta', async () => {
     for (const remetenteTelefone of [QUALQUER, null]) {
       const c = ctx();
-      expect(await achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone }), c), 'pedir_sorteio').executar({ telefone: ADMIN })).toBe(TEXTO_SO_ADMIN);
+      await expect(achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone }), c), 'pedir_sorteio').executar({ telefone: ADMIN })).rejects.toEqual(new ErroDeFerramenta(TEXTO_SO_ADMIN));
       expect(c.propor).not.toHaveBeenCalled();
       expect(c.proposta.atual).toBeNull();
     }

@@ -18,14 +18,32 @@ export type Parametros = {
   additionalProperties: false;
 };
 
+/**
+ * Texto que vai ao grupo palavra por palavra, mesmo que o modelo o reescreva ou a conversa falhe:
+ * `acao` (mudança na lista, com o "pedido por"), `lista` (a lista inteira, nunca cortada) e
+ * `sorteio` (a proposta que o "sim" salva). `descartar` desfaz o que ninguém vai ver.
+ */
+export class TextoPronto {
+  constructor(
+    readonly texto: string,
+    readonly como: 'acao' | 'lista' | 'sorteio',
+    readonly descartar?: () => void,
+  ) {}
+}
+
+/** Falha esperada de ferramenta: o texto volta ao modelo como `tool_result` com `is_error`. */
+export class ErroDeFerramenta extends Error {}
+
 export type Ferramenta = {
   nome: string;
   descricao: string;
   parametros: Parametros;
   /** Recebe o `input` já como objeto (o SDK faz o parse); valida antes de usar. */
   executar(args: unknown): Promise<unknown>;
-  /** Mexe na lista: se a conversa falhar depois, o texto da ação ainda vai ao grupo. */
+  /** Mexe na lista: no máximo 3 por conversa, contadas no código. */
   altera?: boolean;
+  /** Pede o sorteio: no máximo 1 por conversa. */
+  sorteio?: boolean;
 };
 
 const TOPO = 20;
@@ -44,10 +62,10 @@ const comPeriodo: Parametros = {
 
 function lerPeriodo(args: unknown): string | undefined {
   if (args == null) return undefined;
-  if (typeof args !== 'object' || Array.isArray(args)) throw new Error('argumentos inválidos');
+  if (typeof args !== 'object' || Array.isArray(args)) throw new ErroDeFerramenta('Argumentos inválidos.');
   const p = (args as { periodo?: unknown }).periodo;
   if (p === undefined || p === null) return undefined;
-  if (typeof p !== 'string') throw new Error('periodo inválido');
+  if (typeof p !== 'string') throw new ErroDeFerramenta('Período inválido.');
   return p;
 }
 
