@@ -166,6 +166,7 @@ ROBO_ADMINS=5581900000001,5581900000002,5581900000003
 - `OPENROUTER_API_KEY`: a chave que você cria no site da OpenRouter (openrouter.ai > Keys). Ela é como uma senha que gasta seu dinheiro: não mande para ninguém e nunca coloque dentro da pasta do projeto.
 - `OPENROUTER_MODEL`: o nome do modelo como aparece na OpenRouter.
 - `ROBO_ADMINS`: os números de quem pode sortear, com 55 e DDD, só números, separados por vírgula.
+- `ROBO_CALVINHO` (opcional): o número do Jonas, no mesmo formato. Com ele, o robô reconhece o Jonas pelo número; sem ele, reconhece pelo primeiro nome do WhatsApp.
 
 Depois de mudar o `.env`, reinicie o robô: `pnpm robo:desinstalar` e `pnpm robo:instalar`. Ao ligar, o log diz se as perguntas livres estão ligadas e quantos organizadores ele conhece.
 

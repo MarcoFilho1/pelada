@@ -19,7 +19,7 @@ import { perguntar } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
-import { configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
+import { calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
 import { confirmarSorteio, proporSorteio, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
@@ -48,7 +48,7 @@ function argumento(nome: string): string | undefined {
 }
 
 /**
- * Lê o `.env` da pasta do robô (DATABASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL, ROBO_ADMINS).
+ * Lê o `.env` da pasta do robô (DATABASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL, ROBO_ADMINS e, opcional, ROBO_CALVINHO).
  * O que já está no ambiente vale mais (ex.: ensaio com o banco local).
  */
 function carregarBanco(): void {
@@ -238,6 +238,7 @@ async function laco(): Promise<void> {
         estadoGrupoId: grupoId,
         freio,
         admins,
+        calvinho: calvinhoDoEnv(process.env),
         ia,
         ultimo: estado.ultimo,
         proposta,

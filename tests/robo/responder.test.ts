@@ -5,7 +5,7 @@ import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -535,5 +535,86 @@ describe('responder: marcação ignorada (log) e aviso do limite', () => {
     const c = ctx();
     await responder(msg('bora jogar', { mencionaORobo: false }), c);
     expect(c.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
+  const JONAS = '5581990000007'; // fictício
+  const PREFIXOS: Record<string, string[]> = {
+    lista: ['😎 Pra você, calvinho, a lista brilhando igual sua careca:', '📋 Aqui, careca! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
+    'falta confirmar': ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
+    fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu careca favorito:'],
+    times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, careca! Os times de hoje:'],
+    artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, careca:'],
+    garçom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, careca:'],
+    ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que a careca tá no pódio? Confere:'],
+    ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
+  };
+  const doJonas = (texto: string, over: Partial<MensagemRecebida> = {}) => msg(texto, { remetenteTelefone: JONAS, remetenteNome: 'Jonas', ...over });
+  const consultaTimes = async () => '👕 Times de hoje:\n\n🔵 Azul\n- Ana';
+
+  it.each(Object.keys(PREFIXOS))('%s: uma das variantes, uma linha antes do texto normal', async (comando) => {
+    for (const rng of [() => 0, () => 0.999]) {
+      const normal = ctx({ ia: null, ...(comando === 'times' ? { consultar: consultaTimes } : {}) });
+      const esperado = (await responder(msg(comando), normal))!.texto;
+      const c = ctx({ ia: null, calvinho: [JONAS], rng, ...(comando === 'times' ? { consultar: consultaTimes } : {}) });
+      const r = (await responder(doJonas(comando), c))!;
+      const [primeira, ...resto] = r.texto.split('\n');
+      expect(PREFIXOS[comando]).toContain(primeira);
+      expect(resto.join('\n')).toBe(esperado);
+    }
+  });
+
+  it('quem não é o Jonas não ganha linha nenhuma', async () => {
+    const c = ctx({ ia: null, calvinho: [JONAS], rng: () => 0 });
+    const r = (await responder(msg('fila', { remetenteNome: 'Jonas' }), c))!;
+    expect(r.texto).toBe(`📝 Fila:\n1. Caio`);
+    expect(r.texto).not.toContain('calvinho');
+  });
+
+  it('sem número configurado ou sem telefone: vale o primeiro nome do WhatsApp', async () => {
+    const semConfig = ctx({ ia: null, rng: () => 0 });
+    expect((await responder(msg('fila', { remetenteNome: 'Jonas Silva' }), semConfig))!.texto.startsWith(PREFIXOS.fila[0])).toBe(true);
+    const lid = ctx({ ia: null, calvinho: [JONAS], rng: () => 0 });
+    expect((await responder(msg('fila', { remetenteTelefone: null, remetenteNome: 'jonas' }), lid))!.texto.startsWith(PREFIXOS.fila[0])).toBe(true);
+    expect((await responder(msg('fila', { remetenteTelefone: null, remetenteNome: 'Maria Jonas' }), lid))!.texto).not.toContain('calvinho');
+  });
+
+  it('sortear: linha só com proposta; erro continua sério', async () => {
+    const c = ctx({ calvinho: [JONAS], admins: [JONAS], rng: () => 0 });
+    expect((await responder(doJonas('sortear'), c))!.texto).toBe('🍀 Sorteando com a sorte da careca:\nTimes propostos');
+    const erro = ctx({ calvinho: [JONAS], admins: [JONAS], propor: vi.fn(async () => ({ erro: '👥 Poucos confirmados para sortear.' })) });
+    expect((await responder(doJonas('sortear'), erro))!.texto).toBe('👥 Poucos confirmados para sortear.');
+    const naoAdmin = ctx({ calvinho: [JONAS] });
+    expect((await responder(doJonas('sortear'), naoAdmin))!.texto).toBe(TEXTO_SO_ADMIN);
+  });
+
+  it('sim: texto salvo do calvinho; erro continua sério', async () => {
+    const c = ctx({ calvinho: [JONAS], admins: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) } });
+    expect((await responder(doJonas('sim'), c))!.texto).toBe('🏆 Times definitivos salvos! Valeu, calvinho 😎');
+    const erro = ctx({ calvinho: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) }, confirmar: vi.fn(async () => ({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' })) });
+    expect((await responder(doJonas('sim'), erro))!.texto).toBe('⌛ A proposta expirou. Peça *sortear* de novo.');
+  });
+
+  it('texto desconhecido sem IA: "não entendi" + ajuda; com IA, só a resposta da IA', async () => {
+    const semIa = ctx({ ia: null, calvinho: [JONAS] });
+    expect((await responder(doJonas('bora jogar'), semIa))!.texto).toBe(`🤔 Não entendi, calvinho. Os comandos são esses:\n${TEXTO_AJUDA}`);
+    const comIa = ctx({ calvinho: [JONAS] });
+    expect((await responder(doJonas('o João está na lista?'), comIa))!.texto).toBe('O João está na lista.');
+  });
+
+  it('adicionar/confirmar/remover: sem linha extra (a brincadeira do objeto vem do texto da lista)', async () => {
+    const c = ctx({ calvinho: [JONAS], rng: () => 0 });
+    expect((await responder(doJonas('confirmar Pepe'), c))!.texto).toBe('Pepe entrou na lista. (pedido por Jonas)');
+  });
+
+  it('erro de consulta ou "sem times" fica sério', async () => {
+    const c = ctx({ ia: null, calvinho: [JONAS], consultar: vi.fn(async () => '👕 Os times de hoje ainda não foram sorteados.') });
+    expect((await responder(doJonas('times'), c))!.texto).toBe('👕 Os times de hoje ainda não foram sorteados.');
+  });
+
+  it('calvinhoDoEnv lê números separados por vírgula; ausente = vazio', () => {
+    expect(calvinhoDoEnv({ ROBO_CALVINHO: ' 5581990000007 ,' })).toEqual(['5581990000007']);
+    expect(calvinhoDoEnv({})).toEqual([]);
   });
 });
