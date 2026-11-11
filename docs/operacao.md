@@ -149,30 +149,31 @@ Comandos (escritos depois da marcação, com ou sem acento e maiúscula):
 - `@robô garçom` (ou `garcom`): os 3 com mais assistências, com a mesma regra do mês.
 - `@robô ranking`: os 5 primeiros em pontos, com a mesma regra do mês.
 - `@robô times`: os times da pelada de hoje, se já foram definidos; senão "👕 Os times de hoje ainda não foram sorteados.".
-- Qualquer outro texto é uma **pergunta livre**, respondida por uma IA que só consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times). Ela não muda nada. Qualquer pessoa do grupo consegue fazer a IA repetir um texto qualquer, mas ela não consegue alterar nada no site. Com as perguntas livres desligadas, ele responde com a lista de comandos.
+- Qualquer outro texto é uma **pergunta livre**, respondida por uma IA (o Claude, da Anthropic). Ela consulta os dados do site (lista, fila, mensalistas, ranking, artilharia, partidas e times) e também entende pedidos escritos do jeito de cada um, como "@robô coloca o Pepe na lista", "@robô o Caio não vai mais" ou "@robô quem falta confirmar?". Para isso ela usa **exatamente os mesmos comandos de cima**, com as mesmas regras e as mesmas respostas: mudança na lista também termina com "(pedido por Nome)" de quem mandou a mensagem. Ela pode pedir o sorteio, mas só funciona para os organizadores (o robô confere o número de quem mandou, não o que a IA diz) e **a IA nunca confirma o sorteio**: a confirmação continua sendo o `sim` de quem pediu. Ela não cadastra jogador, não mexe em placar e não muda nada além disso. Qualquer pessoa do grupo consegue fazer a IA repetir um texto qualquer. Com as perguntas livres desligadas, ele responde com a lista de comandos.
 
 Ele responde na hora a cada marcação. Para não inundar o grupo, são no máximo **10 respostas por minuto**; passou disso, ele avisa uma vez "🙏 Muita gente me chamando agora. Mande de novo daqui a pouco." (no máximo um aviso por minuto) e as outras marcações desse minuto ficam sem resposta. O `sim` de quem pediu o sorteio é sempre respondido. Toda marcação que fica sem resposta deixa uma linha no log com o motivo, por exemplo "marcação ignorada (limite de 10 por minuto) de Pepe" ou "marcação ignorada (silêncio 23–08)".
 
 Marcações feitas enquanto o Mac estava dormindo ou desligado, ou enquanto o robô reconectava, ficam sem resposta mesmo quando ele volta: é só marcar de novo.
 
-**Ligar as perguntas livres e o sorteio.** Acrescente três linhas ao arquivo `~/Library/Application Support/PeladaRobo/.env` (o mesmo do banco). Os valores abaixo são só exemplos; use os seus:
+**Ligar as perguntas livres e o sorteio.** Acrescente estas linhas ao arquivo `~/Library/Application Support/PeladaRobo/.env` (o mesmo do banco). Os valores abaixo são só exemplos; use os seus:
 
 ```
-OPENROUTER_API_KEY=sk-or-v1-exemplo123
-OPENROUTER_MODEL=fornecedor/nome-do-modelo
+ANTHROPIC_API_KEY=sk-ant-exemplo123
 ROBO_ADMINS=5581900000001,5581900000002,5581900000003
 ```
 
-- `OPENROUTER_API_KEY`: a chave que você cria no site da OpenRouter (openrouter.ai > Keys). Ela é como uma senha que gasta seu dinheiro: não mande para ninguém e nunca coloque dentro da pasta do projeto.
-- `OPENROUTER_MODEL`: o nome do modelo como aparece na OpenRouter.
+- `ANTHROPIC_API_KEY`: a chave que você cria no console da Anthropic (platform.claude.com > API Keys). Ela é como uma senha que gasta seu dinheiro: fica **só** nesse `.env` do robô. Não mande para ninguém e nunca coloque dentro da pasta do projeto.
+- `ROBO_MODELO` (opcional): o modelo da IA. Sem essa linha, o robô usa o `claude-haiku-5-5`, o mais barato e rápido, que basta para o grupo. Só mude se souber o que está fazendo.
 - `ROBO_ADMINS`: os números de quem pode sortear, com 55 e DDD, só números, separados por vírgula.
 - `ROBO_CALVINHO` (opcional): o número do Jonas, no mesmo formato. Com ele, o robô reconhece o Jonas pelo número; sem ele, reconhece pelo primeiro nome do WhatsApp.
 
-Depois de mudar o `.env`, reinicie o robô: `pnpm robo:desinstalar` e `pnpm robo:instalar`. Ao ligar, o log diz se as perguntas livres estão ligadas e quantos organizadores ele conhece.
+Se o seu `.env` ainda tem `OPENROUTER_API_KEY` e `OPENROUTER_MODEL`, de uma versão antiga, apague essas duas linhas: elas não valem mais.
 
-**Custo e limite.** Comandos e sorteio não usam IA e não custam nada. Cada pergunta livre é cobrada pela OpenRouter, por mensagem, no seu cartão (o preço depende do modelo; confira na página dele na OpenRouter). Para o gasto não fugir do controle, são no máximo **30 perguntas livres por dia**; passou disso, ele responde "Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.". Esse contador volta a zero quando o robô reinicia, então **ponha também um limite de gasto na própria chave**: na OpenRouter, em Keys, edite a chave e preencha o limite de crédito (por exemplo, US$ 5). Passou do limite, a OpenRouter recusa e o robô responde "Não consegui responder agora.".
+Depois de mudar o `.env`, reinicie o robô: `pnpm robo:desinstalar` e `pnpm robo:instalar`. Ao ligar, o log mostra "Respostas: IA ligada (claude-haiku-5-5); 3 admin(s) para sortear." ou "Respostas: IA desligada; …" quando não há chave.
 
-**Desligar as perguntas livres.** Apague a linha `OPENROUTER_API_KEY` do `.env` e reinicie o robô. Os comandos e o sorteio continuam; um texto que não é comando passa a receber a lista de comandos.
+**Custo e limite.** Comandos e sorteio pelo comando não usam IA e não custam nada. Cada pergunta livre é cobrada pela Anthropic no cartão cadastrado no console, e custa **uma fração de centavo** (com o `claude-haiku-5-5`, algo perto de US$ 0,001 por mensagem, ou seja, uns 0,5 centavo de real). Para o gasto não fugir do controle, são no máximo **30 perguntas livres por dia**; passou disso, ele responde "Por hoje acabaram as perguntas livres. Os comandos continuam: lista, falta confirmar, fila.". Esse contador volta a zero quando o robô reinicia, então **ponha também um limite de gasto no console da Anthropic** (em platform.claude.com, na página de limites de gasto, por exemplo US$ 5 por mês). Passou do limite, a Anthropic recusa e o robô responde "😕 Não consegui responder agora.". A mesma resposta aparece se a IA demorar mais de 30 segundos ou der qualquer erro; os comandos continuam funcionando.
+
+**Desligar as perguntas livres.** Apague a linha `ANTHROPIC_API_KEY` do `.env` e reinicie o robô. Os comandos e o sorteio continuam; um texto que não é comando passa a receber a lista de comandos.
 
 ### Atualizar o robô
 
