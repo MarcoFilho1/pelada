@@ -9,12 +9,15 @@ type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim' | Consul
 export type Comando =
   | { tipo: Simples }
   | { tipo: AcaoNaLista; nome: string }
+  /** Vários nomes numa só mensagem: até `MAX_NOMES_POR_MENSAGEM` em `nomes`; `excedeu` se havia mais. */
+  | { tipo: AcaoNaLista; nome: string; nomes: string[]; excedeu: boolean }
   | { tipo: 'pergunta'; texto: string }
   /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
   | { tipo: 'recusa'; texto: string };
 
 /** Nome maior que isto nem é procurado (e nunca é repetido no grupo). */
 export const TAM_MAX_NOME_PEDIDO = 40;
+export const MAX_NOMES_POR_MENSAGEM = 3;
 export const TEXTO_NOME_COMPRIDO = '🤔 Nome muito comprido.';
 
 export const CONSULTAS: readonly Consulta[] = ['artilheiro', 'garcom', 'ranking', 'times'];
@@ -53,7 +56,7 @@ const ACOES: Record<string, AcaoNaLista> = {
 };
 
 /** "adicionar [na] [lista] <nome>" → o nome como foi escrito (sem pontuação no fim); `null` sem nome. */
-function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | { tipo: 'recusa'; texto: string } | null {
+function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | 'recusa' }> | null {
   const palavras = texto.trim().split(/\s+/);
   const tipo = ACOES[normalizarNome(palavras[0] ?? '')];
   if (!tipo) return null;
@@ -64,8 +67,14 @@ function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | { 
   }
   const nome = resto.join(' ').replace(/[\s.,;:!?]+$/u, '').trim();
   if (!nome) return null;
-  if (nome.length > TAM_MAX_NOME_PEDIDO) return { tipo: 'recusa', texto: TEXTO_NOME_COMPRIDO };
-  return { tipo, nome };
+  // Vírgulas e " e " separam nomes (só o "e"; "é" não separa).
+  const todos = nome.split(/\s*,\s*|\s+[eE]\s+/u).map((n) => n.trim()).filter(Boolean);
+  if (todos.length > 1) {
+    return { tipo, nome: todos[0], nomes: todos.slice(0, MAX_NOMES_POR_MENSAGEM), excedeu: todos.length > MAX_NOMES_POR_MENSAGEM };
+  }
+  if (todos.length === 0) return null;
+  if (todos[0].length > TAM_MAX_NOME_PEDIDO) return { tipo: 'recusa', texto: TEXTO_NOME_COMPRIDO };
+  return { tipo, nome: todos[0] };
 }
 
 /** Texto da mensagem sem a marcação → comando. Sobra de texto depois do comando é pergunta livre. */
@@ -95,9 +104,9 @@ export const TEXTO_AJUDA = [
   '📋 lista — a lista completa da semana',
   '⏳ falta confirmar — quem ainda não confirmou',
   '📝 fila — quem está na fila',
-  '➕ adicionar Nome — põe na lista (ou na fila, se estiver cheia)',
-  '✅ confirmar Nome — confirma quem está na lista',
-  '👋 remover Nome — tira da lista ou da fila',
+  '➕ adicionar Nome — põe na lista (ou na fila, se estiver cheia) — até 3 nomes: A, B e C',
+  '✅ confirmar Nome — confirma quem está na lista — até 3 nomes: A, B e C',
+  '👋 remover Nome — tira da lista ou da fila — até 3 nomes: A, B e C',
   '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
   '👕 times — os times de hoje',
   '🎲 sortear — só os organizadores',
