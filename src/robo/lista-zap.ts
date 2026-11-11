@@ -13,19 +13,30 @@ import { paraWhatsApp } from './sorteio-zap';
 /** `mudou`: a lista mudou (a resposta ganha o "pedido por"). */
 export type ResultadoNaLista = { texto: string; mudou: boolean };
 
+const MIN_COMECO = 2;
+const MAX_ECO = 30;
+
 /**
- * Nome escrito → jogador, sem diferenciar maiúsculas e acentos: nome inteiro igual vence; senão o único
- * que começa com o texto; mais de um → todos (`varios`); nenhum → `null`.
+ * Nome escrito → jogador, sem diferenciar maiúsculas e acentos: um só nome inteiro igual vence (dois
+ * iguais, como João e Joao, são ambíguos); senão, com 2 letras ou mais, o único que começa com o texto;
+ * mais de um → todos (`varios`); nenhum → `null`.
  */
 export function acharJogador<T extends { nome: string }>(texto: string, candidatos: T[]): { jogador: T } | { varios: T[] } | null {
   const alvo = normalizarNome(texto);
   if (!alvo) return null;
-  const igual = candidatos.find((c) => normalizarNome(c.nome) === alvo);
-  if (igual) return { jogador: igual };
+  const iguais = candidatos.filter((c) => normalizarNome(c.nome) === alvo);
+  if (iguais.length === 1) return { jogador: iguais[0] };
+  if (iguais.length > 1) return { varios: iguais };
+  // Começo do nome só com 2 letras ou mais ("p" acharia gente demais por engano).
+  if (alvo.length < MIN_COMECO) return null;
   const comecam = candidatos.filter((c) => normalizarNome(c.nome).startsWith(alvo));
   if (comecam.length === 1) return { jogador: comecam[0] };
   return comecam.length ? { varios: comecam } : null;
 }
+
+
+/** O que a pessoa digitou, para repetir no grupo: no máximo 30 caracteres. */
+const eco = (texto: string) => (texto.length > MAX_ECO ? `${texto.slice(0, MAX_ECO)}…` : texto);
 
 const textoVarios = (js: { nome: string }[]) => `Tem mais de um jogador com esse nome: ${juntarNomes(js.map((j) => j.nome))}. Mande o nome inteiro.`;
 
@@ -41,7 +52,7 @@ function onde(estado: EstadoDaSemana, jogadorId: number): { lugar: 'lista' | 'fi
 
 async function adicionar(db: DB, texto: string, now: Date): Promise<ResultadoNaLista> {
   const achado = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
-  if (!achado) return { texto: `${texto} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
+  if (!achado) return { texto: `${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`, mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   try {
@@ -64,7 +75,7 @@ async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: 
   // Para confirmar, quem perdeu o prazo das 14h também é achado: o site recusa com a mensagem dele.
   const candidatos = [...estado.principal, ...estado.fila, ...(acao === 'confirmar' ? estado.foraDoPrazo : [])];
   const achado = acharJogador(texto, candidatos);
-  if (!achado) return { texto: `${texto} não está na lista.`, mudou: false };
+  if (!achado) return { texto: `${eco(texto)} não está na lista.`, mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   const antes = onde(estado, j.jogadorId);

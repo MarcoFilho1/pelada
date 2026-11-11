@@ -9,7 +9,13 @@ type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sortear' | 'sim' | Consul
 export type Comando =
   | { tipo: Simples }
   | { tipo: AcaoNaLista; nome: string }
-  | { tipo: 'pergunta'; texto: string };
+  | { tipo: 'pergunta'; texto: string }
+  /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
+  | { tipo: 'recusa'; texto: string };
+
+/** Nome maior que isto nem é procurado (e nunca é repetido no grupo). */
+export const TAM_MAX_NOME_PEDIDO = 40;
+export const TEXTO_NOME_COMPRIDO = 'Nome muito comprido.';
 
 export const CONSULTAS: readonly Consulta[] = ['artilheiro', 'garcom', 'ranking', 'times'];
 
@@ -47,7 +53,7 @@ const ACOES: Record<string, AcaoNaLista> = {
 };
 
 /** "adicionar [na] [lista] <nome>" → o nome como foi escrito (sem pontuação no fim); `null` sem nome. */
-function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | null {
+function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | { tipo: 'recusa'; texto: string } | null {
   const palavras = texto.trim().split(/\s+/);
   const tipo = ACOES[normalizarNome(palavras[0] ?? '')];
   if (!tipo) return null;
@@ -57,7 +63,9 @@ function comandoDeLista(texto: string): { tipo: AcaoNaLista; nome: string } | nu
     else if (normalizarNome(resto[0] ?? '') === 'lista') resto = resto.slice(1);
   }
   const nome = resto.join(' ').replace(/[\s.,;:!?]+$/u, '').trim();
-  return nome ? { tipo, nome } : null;
+  if (!nome) return null;
+  if (nome.length > TAM_MAX_NOME_PEDIDO) return { tipo: 'recusa', texto: TEXTO_NOME_COMPRIDO };
+  return { tipo, nome };
 }
 
 /** Texto da mensagem sem a marcação → comando. Sobra de texto depois do comando é pergunta livre. */
@@ -84,7 +92,7 @@ export function respostaFila(estado: EstadoDaSemana): string {
 
 export const TEXTO_AJUDA = [
   'Me marque com um comando:',
-  '- lista: a lista da semana',
+  '- lista: a lista completa da semana',
   '- falta confirmar: quem ainda não confirmou',
   '- fila: quem está na fila',
   '- adicionar Nome: põe o jogador na lista (ou na fila, se estiver cheia)',
@@ -97,7 +105,3 @@ export const TEXTO_AJUDA = [
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */
 export const TEXTO_AJUDA_PERGUNTA = 'Ou faça uma pergunta, por exemplo: @robô o João está na lista?';
-
-export function respostaListaSemMudanca(hora: string): string {
-  return `A lista não mudou desde as ${hora}.`;
-}

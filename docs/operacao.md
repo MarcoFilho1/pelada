@@ -134,7 +134,7 @@ Quando alguém marca o número do robô com @ no grupo configurado, ele responde
 
 Comandos (escritos depois da marcação, com ou sem acento e maiúscula):
 
-- `@robô lista` (ou só `@robô`): a lista da semana. Se nada mudou desde a última lista que ele mandou, responde só "A lista não mudou desde as 15:30.".
+- `@robô lista` (ou só `@robô`): sempre a lista completa da semana. No começo vem o que mudou desde a última lista que ele mandou; se nada mudou, a primeira linha é "Status: sem nenhuma atualização.".
 - `@robô falta confirmar` (ou `quem falta`): quem ainda não confirmou.
 - `@robô fila`: a fila de espera.
 - `@robô ajuda`: a lista de comandos.

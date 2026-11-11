@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA } from '@/robo/comandos';
@@ -128,16 +129,26 @@ describe('responder: comandos fixos', () => {
 describe('responder: lista', () => {
   const ultimoSemMudanca: Envio = { quando: t('2026-11-10T15:30:10').toISOString(), rodada: t('2026-11-10T15:30:00').toISOString(), tipo: 'rodada', foto: fotografar(lista) };
 
-  it('sem mudança desde a última mensagem do robô: frase curta com a hora dela', async () => {
+  it('sem mudança desde a última mensagem do robô: "Status: sem nenhuma atualização." + linha em branco + lista completa', async () => {
     const c = ctx({ ultimo: ultimoSemMudanca });
     const r = await responder(msg('lista'), c);
-    expect(r).toMatchObject({ texto: 'A lista não mudou desde as 15:30.', ehListaCompleta: false });
-    expect(c.enviar).toHaveBeenCalledWith('A lista não mudou desde as 15:30.');
+    expect(r?.texto).toBe(`Status: sem nenhuma atualização.\n\n${textoWhatsApp(lista, lista.data)}`);
+    expect(r?.texto).toContain('Ana');
+    expect(r?.texto).toContain('Caio');
+    // Reenvio sem mudança não precisa virar a última lista.
+    expect(r?.ehListaCompleta).toBe(false);
+    expect(r?.gravar).toBeUndefined();
+    expect(c.enviar).toHaveBeenCalledWith(r?.texto);
   });
 
   it('marcação sem texto também é a lista', async () => {
     const r = await responder(msg(''), ctx({ ultimo: ultimoSemMudanca }));
-    expect(r?.texto).toBe('A lista não mudou desde as 15:30.');
+    expect(r?.texto.startsWith('Status: sem nenhuma atualização.\n\n')).toBe(true);
+  });
+
+  it('nunca manda a frase curta antiga', async () => {
+    const r = await responder(msg('lista'), ctx({ ultimo: ultimoSemMudanca }));
+    expect(r?.texto).not.toContain('não mudou desde');
   });
 
   it('com mudança: cabeçalho + lista completa, marca ehListaCompleta com a foto para gravar', async () => {
@@ -388,6 +399,12 @@ describe('responder: mexer na lista pelo nome', () => {
     expect(r?.texto).not.toContain(QUALQUER);
     const vazio = await responder(msg('remover Caio', { remetenteNome: '   ' }), ctx());
     expect(vazio?.texto).toBe('Pepe entrou na lista. (pedido por alguém)');
+  });
+
+  it('nome comprido demais: "Nome muito comprido.", sem chamar o site', async () => {
+    const c = ctx();
+    expect((await responder(msg(`adicionar ${'x'.repeat(100)}`), c))?.texto).toBe('Nome muito comprido.');
+    expect(c.mexerNaLista).not.toHaveBeenCalled();
   });
 
   it('recusa ou nome não achado (nada mudou): responde sem "pedido por"', async () => {

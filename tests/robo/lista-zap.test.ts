@@ -49,6 +49,18 @@ describe('acharJogador (nome escrito no WhatsApp → jogador)', () => {
     expect(acharJogador('Jo', js)).toEqual({ jogador: { nome: 'João' } });
   });
 
+  it('dois nomes inteiros iguais sem acento (João e Joao): ambíguo', () => {
+    const dup = [{ nome: 'João' }, { nome: 'Joao' }, { nome: 'Joaquim' }];
+    expect(acharJogador('joao', dup)).toEqual({ varios: [{ nome: 'João' }, { nome: 'Joao' }] });
+  });
+
+  it('começo do nome precisa de 2 letras; nome inteiro de qualquer tamanho vale', () => {
+    expect(acharJogador('p', js)).toBeNull();
+    expect(acharJogador('j', js)).toBeNull();
+    expect(acharJogador('jo', js)).toEqual({ jogador: { nome: 'João' } });
+    expect(acharJogador('l', [{ nome: 'L' }, { nome: 'Luiz' }])).toEqual({ jogador: { nome: 'L' } });
+  });
+
   it('mais de um começa com o texto: todos; nenhum: null', () => {
     expect(acharJogador('pe', js)).toEqual({ varios: [{ nome: 'Pedro' }, { nome: 'Pepe' }] });
     expect(acharJogador('zé', js)).toBeNull();
@@ -91,6 +103,18 @@ describe('adicionar', () => {
       texto: 'Tem mais de um jogador com esse nome: Pedro e Pepe. Mande o nome inteiro.',
       mudou: false,
     });
+  });
+
+  it('nome digitado comprido aparece cortado em 30 caracteres na resposta', async () => {
+    const digitado = 'Fulano de Tal da Silva Sauro Neto';
+    expect(digitado.length).toBeGreaterThan(30);
+    expect((await mexerNaLista(db, 'adicionar', digitado, TERCA)).texto).toBe(`${digitado.slice(0, 30)}… não está cadastrado. Peça para um admin cadastrar no site.`);
+    expect((await mexerNaLista(db, 'remover', digitado, TERCA)).texto).toBe(`${digitado.slice(0, 30)}… não está na lista.`);
+  });
+
+  it('dois cadastrados com o mesmo nome sem acento: pede o nome inteiro', async () => {
+    await criar(['João', 'Joao']);
+    expect((await mexerNaLista(db, 'adicionar', 'joão', TERCA)).texto).toMatch(/^Tem mais de um jogador com esse nome: (Joao e João|João e Joao)\. Mande o nome inteiro\.$/);
   });
 
   it('pelo começo do nome', async () => {

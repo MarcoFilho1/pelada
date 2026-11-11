@@ -1,12 +1,12 @@
 // Resposta a uma marcação no grupo: decide o texto, envia e cuida do freio e da proposta de sorteio.
 // Sem WhatsApp, banco ou IA aqui dentro: tudo chega pelo contexto (os testes usam falsos).
+import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
 import {
   interpretar,
   respostaFalta,
   respostaFila,
-  respostaListaSemMudanca,
   TEXTO_AJUDA,
   TEXTO_AJUDA_PERGUNTA,
   type AcaoNaLista,
@@ -82,12 +82,12 @@ export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRo
   return tipo === null || tipo === 'rodada';
 }
 
-/** "15:30" no horário de Recife (sempre UTC-3). */
-function horaMinuto(iso: string): string {
-  return new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(11, 16);
-}
+export const STATUS_SEM_ATUALIZACAO = 'Status: sem nenhuma atualização.';
 
-/** `lista`: frase curta se nada mudou desde a última lista do robô; senão a lista com o cabeçalho. */
+/**
+ * `lista`: sempre a lista completa. Sem mudança desde a última lista do robô, o cabeçalho é
+ * "Status: sem nenhuma atualização." (e não vira a última lista); senão, o cabeçalho das mudanças.
+ */
 async function respostaLista(m: MensagemRecebida, c: ContextoDaResposta): Promise<Omit<Resposta, 'ehListaCompleta'>> {
   const lista = await c.lerLista(m.quando);
   const foto = fotografar(lista);
@@ -102,7 +102,11 @@ async function respostaLista(m: MensagemRecebida, c: ContextoDaResposta): Promis
   else tipo = 'rodada';
 
   const semMudanca = anterior && (cancelada ? eraCancelada : !eraCancelada && !haMudanca(mudancas(anterior, foto)));
-  if (semMudanca) return { texto: respostaListaSemMudanca(horaMinuto(c.ultimo!.quando)) };
+  if (semMudanca) {
+    // Cancelada sem mudança: o aviso de cancelamento de novo (não há lista para mostrar).
+    if (cancelada) return { texto: montarMensagem('cancelada', lista, foto, anterior) };
+    return { texto: `${STATUS_SEM_ATUALIZACAO}\n\n${textoWhatsApp(lista, lista.data)}` };
+  }
   return { texto: montarMensagem(tipo, lista, foto, anterior), gravar: { tipo, foto } };
 }
 
@@ -216,6 +220,9 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       break;
     case 'pergunta':
       r = { texto: await respostaPergunta(cmd.texto, m, c) };
+      break;
+    case 'recusa':
+      r = { texto: cmd.texto };
       break;
   }
 
