@@ -46,6 +46,8 @@ test('sorteio: 14 confirmados viram 4 times com 2 COMPLETE, definitivo, e algué
   // 4 times: dois de 4 jogadores, dois de 3 + COMPLETE.
   const completes = page.getByRole('button', { name: /^COMPLETE do \w+, nota \d,\d$/ });
   await expect(completes).toHaveCount(2);
+  // Na proposta a escolha sai da barra; o "Sortear de novo" diz quantos times vale.
+  await expect(page.getByRole('button', { name: 'Sortear de novo em 4 times' })).toBeVisible();
   expect(await semRolarDeLado(page)).toBe(true);
 
   // A nota do COMPLETE entra na soma do time: subir 0,5 sobe a soma em 0,5.

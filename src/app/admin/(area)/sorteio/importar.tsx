@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Colete, NOME_DA_COR } from '@/components/colete';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import type { NomeNaPrevia, Previa } from '@/domain/importarTimes';
+import { trocarNomeNaLinha, type NomeNaPrevia, type Previa } from '@/domain/importarTimes';
 import { CORES, formatarNota } from '@/domain/sorteio';
 import { importarTimes, previaDeImportar } from './acoes';
 import { Erro } from './busca-de-jogador';
@@ -60,7 +60,13 @@ export function ImportarTimes({
     const n = ++pedido.current;
     if (!texto.trim()) return;
     const t = setTimeout(async () => {
-      const r = await previaDeImportar(texto);
+      let r: Awaited<ReturnType<typeof previaDeImportar>>;
+      try {
+        r = await previaDeImportar(texto);
+      } catch {
+        // Sem rede ou servidor fora: diz o que houve em vez de ficar em "Conferindo os nomes…".
+        r = { ok: false, erro: 'Não consegui conferir os nomes. Tente de novo.' };
+      }
       // Só vale a resposta do último pedido (a pessoa pode ter mudado o texto enquanto esperava).
       if (n === pedido.current) setResultado({ texto, ...r });
     }, ESPERA_MS);
@@ -80,9 +86,7 @@ export function ImportarTimes({
 
   /** "Você quis dizer X?": troca o nome escrito pelo cadastrado na própria linha, e a prévia refaz sozinha. */
   function trocar(n: NomeNaPrevia, nome: string) {
-    const linhas = texto.split(/\r?\n/);
-    linhas[n.linha] = linhas[n.linha].replace(n.escrito, nome);
-    mudarTexto(linhas.join('\n'));
+    mudarTexto(trocarNomeNaLinha(texto, n.linha, n.escrito, nome));
   }
 
   function salvar() {
@@ -167,6 +171,9 @@ export function ImportarTimes({
           <p aria-live="polite" className={`text-base font-medium text-erro ${atual && !atual.ok ? 'mt-2' : 'sr-only'}`}>
             {atual && !atual.ok ? atual.erro : ''}
           </p>
+          {previa && previa.ignoradas.length > 0 && (
+            <p className="mt-3 text-base break-words text-meta">Ignorei estas linhas: {previa.ignoradas.join(' · ')}</p>
+          )}
         </section>
 
         <div className="lg:@container">

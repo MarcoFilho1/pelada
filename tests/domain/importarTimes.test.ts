@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerTimesColados, previaDosTimes, elencosDaPrevia, TEXTO_2_A_4_TIMES } from '@/domain/importarTimes';
+import { elencosDaPrevia, lerTimesColados, limparLinha, previaDosTimes, TEXTO_2_A_4_TIMES, trocarNomeNaLinha } from '@/domain/importarTimes';
 
 const PEPE = `Pelada 04/11 - 20:30-22:30
 
@@ -86,6 +86,76 @@ describe('lerTimesColados', () => {
   it('time só de COMPLETE ou com mais de 4 contando o COMPLETE: erro', () => {
     expect(lerTimesColados('Time 1\nCOMPLETE\nTime 2\nBeto')).toEqual({ ok: false, erro: 'Cada time precisa de pelo menos um jogador.' });
     expect(lerTimesColados('Time 1\nA\nB\nC\nD\nCOMPLETE\nTime 2\nBeto')).toEqual({ ok: false, erro: 'Time com COMPLETE fecha em 4: tire um COMPLETE do time 1.' });
+  });
+});
+
+describe('lerTimesColados: o que vem do WhatsApp', () => {
+  it('"(?)", "(M)" e "(D)" saem antes de classificar: "Bia (?)" é a Bia', () => {
+    expect(nomes(lerTimesColados('Time 1\nBia (?)\nAna (M)\nTime 2\nCaio (D) 3,5\nDavi'))).toEqual([
+      [['Bia', 'Ana'], []],
+      [['Caio', 'Davi'], []],
+    ]);
+  });
+
+  it('cópia de várias mensagens: o prefixo "[data, hora] Nome:" sai e a linha continua valendo', () => {
+    const txt = '[04/11, 20:31] Pepe: Time 1\n[04/11, 20:31] Pepe: 1. Ana\n[04/11, 20:31] Pepe: 2. Beto 3.0\n[04/11, 20:32] Pepe: Time 2\n[04/11, 20:32] Pepe: 1. Caio';
+    expect(nomes(lerTimesColados(txt))).toEqual([
+      [['Ana', 'Beto'], []],
+      [['Caio'], []],
+    ]);
+  });
+
+  it('":" só derruba hora ou rótulo no começo; "?" só no fim da linha; linhas ignoradas vêm listadas', () => {
+    const r = lerTimesColados('Pelada 04/11 - 20:30-22:30\nTimes sorteados:\nTime 1\nAna\nBeto\nDiferença: 0,5\nTime 2\nCaio\nQuem paga a quadra?\nDavi');
+    expect(nomes(r)).toEqual([
+      [['Ana', 'Beto'], []],
+      [['Caio', 'Davi'], []],
+    ]);
+    expect(r.ok && r.ignoradas).toEqual(['Pelada 04/11 - 20:30-22:30', 'Times sorteados:', 'Diferença: 0,5', 'Quem paga a quadra?']);
+  });
+
+  it('frase comprida no fim (a da proposta do robô) é ignorada e listada, não vira jogador', () => {
+    const r = lerTimesColados('Time 1\nAna\nTime 2\nBeto\n\nConfirma? Responda *sim* em até 10 minutos ✅');
+    expect(nomes(r)).toEqual([
+      [['Ana'], []],
+      [['Beto'], []],
+    ]);
+    expect(r.ok && r.ignoradas).toEqual(['Confirma? Responda *sim* em até 10 minutos ✅']);
+  });
+
+  it('negrito/itálico/riscado e emoji: "*Time 1 (12.0)*" e "⚽ Time 2" abrem times; "🔥 Ana" e "Duda 😂" são os nomes', () => {
+    expect(nomes(lerTimesColados('*Time 1 (12.0)*\n1. 🔥 Ana 4.5\n2. _Beto_\n⚽ Time 2\n- Duda 😂 3,0\n- ~Caio~'))).toEqual([
+      [['Ana', 'Beto'], []],
+      [['Duda', 'Caio'], []],
+    ]);
+  });
+
+  it('limparLinha junta espaços repetidos e tira emoji com seletor de variação', () => {
+    expect(limparLinha('  ❤️  Ana   Paula  *3,5* ')).toBe('Ana Paula 3,5');
+  });
+});
+
+describe('trocarNomeNaLinha ("Você quis dizer X?")', () => {
+  it('troca só o nome, mantendo numeração e nota', () => {
+    expect(trocarNomeNaLinha('Time 1\n2. Marquino 3.5', 1, 'Marquino', 'Marquinho')).toBe('Time 1\n2. Marquinho 3.5');
+  });
+  it('tolera espaços repetidos e formatação entre as palavras do nome escrito', () => {
+    expect(trocarNomeNaLinha('Time 1\n1. Joao   Pedr 3.0', 1, 'Joao Pedr', 'João Pedro')).toBe('Time 1\n1. João Pedro 3.0');
+    expect(trocarNomeNaLinha('x\n*Joao* _Pedr_', 1, 'Joao Pedr', 'João Pedro')).toBe('x\n*João Pedro_');
+  });
+  it('sem achar o texto, a linha vira o nome novo; linha fora do texto não muda nada', () => {
+    expect(trocarNomeNaLinha('a\nzzz', 1, 'Marquino', 'Marquinho')).toBe('a\nMarquinho');
+    expect(trocarNomeNaLinha('a', 5, 'x', 'y')).toBe('a');
+  });
+  it('o nome lido do texto, trocado de volta no texto, casa na prévia', () => {
+    const texto = 'Time 1\n1.  🔥 Marquino   3.5\nTime 2\nCaio';
+    const r = previaDosTimes(texto, [{ id: 1, nome: 'Marquinho', nota: 3 }, { id: 2, nome: 'Caio', nota: 3 }]);
+    if (!r.ok) throw new Error(r.erro);
+    const n = r.previa.times[0].nomes[0];
+    expect(n).toMatchObject({ tipo: 'nao_achei', sugestao: 'Marquinho' });
+    const novo = trocarNomeNaLinha(texto, n.linha, n.escrito, 'Marquinho');
+    const de = previaDosTimes(novo, [{ id: 1, nome: 'Marquinho', nota: 3 }, { id: 2, nome: 'Caio', nota: 3 }]);
+    expect(de.ok && de.previa.pronto).toBe(true);
   });
 });
 

@@ -137,7 +137,8 @@ export function AcoesDoSorteio({
       </button>
       {!pc && motivo}
       <button type="button" className={`${PILULA_SEGUNDA} ${DO_TAMANHO}`} disabled={pendente} onClick={onSortear}>
-        {acao === 'sortear' ? 'Sorteando…' : 'Sortear de novo'}
+        {/* No celular a escolha de times não fica à vista na proposta: o rótulo diz qual vale. */}
+        {acao === 'sortear' ? 'Sorteando…' : pc ? 'Sortear de novo' : `Sortear de novo em ${nTimes} times`}
       </button>
       {pc && motivo}
     </div>

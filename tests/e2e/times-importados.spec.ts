@@ -26,7 +26,8 @@ test('importar times: cola, a prévia acha os nomes, "Você quis dizer" corrige 
 
   const previa = page.getByRole('region', { name: 'Prévia dos times' });
   await expect(previa.getByRole('region', { name: /^(Azul|Laranja|Verde|Preto)$/ })).toHaveCount(3);
-  await expect(previa.getByRole('region', { name: 'Azul' })).toContainText(a3); // começo do nome achou o cadastro
+  await expect(previa.getByRole('region', { name: 'Azul' })).toContainText(a3);
+  await expect(page.getByText(/^Ignorei estas linhas: Pelada 11\/11/)).toBeVisible(); // começo do nome achou o cadastro
   const salvar = page.getByRole('button', { name: 'Salvar como definitivo' });
   await expect(salvar).toBeDisabled();
   await page.getByRole('button', { name: 'Você quis dizer Igor?' }).click();

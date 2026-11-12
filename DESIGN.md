@@ -391,7 +391,7 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   (`role="radiogroup"` "Quantos times"): "3 times" e "4 times", 56px, placa #111, Inter 500 18px; a escolhida sobe
   para placa alta com o check lima. Começa em 4. A pílula e a dica do COMPLETE seguem a escolha ("Sortear 13 em 3
   times"; COMPLETE até times×4) e "Sortear de novo" usa a mesma. Na proposta ela sai da barra ("Mudar quem joga"
-  volta a ela). Com 3 times as cores são Azul, Laranja e Verde.
+  volta a ela) e a secundária diz a escolha: "Sortear de novo em 3 times". Com 3 times as cores são Azul, Laranja e Verde.
 - **Folha do escolhido:** com um jogador escolhido, a barra vira folha: placa #111, raio 20px só em cima,
   sombra para cima (ela flutua sobre os times; é a única sombra da tela). Na proposta: "Trocar Fulano" + "com
   alguém de outro time" e "Cancelar". Nos times definitivos: "Levar Fulano para" (ou "Pôr Fulano no"), os
@@ -404,7 +404,8 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   cadastro e as dos COMPLETE; COMPLETE como buraco na placa). Nome sem jogador, ambíguo ou repetido: o nome em
   vermelho, o motivo em #b4b4b4 ("Não está cadastrado.", "Mais de um com esse nome.", "Está em dois lugares.") e
   "Você quis dizer Fulano?" sublinhado, um alvo de 48px que troca o nome no texto. Erro do texto ("Cole de 2 a 4
-  times.") em vermelho logo abaixo da área. "Salvar como definitivo" (pílula branca, na barra; no PC no alto da
+  times.", ou "Não consegui conferir os nomes. Tente de novo." se a conferência falhar) em vermelho logo abaixo da área;
+  embaixo, em Giz, "Ignorei estas linhas: …" com o que não virou jogador nem time (cabeçalho, conta, frase). "Salvar como definitivo" (pílula branca, na barra; no PC no alto da
   coluna da prévia) só acende com tudo resolvido; senão, em Giz, "Resolva os nomes em vermelho para salvar." Com
   partidas jogadas pede a mesma confirmação do sorteio ("Usar os times novos"); com partida rolando fica travada.
   No PC: o painel na coluna de 304px à esquerda e a prévia à direita.
