@@ -396,6 +396,18 @@ Dois raios: 10px para placas e campos (a chapa do placar), pílula para a ação
   sombra para cima (ela flutua sobre os times; é a única sombra da tela). Na proposta: "Trocar Fulano" + "com
   alguém de outro time" e "Cancelar". Nos times definitivos: "Levar Fulano para" (ou "Pôr Fulano no"), os
   outros times como botões de 56px em placa alta com a bolinha, "Tirar do time" secundária e "Cancelar".
+- **Importar times:** entrada como o "Sortear de novo": pílula secundária "Importar times" com "Times sorteados fora
+  daqui? Cole a mensagem do WhatsApp." em Giz, no fim de "Quem joga" (no PC, à direita, embaixo da frase dos times).
+  Abre no lugar da tela (sem modal), como o "Quem entra no Azul?": h2 "Importar times" em Barlow 24px com "Cancelar"
+  em texto à direita; o Painel de colar nomes (placa #111, instrução em #b4b4b4, área de texto em #000, 8 linhas, anel
+  branco no foco) e, abaixo, a prévia nos cartões do sorteio só para ler (cores na ordem, soma com as notas do
+  cadastro e as dos COMPLETE; COMPLETE como buraco na placa). Nome sem jogador, ambíguo ou repetido: o nome em
+  vermelho, o motivo em #b4b4b4 ("Não está cadastrado.", "Mais de um com esse nome.", "Está em dois lugares.") e
+  "Você quis dizer Fulano?" sublinhado, um alvo de 48px que troca o nome no texto. Erro do texto ("Cole de 2 a 4
+  times.") em vermelho logo abaixo da área. "Salvar como definitivo" (pílula branca, na barra; no PC no alto da
+  coluna da prévia) só acende com tudo resolvido; senão, em Giz, "Resolva os nomes em vermelho para salvar." Com
+  partidas jogadas pede a mesma confirmação do sorteio ("Usar os times novos"); com partida rolando fica travada.
+  No PC: o painel na coluna de 304px à esquerda e a prévia à direita.
 - **Partida rolando:** logo abaixo do cabeçalho, placa #111 com "Partida em andamento — mudanças valem para a
   próxima." em branco Inter 500 16px (`role="status"`, sem lima) e a ação de texto "Anotador" à direita.
 - **Resultado:** "Fulano agora é do Azul." em lima com `role="status"` na barra; erro em vermelho com

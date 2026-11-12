@@ -14,7 +14,7 @@ import { QTDS_DE_TIMES, type Cor, type QtdDeTimes } from '@/domain/sorteio';
 const DO_TAMANHO = 'lg:w-auto lg:px-8';
 
 /** A consequência de marcar um sorteio novo depois de partidas jogadas. */
-function fraseDasJogadas(n: number) {
+export function fraseDasJogadas(n: number) {
   return n === 1
     ? 'A partida já jogada fica como está. Os times novos valem daqui pra frente.'
     : `As ${n} partidas já jogadas ficam como estão. Os times novos valem daqui pra frente.`;

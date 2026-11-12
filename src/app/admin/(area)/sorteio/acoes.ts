@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
+import { elencosDaPrevia, previaDosTimes, TAM_MAX_TEXTO_COLADO, type Previa } from '@/domain/importarTimes';
 import {
   CORES,
   diferenca,
@@ -13,7 +14,7 @@ import {
   type JogadorNota,
   type TimeSorteado,
 } from '@/domain/sorteio';
-import { idValido, mensagemParaUsuario } from '@/server/erros';
+import { ErroDeValidacao, idValido, mensagemParaUsuario } from '@/server/erros';
 import { criarJogadores, listarJogadores, notaValida } from '@/server/jogadores';
 import {
   adicionarComplete,
@@ -156,4 +157,40 @@ export async function cadastrarRapido(nome: string): Promise<{ ok: true; jogador
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }
+}
+
+// ---- Importar times (sorteados fora daqui e colados do WhatsApp) -------------------------
+
+const textoColado = (v: unknown): v is string => typeof v === 'string' && v.length <= TAM_MAX_TEXTO_COLADO;
+
+async function previaComAtivos(texto: string) {
+  const ativos = (await listarJogadores(getDb(), { incluirInativos: false })).map((j) => ({ id: j.id, nome: j.nome, nota: j.nota }));
+  return previaDosTimes(texto, ativos);
+}
+
+/** A prévia do texto colado (não grava nada): cada nome casado a um jogador ativo, com a nota do cadastro. */
+export async function previaDeImportar(texto: string): Promise<{ ok: true; previa: Previa } | { ok: false; erro: string }> {
+  await exigirAdmin();
+  if (!textoColado(texto)) return PEDIDO_INVALIDO;
+  try {
+    return await previaComAtivos(texto);
+  } catch (e) {
+    return { ok: false, erro: mensagemParaUsuario(e) };
+  }
+}
+
+/**
+ * Grava os times colados como definitivos. Refaz a prévia aqui com o mesmo texto (não confia no cliente): salva o que a
+ * tela mostrou, só se todo nome achou jogador e ninguém repete. As notas dos jogadores não mudam.
+ */
+export async function importarTimes(peladaId: number, texto: string): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(peladaId) || !textoColado(texto)) return PEDIDO_INVALIDO;
+  return tentar(async () => {
+    const r = await previaComAtivos(texto);
+    if (!r.ok) throw new ErroDeValidacao(r.erro);
+    if (!r.previa.pronto) throw new ErroDeValidacao('Tem nome que não achou jogador (ou repetido). Confira a prévia.');
+    const { elencos, completes } = elencosDaPrevia(r.previa);
+    await salvarTimesDefinitivos(getDb(), peladaId, elencos, completes);
+  });
 }

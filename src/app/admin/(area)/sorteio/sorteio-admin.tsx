@@ -11,6 +11,7 @@ import type { TimeDaPelada } from '@/server/times';
 import { marcarDefinitivo, mover, porComplete, preencher, sortear, tirarComplete } from './acoes';
 import { BuscaDeJogador, Erro, useTermoDaBusca } from './busca-de-jogador';
 import { EscolherQuemEntra, FolhaDoComplete, NOTA_DO_COMPLETE_NOVO, useNotasDosCompletes } from './complete';
+import { EntradaDoImportar, ImportarTimes } from './importar';
 import { AcoesDoSorteio, AvisoDoSorteio, EscolhaDeTimes, LevarEscolhido, SortearDeNovo, TrocarEscolhido, type Aviso } from './folhas';
 import {
   Barra,
@@ -67,7 +68,9 @@ const DIREITA = 'lg:block lg:@container [@media(min-width:84rem)_and_(min-height
 
 export function SorteioAdmin(p: Props) {
   const [refazendo, setRefazendo] = useState(false);
-  const definitivo = p.times.length > 0 && !refazendo;
+  /** Colando os times sorteados fora daqui (só a partir do sorteio, antes de sortear). */
+  const [importando, setImportando] = useState(false);
+  const definitivo = p.times.length > 0 && !refazendo && !importando;
 
   return (
     <main className="flex flex-1 flex-col">
@@ -90,10 +93,26 @@ export function SorteioAdmin(p: Props) {
           </Link>
         </div>
       )}
-      {definitivo ? (
+      {importando ? (
+        <ImportarTimes
+          peladaId={p.peladaId}
+          jogadas={p.jogadas}
+          emAndamento={p.emAndamento}
+          onCancelar={() => setImportando(false)}
+          onSalvo={() => {
+            setImportando(false);
+            setRefazendo(false);
+          }}
+        />
+      ) : definitivo ? (
         <Definitivo {...p} onRefazer={() => setRefazendo(true)} />
       ) : (
-        <Sorteio {...p} onVoltar={p.times.length ? () => setRefazendo(false) : undefined} onSalvo={() => setRefazendo(false)} />
+        <Sorteio
+          {...p}
+          onVoltar={p.times.length ? () => setRefazendo(false) : undefined}
+          onSalvo={() => setRefazendo(false)}
+          onImportar={() => setImportando(true)}
+        />
       )}
     </main>
   );
@@ -109,7 +128,7 @@ function AtualizarSozinho() {
   return null;
 }
 
-function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
+function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void; onImportar: () => void }) {
   const [cadastrados, setCadastrados] = useState<JogadorNota[]>([]);
   const todos = useMemo(() => [...p.ativos, ...cadastrados.filter((c) => !p.ativos.some((a) => a.id === c.id))], [p.ativos, cadastrados]);
   const porId = useMemo(() => new Map(todos.map((j) => [j.id, j])), [todos]);
@@ -371,6 +390,10 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
                 </ul>
               )}
             </section>
+            {/* No celular, no fim da lista de quem joga; no PC fica à direita, embaixo da frase dos times. */}
+            <SoNo pc={false}>
+              <EntradaDoImportar className="mt-10 pb-6" onImportar={p.onImportar} />
+            </SoNo>
           </div>
         </div>
 
@@ -446,6 +469,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void }) {
                 <p className="mt-4 max-w-xl text-base text-apagado">
                   Os times aparecem aqui, equilibrados pela nota. Antes de marcar como definitivo, dá para trocar quem quiser.
                 </p>
+                <EntradaDoImportar className="mt-10" onImportar={p.onImportar} />
               </div>
             </SoNo>
           )}
