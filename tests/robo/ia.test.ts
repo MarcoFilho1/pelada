@@ -316,6 +316,18 @@ describe('perguntar (Claude)', () => {
       expect(semTexto).toBe(PROPOSTA);
     });
 
+    it('a IA pede 3 times: o `times` chega à ferramenta e o schema vai estrito para a API', async () => {
+      const executar = vi.fn(async () => new TextoPronto(PROPOSTA, 'sorteio'));
+      const comTimes = {
+        ...sorteio(executar),
+        parametros: { type: 'object' as const, properties: { times: { type: 'integer' as const, enum: [3, 4] } }, additionalProperties: false as const },
+      };
+      const { cliente, pedidos } = falso(chamada('pedir_sorteio', { times: 3 }), texto('Bora!'));
+      await perguntar('sorteia em 3 times', base(cliente, [comTimes]));
+      expect(executar).toHaveBeenCalledWith({ times: 3 });
+      expect(pedidos[0].tools?.[0]).toMatchObject({ name: 'pedir_sorteio', strict: true, input_schema: comTimes.parametros });
+    });
+
     it('um sorteio só por conversa: a segunda chamada é is_error, sem sortear de novo', async () => {
       const executar = vi.fn(async () => new TextoPronto(PROPOSTA, 'sorteio'));
       const usos = mensagem(

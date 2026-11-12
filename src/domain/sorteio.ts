@@ -156,3 +156,22 @@ export function sortearComCompletes(jogadores: JogadorNota[], opts: OpcoesComple
     return { jogadores: t.jogadores.filter((j) => j.id > 0), completes, soma: t.soma }
   })
 }
+
+/** Quantos times o admin pode pedir no sorteio (algumas noites só fecham 3). */
+export const QTDS_DE_TIMES = [3, 4] as const
+export type QtdDeTimes = (typeof QTDS_DE_TIMES)[number]
+/** Cada time é completado com COMPLETE até este tamanho (com 16 ou mais em 4 times não entra COMPLETE). */
+export const JOGADORES_POR_TIME = 4
+
+/** Só 3 ou 4 times; qualquer outra coisa (pedido estranho do cliente ou do robô) vira 4, o padrão. */
+export function qtdDeTimes(v: unknown): QtdDeTimes {
+  return v === 3 ? 3 : 4
+}
+
+/**
+ * O sorteio da noite, igual no site e no WhatsApp: `qtd` times (nunca mais times que jogadores), equilibrados pela
+ * nota, e o time curto ganha COMPLETE até fechar 4. Com 3 times as cores são as 3 primeiras (Azul, Laranja, Verde).
+ */
+export function sortearDaNoite(jogadores: JogadorNota[], qtd: QtdDeTimes, rng: () => number = Math.random): TimeSorteado[] {
+  return sortearComCompletes(jogadores, { times: Math.min(qtd, CORES.length, jogadores.length), porTime: JOGADORES_POR_TIME, rng })
+}

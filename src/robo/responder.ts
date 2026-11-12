@@ -1,6 +1,7 @@
 // Resposta a uma marcação no grupo: decide o texto, envia e cuida do freio e da proposta de sorteio.
 // Sem WhatsApp, banco ou IA aqui dentro: tudo chega pelo contexto (os testes usam falsos).
 import { normalizarNome } from '@/domain/nome';
+import { qtdDeTimes, type QtdDeTimes } from '@/domain/sorteio';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
@@ -52,7 +53,8 @@ export type ContextoDaResposta = {
   /** A proposta de sorteio esperando o "sim" (uma só; a nova substitui a antiga). */
   proposta: { atual: Proposta | null };
   lerLista: (now: Date) => Promise<EstadoDaSemana>;
-  propor: (now: Date, telefone: string) => Promise<Proposta | { erro: string }>;
+  /** `times`: 3 ou 4 (o padrão). */
+  propor: (now: Date, telefone: string, times: QtdDeTimes) => Promise<Proposta | { erro: string }>;
   confirmar: (now: Date, telefone: string, proposta: Proposta | null) => Promise<{ ok: string } | { erro: string }>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean }) => Promise<string>;
@@ -166,10 +168,10 @@ async function respostaLista(m: MensagemRecebida, c: ContextoDaResposta): Promis
   return { texto: montarMensagem(tipo, lista, foto, anterior), gravar: { tipo, foto } };
 }
 
-async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta, times: QtdDeTimes): Promise<string> {
   const tel = m.remetenteTelefone;
   if (!tel || !ehAdmin(tel, c.admins)) return TEXTO_SO_ADMIN;
-  const r = await c.propor(m.quando, tel);
+  const r = await c.propor(m.quando, tel, times);
   if ('erro' in r) return r.erro;
   c.proposta.atual = r;
   return r.texto;
@@ -219,6 +221,13 @@ const comNome: Parametros = {
   type: 'object',
   properties: { nome: { type: 'string', description: 'O nome do jogador como a pessoa escreveu (pode ser só o começo).' } },
   required: ['nome'],
+  additionalProperties: false,
+};
+
+/** Opcional, como o `periodo` do ranking: omitido, 4 times. Qualquer outro valor também vira 4. */
+const comTimes: Parametros = {
+  type: 'object',
+  properties: { times: { type: 'integer', enum: [3, 4], description: 'Quantos times: 3 ou 4. Omitido: 4. Use 3 só quando pedirem 3 times.' } },
   additionalProperties: false,
 };
 
@@ -284,11 +293,11 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
     {
       nome: 'pedir_sorteio',
       descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
-      parametros: semParametros,
+      parametros: comTimes,
       sorteio: true,
-      async executar() {
+      async executar(args) {
         const antes = c.proposta.atual;
-        const texto = await respostaSortear(m, c);
+        const texto = await respostaSortear(m, c, qtdDeTimes((args as { times?: unknown } | null)?.times));
         const nova = c.proposta.atual;
         // Recusa (não é admin) ou erro do sorteio: nada guardado, o modelo explica.
         if (!nova || nova === antes || nova.texto !== texto) throw new ErroDeFerramenta(texto);
@@ -357,7 +366,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
       r = { texto: c.ia ? `${TEXTO_AJUDA}\n${TEXTO_AJUDA_PERGUNTA}` : TEXTO_AJUDA };
       break;
     case 'sortear':
-      r = { texto: await respostaSortear(m, c) };
+      r = { texto: await respostaSortear(m, c, cmd.times) };
       break;
     case 'sim':
       r = { texto: await respostaSim(m, c, remetenteEhJonas(m, c)) };

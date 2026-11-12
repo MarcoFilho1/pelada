@@ -3,8 +3,18 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
-import { CORES, diferenca, diferencaMedia, sortearComCompletes, type JogadorNota, type TimeSorteado } from '@/domain/sorteio';
-import { idValido, mensagemParaUsuario } from '@/server/erros';
+import { elencosDaPrevia, previaDosTimes, TAM_MAX_TEXTO_COLADO, type Previa } from '@/domain/importarTimes';
+import {
+  CORES,
+  diferenca,
+  diferencaMedia,
+  JOGADORES_POR_TIME,
+  qtdDeTimes,
+  sortearDaNoite,
+  type JogadorNota,
+  type TimeSorteado,
+} from '@/domain/sorteio';
+import { ErroDeValidacao, idValido, mensagemParaUsuario } from '@/server/erros';
 import { criarJogadores, listarJogadores, notaValida } from '@/server/jogadores';
 import {
   adicionarComplete,
@@ -23,7 +33,7 @@ const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 /** Bem mais que uma noite cheia; só barra pedido absurdo. */
 const MAX_PARTICIPANTES = 64;
 /** O sorteio completa cada time com COMPLETE até 4 (com 16 ou mais não entra COMPLETE: 17 viram 5,4,4,4). */
-const POR_TIME = 4;
+const POR_TIME = JOGADORES_POR_TIME;
 
 async function exigirAdmin() {
   if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
@@ -32,10 +42,10 @@ async function exigirAdmin() {
 const listaDeIds = (v: unknown): v is number[] => Array.isArray(v) && v.length <= MAX_PARTICIPANTES && v.every(idValido);
 
 /**
- * Sorteia uma proposta (não grava nada): até 4 times, equilibrados pela nota atual de cada um. Time
- * curto ganha COMPLETE até fechar 4, com a nota (2,5, 3,0 ou 3,5) que mais equilibra.
+ * Sorteia uma proposta (não grava nada): 3 ou 4 times (`times`; outro valor vira 4), equilibrados pela nota atual de
+ * cada um. Time curto ganha COMPLETE até fechar 4, com a nota (2,5, 3,0 ou 3,5) que mais equilibra.
  */
-export async function sortear(ids: number[]): Promise<({ ok: true } & Proposta) | { ok: false; erro: string }> {
+export async function sortear(ids: number[], times: number = 4): Promise<({ ok: true } & Proposta) | { ok: false; erro: string }> {
   await exigirAdmin();
   if (!listaDeIds(ids)) return PEDIDO_INVALIDO;
   const unicos = [...new Set(ids)];
@@ -48,8 +58,8 @@ export async function sortear(ids: number[]): Promise<({ ok: true } & Proposta) 
       if (!j) return { ok: false, erro: 'Tem jogador desativado ou que não existe. Recarregue a página.' };
       participantes.push({ id: j.id, nome: j.nome, nota: j.nota });
     }
-    const times = sortearComCompletes(participantes, { times: Math.min(CORES.length, participantes.length), porTime: POR_TIME });
-    return { ok: true, times, diferenca: diferenca(times), diferencaMedia: diferencaMedia(times) };
+    const sorteados = sortearDaNoite(participantes, qtdDeTimes(times));
+    return { ok: true, times: sorteados, diferenca: diferenca(sorteados), diferencaMedia: diferencaMedia(sorteados) };
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }
@@ -147,4 +157,40 @@ export async function cadastrarRapido(nome: string): Promise<{ ok: true; jogador
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }
+}
+
+// ---- Importar times (sorteados fora daqui e colados do WhatsApp) -------------------------
+
+const textoColado = (v: unknown): v is string => typeof v === 'string' && v.length <= TAM_MAX_TEXTO_COLADO;
+
+async function previaComAtivos(texto: string) {
+  const ativos = (await listarJogadores(getDb(), { incluirInativos: false })).map((j) => ({ id: j.id, nome: j.nome, nota: j.nota }));
+  return previaDosTimes(texto, ativos);
+}
+
+/** A prévia do texto colado (não grava nada): cada nome casado a um jogador ativo, com a nota do cadastro. */
+export async function previaDeImportar(texto: string): Promise<{ ok: true; previa: Previa } | { ok: false; erro: string }> {
+  await exigirAdmin();
+  if (!textoColado(texto)) return PEDIDO_INVALIDO;
+  try {
+    return await previaComAtivos(texto);
+  } catch (e) {
+    return { ok: false, erro: mensagemParaUsuario(e) };
+  }
+}
+
+/**
+ * Grava os times colados como definitivos. Refaz a prévia aqui com o mesmo texto (não confia no cliente): salva o que a
+ * tela mostrou, só se todo nome achou jogador e ninguém repete. As notas dos jogadores não mudam.
+ */
+export async function importarTimes(peladaId: number, texto: string): Promise<Resposta> {
+  await exigirAdmin();
+  if (!idValido(peladaId) || !textoColado(texto)) return PEDIDO_INVALIDO;
+  return tentar(async () => {
+    const r = await previaComAtivos(texto);
+    if (!r.ok) throw new ErroDeValidacao(r.erro);
+    if (!r.previa.pronto) throw new ErroDeValidacao('Tem nome que não achou jogador (ou repetido). Confira a prévia.');
+    const { elencos, completes } = elencosDaPrevia(r.previa);
+    await salvarTimesDefinitivos(getDb(), peladaId, elencos, completes);
+  });
 }

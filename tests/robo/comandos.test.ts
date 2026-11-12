@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   TEXTO_AJUDA,
+  TEXTO_SO_3_OU_4,
   TEXTO_NOME_COMPRIDO,
   interpretar,
   respostaFalta,
@@ -39,12 +40,6 @@ describe('interpretar', () => {
     ['Fíla', 'fila'],
     ['ajuda', 'ajuda'],
     ['AJUDA!', 'ajuda'],
-    ['sortear', 'sortear'],
-    ['Sorteia', 'sortear'],
-    ['sorteio', 'sortear'],
-    ['sortear de novo', 'sortear'],
-    ['Sorteia de novo!', 'sortear'],
-    ['sortear novamente', 'sortear'],
     ['sim', 'sim'],
     ['SIM.', 'sim'],
     ['artilheiro', 'artilheiro'],
@@ -150,7 +145,45 @@ describe('interpretar: vários nomes numa mensagem', () => {
   });
 });
 
+describe('interpretar: sortear em 3 ou 4 times', () => {
+  it.each([
+    ['sortear', 4],
+    ['Sorteia', 4],
+    ['sorteio', 4],
+    ['sortear de novo', 4],
+    ['Sorteia de novo!', 4],
+    ['sortear novamente', 4],
+    ['sortear 3', 3],
+    ['sortear 3 times', 3],
+    ['Sortear 3 Times!', 3],
+    ['sorteia 3 times', 3],
+    ['sortear em 3 times', 3],
+    ['sortear três times', 3],
+    ['sortear de novo 3 times', 3],
+    ['sortear de novo em 3', 3],
+    ['sortear novamente 3 times', 3],
+    ['sortear 4 times', 4],
+    ['sortear 4', 4],
+    ['SORTEAR QUATRO TIMES', 4],
+    ['sortear 3 time', 3],
+  ])('"%s" -> %i times', (texto, times) => {
+    expect(interpretar(texto)).toEqual({ tipo: 'sortear', times });
+  });
+
+  it.each(['sortear 2 times', 'sortear 5', 'sortear de novo 6 times', 'sortear 10 times'])('"%s": recusa curta', (texto) => {
+    expect(interpretar(texto)).toEqual({ tipo: 'recusa', texto: TEXTO_SO_3_OU_4 });
+  });
+
+  it('frase livre com "sortear" continua pergunta', () => {
+    expect(interpretar('sortear os times aí')).toEqual({ tipo: 'pergunta', texto: 'sortear os times aí' });
+  });
+});
+
 describe('TEXTO_AJUDA', () => {
+  it('lembra do sorteio em 3 times', () => {
+    expect(TEXTO_AJUDA).toContain('(ou sortear 3 times)');
+  });
+
   it('avisa que aceita até 3 nomes', () => {
     expect(TEXTO_AJUDA.match(/até 3 nomes: A, B e C/g)).toHaveLength(3);
   });

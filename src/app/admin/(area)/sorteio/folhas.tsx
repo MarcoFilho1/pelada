@@ -4,22 +4,25 @@
 // sorteio, a troca e a mudança de time de quem foi escolhido, o aviso e o "Sortear de novo" dos times salvos.
 // Cada peça recebe `pc` quando muda de forma entre as larguras; o estado é sempre de quem chama.
 
+import type { ReactNode } from 'react';
 import { Colete, NOME_DA_COR } from '@/components/colete';
+import { Marca } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
-import type { Cor } from '@/domain/sorteio';
+import { QTDS_DE_TIMES, type Cor, type QtdDeTimes } from '@/domain/sorteio';
 
 /** No PC a pílula fica do tamanho do texto (ações lado a lado acima dos times). */
 const DO_TAMANHO = 'lg:w-auto lg:px-8';
 
 /** A consequência de marcar um sorteio novo depois de partidas jogadas. */
-function fraseDasJogadas(n: number) {
+export function fraseDasJogadas(n: number) {
   return n === 1
     ? 'A partida já jogada fica como está. Os times novos valem daqui pra frente.'
     : `As ${n} partidas já jogadas ficam como estão. Os times novos valem daqui pra frente.`;
 }
 
 /**
- * As ações antes de definir. `escolher`: a pílula que conta o sorteio ("Sortear 16 em 4 times"); `proposta`:
+ * As ações antes de definir. `escolher`: no celular a escolha "3 times / 4 times" (`escolha`) e a pílula que conta o
+ * sorteio ("Sortear 16 em 4 times"); `proposta`:
  * "Marcar como definitivo" e "Sortear de novo", ou a confirmação com partidas jogadas. No celular, empilhadas na
  * barra de baixo; no PC (`pc`), lado a lado e do tamanho do texto, acima dos times.
  */
@@ -38,6 +41,7 @@ export function AcoesDoSorteio({
   onDefinir,
   onVoltarDaConfirmacao,
   onVoltarAosSalvos,
+  escolha,
 }: {
   pc?: boolean;
   fase: 'escolher' | 'proposta';
@@ -53,6 +57,8 @@ export function AcoesDoSorteio({
   onDefinir: () => void;
   onVoltarDaConfirmacao: () => void;
   onVoltarAosSalvos?: () => void;
+  /** Só no celular, antes de sortear: a escolha de quantos times, acima da pílula (no PC ela fica no alto da coluna). */
+  escolha?: ReactNode;
 }) {
   const idMotivo = pc ? 'motivo-travado-pc' : 'motivo-travado';
   const motivo = motivoTravado && (
@@ -83,6 +89,7 @@ export function AcoesDoSorteio({
       </div>
     ) : (
       <>
+        {escolha}
         {pilula}
         {complete && <p className="mt-2 text-center text-base text-meta">{complete}</p>}
         {voltar}
@@ -130,9 +137,50 @@ export function AcoesDoSorteio({
       </button>
       {!pc && motivo}
       <button type="button" className={`${PILULA_SEGUNDA} ${DO_TAMANHO}`} disabled={pendente} onClick={onSortear}>
-        {acao === 'sortear' ? 'Sorteando…' : 'Sortear de novo'}
+        {/* No celular a escolha de times não fica à vista na proposta: o rótulo diz qual vale. */}
+        {acao === 'sortear' ? 'Sorteando…' : pc ? 'Sortear de novo' : `Sortear de novo em ${nTimes} times`}
       </button>
       {pc && motivo}
+    </div>
+  );
+}
+
+/**
+ * "3 times" / "4 times" antes de sortear: a Escolha de estado do admin (DESIGN.md), em 2 colunas. Um estado só (de quem
+ * chama) para o celular (na barra, acima da pílula) e para o PC (no alto da coluna dos times).
+ */
+export function EscolhaDeTimes({
+  valor,
+  pendente,
+  onEscolher,
+  className = '',
+}: {
+  valor: QtdDeTimes;
+  pendente: boolean;
+  onEscolher: (n: QtdDeTimes) => void;
+  className?: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Quantos times" className={`grid grid-cols-2 gap-2 ${className}`}>
+      {QTDS_DE_TIMES.map((n) => {
+        const marcado = valor === n;
+        return (
+          <button
+            key={n}
+            type="button"
+            role="radio"
+            aria-checked={marcado}
+            disabled={pendente}
+            onClick={() => onEscolher(n)}
+            className={`flex h-toque items-center justify-between gap-2 rounded-placa px-4 text-left text-linha font-medium transition-colors disabled:text-meta ${
+              marcado ? 'bg-placa-alta text-tinta' : 'bg-placa text-tinta hover:bg-placa-alta/60 active:bg-placa-alta'
+            }`}
+          >
+            <span className="truncate">{n} times</span>
+            <span className="flex size-6 shrink-0 items-center justify-center text-lima">{marcado && <Marca className="size-6" />}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -793,3 +793,42 @@ describe('quem completa a partida (Parte 8)', () => {
     expect(q.semTime.find((j) => j.id === zeca)).toMatchObject({ nota: 3 });
   });
 });
+
+describe('noite com 3 times', () => {
+  it('salva Azul, Laranja e Verde; a fila gira entre os 3 e a partida começa e é anotada', async () => {
+    const peladaId = await novaPelada(HOJE);
+    const ids = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo', 'Ivo', 'Jonas', 'Leo', 'Lia', 'Mel']);
+    // 13 jogadores em 3 times: 5, 4 e 4, sem COMPLETE.
+    await salvarTimesDefinitivos(db, peladaId, [ids.slice(0, 5), ids.slice(5, 9), ids.slice(9, 13)], [], NOITE);
+    const ts = await timesDaPelada(db, peladaId);
+    expect(ts.map((t) => [t.cor, t.ordem, t.jogadores.length])).toEqual([
+      ['azul', 1, 5],
+      ['laranja', 2, 4],
+      ['verde', 3, 4],
+    ]);
+    const [azul, laranja, verde] = ts.map((t) => t.id);
+    expect(await filaDeTimes(db, peladaId)).toEqual([azul, laranja, verde]);
+
+    const p1 = await iniciarPartida(db, peladaId, azul, laranja, NOITE);
+    await registrarLance(db, p1, ids[5], 'gol');
+    expect(await placarDe(p1)).toEqual({ A: 0, B: 1 });
+    await encerrarPartida(db, p1, depois(8 * MIN)); // Laranja vence: fica; Azul vai para o fim
+    expect(await filaDeTimes(db, peladaId)).toEqual([laranja, verde, azul]);
+
+    const p2 = await iniciarPartida(db, peladaId, laranja, verde, depois(9 * MIN));
+    await encerrarPartida(db, p2, depois(17 * MIN)); // 0 × 0: saem os dois
+    expect(await filaDeTimes(db, peladaId)).toEqual([azul, laranja, verde]);
+
+    const p3 = await iniciarPartida(db, peladaId, azul, laranja, depois(18 * MIN));
+    expect(await partidaEmAndamento(db, peladaId)).toBe(p3);
+  });
+
+  it('11 jogadores em 3 times: o time curto guarda o COMPLETE', async () => {
+    const peladaId = await novaPelada(HOJE);
+    const ids = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo', 'Ivo', 'Jonas', 'Leo']);
+    await salvarTimesDefinitivos(db, peladaId, [ids.slice(0, 4), ids.slice(4, 8), ids.slice(8, 11)], [[], [], [3]], NOITE);
+    const ts = await timesDaPelada(db, peladaId);
+    expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
+    expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual([[], [], [3]]);
+  });
+});

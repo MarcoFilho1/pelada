@@ -246,7 +246,7 @@ async function laco(): Promise<void> {
         proposta,
         // Fora da janela só lê (nunca cria a pelada da semana), como o ensaio.
         lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
-        propor: (n, tel) => proporSorteio(db, n, tel),
+        propor: (n, tel, times) => proporSorteio(db, n, tel, Math.random, times),
         confirmar: (n, tel, p) => confirmarSorteio(db, n, tel, p),
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),

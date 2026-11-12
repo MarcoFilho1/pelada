@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { diferenca, diferencaMedia, rotuloDaDiferenca, sortearComCompletes, sortearTimes, type JogadorNota } from '@/domain/sorteio'
+import {
+  diferenca,
+  diferencaMedia,
+  qtdDeTimes,
+  rotuloDaDiferenca,
+  sortearComCompletes,
+  sortearDaNoite,
+  sortearTimes,
+  type JogadorNota,
+} from '@/domain/sorteio'
 import { criarRng } from '../helpers/rng'
 
 function jogadores(notas: number[]): JogadorNota[] {
@@ -173,5 +182,44 @@ describe('sortearComCompletes', () => {
       const times = sortearComCompletes(js, { times: 2, porTime: 3, rng: criarRng(semente) })
       expect(times.flatMap((t) => t.completes).sort()).toEqual([3, 3])
     }
+  })
+})
+
+describe('qtdDeTimes', () => {
+  it('só 3 ou 4; qualquer outra coisa vira 4', () => {
+    expect(qtdDeTimes(3)).toBe(3)
+    expect(qtdDeTimes(4)).toBe(4)
+    for (const ruim of [undefined, null, 0, 2, 5, 3.5, '3', '4', NaN, [3], { times: 3 }]) expect(qtdDeTimes(ruim), String(ruim)).toBe(4)
+  })
+})
+
+describe('sortearDaNoite (a regra do site e do robô)', () => {
+  const tamanhos = (ts: { jogadores: unknown[] }[]) => ts.map((t) => t.jogadores.length).sort((a, b) => b - a)
+  const notas = (n: number) => jogadores(Array.from({ length: n }, (_, i) => [5, 4, 3.5, 3, 2.5, 2, 1.5][i % 7]))
+
+  it.each([
+    [12, [4, 4, 4], 0],
+    [13, [5, 4, 4], 0],
+    [15, [5, 5, 5], 0],
+    [11, [4, 4, 3], 1],
+  ])('%i jogadores em 3 times: tamanhos %j e %i COMPLETE', (n, esperado, completes) => {
+    const js = notas(n)
+    const times = sortearDaNoite(js, 3, criarRng(4))
+    expect(times).toHaveLength(3)
+    expect(tamanhos(times)).toEqual(esperado)
+    expect(times.flatMap((t) => t.completes)).toHaveLength(completes)
+    for (const t of times) expect(t.jogadores.length + t.completes.length).toBeGreaterThanOrEqual(4)
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+  })
+
+  it('4 times continua como antes: 14 jogadores, 2 COMPLETE; 17 viram 5,4,4,4', () => {
+    expect(sortearDaNoite(notas(14), 4, criarRng(2)).flatMap((t) => t.completes)).toHaveLength(2)
+    expect(tamanhos(sortearDaNoite(notas(17), 4, criarRng(2)))).toEqual([5, 4, 4, 4])
+  })
+
+  it('com 2 jogadores e 3 times: só 2 times (nunca time sem jogador)', () => {
+    const times = sortearDaNoite(notas(2), 3, criarRng(1))
+    expect(times).toHaveLength(2)
+    for (const t of times) expect(t.jogadores.length).toBeGreaterThan(0)
   })
 })

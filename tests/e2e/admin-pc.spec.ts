@@ -186,6 +186,18 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
   await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
+  // A escolha "3 times / 4 times" fica à vista no alto da coluna dos times: trocar para 3 invalida a proposta, e
+  // sortear de novo mostra 3 cartões (Azul, Laranja e Verde) na mesma linha.
+  await page.getByRole('radio', { name: '3 times' }).click();
+  await expect(page.getByText('Agora são 3 times. Sorteie de novo para ver os times.').locator('visible=true')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Sortear 14 em 3 times' }).click();
+  await expect(cartoes).toHaveCount(3);
+  await expect(page.getByRole('region', { name: 'Preto', exact: true })).toHaveCount(0);
+  const tres = await Promise.all((await cartoes.all()).map((c) => c.boundingBox()));
+  expect(new Set(tres.map((c) => Math.round(c!.y))).size).toBe(1);
+  await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toBeVisible();
+
   // Desistir da proposta: "Voltar aos times salvos" fica na coluna da esquerda, também com a proposta na tela.
   await page.getByRole('button', { name: 'Voltar aos times salvos' }).click();
   await expect(page.getByText('Times definitivos')).toBeVisible();

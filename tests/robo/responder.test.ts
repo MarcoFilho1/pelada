@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
-import { TEXTO_AJUDA, type AcaoNaLista } from '@/robo/comandos';
+import { TEXTO_AJUDA, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
 import { calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVO_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
@@ -234,6 +234,16 @@ describe('responder: sorteio', () => {
     expect(c.proposta.atual).toBeNull();
   });
 
+  it('"sortear 3 times" propõe em 3; "sortear" em 4; "sortear 5 times" recusa sem propor', async () => {
+    const c = ctx({}, relogio.agora);
+    await passo('sortear 3 times', c, ADMIN);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), ADMIN, 3);
+    await passo('sortear', c, ADMIN);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), ADMIN, 4);
+    expect((await passo('sortear 5 times', c, ADMIN))?.texto).toBe(TEXTO_SO_3_OU_4);
+    expect(c.propor).toHaveBeenCalledTimes(2);
+  });
+
   it('admin: propõe, guarda uma proposta só (a nova substitui a antiga)', async () => {
     const c = ctx({}, relogio.agora);
     expect((await passo('sortear', c, ADMIN))?.texto).toBe('Times propostos');
@@ -437,11 +447,28 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     const c = ctx({}, () => quando);
     const r = (await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
     expect(r).toMatchObject({ texto: 'Times propostos', como: 'sorteio' });
-    expect(c.propor).toHaveBeenCalledWith(quando, ADMIN);
+    expect(c.propor).toHaveBeenCalledWith(quando, ADMIN, 4);
     expect(c.proposta.atual).toMatchObject({ adminTelefone: ADMIN, texto: 'Times propostos' });
     const sim = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-11T15:02:00') }), c);
     expect(sim?.texto).toBe('🏆 Times definitivos salvos!');
     expect(c.confirmar).toHaveBeenCalledWith(t('2026-11-11T15:02:00'), ADMIN, expect.objectContaining({ texto: 'Times propostos' }));
+  });
+
+  it('pedir_sorteio: `times` opcional (3 ou 4) no schema estrito; 3 vai para o sorteio, ausente/estranho vira 4', async () => {
+    const quando = t('2026-11-11T15:00:00');
+    const c = ctx({}, () => quando);
+    const f = achar(ferramentasDeAcao(msg('sorteia em 3 times', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio');
+    expect(f.parametros).toEqual({
+      type: 'object',
+      properties: { times: expect.objectContaining({ type: 'integer', enum: [3, 4] }) },
+      additionalProperties: false,
+    });
+    await f.executar({ times: 3 });
+    expect(c.propor).toHaveBeenLastCalledWith(quando, ADMIN, 3);
+    for (const args of [{}, { times: 4 }, { times: 7 }, { times: '3' }, null]) {
+      await f.executar(args);
+      expect(c.propor).toHaveBeenLastCalledWith(quando, ADMIN, 4);
+    }
   });
 
   it('pedir_sorteio: descartar a proposta (chegou depois do prazo) limpa só ela', async () => {
