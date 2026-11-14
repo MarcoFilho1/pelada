@@ -130,6 +130,37 @@ describe('lerTimesColados: o que vem do WhatsApp', () => {
     ]);
   });
 
+  it('emoji de número ("1️⃣", "🔟") é a numeração: sai junto, não gruda no nome', () => {
+    expect(nomes(lerTimesColados('Time 1\n1️⃣ Ana 4.5\n2️⃣ Beto\nTime 2\n1⃣ Caio\n🔟 Davi 3,0'))).toEqual([
+      [['Ana', 'Beto'], []],
+      [['Caio', 'Davi'], []],
+    ]);
+  });
+
+  it('exportação do Android (sem colchetes): "04/11/2026 20:31 - Pepe: " sai e a linha vale', () => {
+    const txt = [
+      '04/11/2026 20:31 - Pepe: Time 1',
+      '04/11/2026 20:31 - Pepe: 1. Ana',
+      '04/11/26, 20:31 - Pepe Silva: 2. Beto 3.0',
+      '4/11/26 8:31 PM - Pepe: Time 2',
+      '04/11/2026 20:32 - Pepe:',
+      '04/11/2026 20:32 - Pepe: 1. Caio',
+    ].join('\n');
+    expect(nomes(lerTimesColados(txt))).toEqual([
+      [['Ana', 'Beto'], []],
+      [['Caio'], []],
+    ]);
+  });
+
+  it('linha de Android sem ":" depois do nome continua sendo cabeçalho ignorado', () => {
+    const r = lerTimesColados('04/11/2026 20:31 - Pepe entrou usando o link\nTime 1\nAna\nTime 2\nBeto');
+    expect(nomes(r)).toEqual([
+      [['Ana'], []],
+      [['Beto'], []],
+    ]);
+    expect(r.ok && r.ignoradas).toEqual(['04/11/2026 20:31 - Pepe entrou usando o link']);
+  });
+
   it('limparLinha junta espaços repetidos e tira emoji com seletor de variação', () => {
     expect(limparLinha('  ❤️  Ana   Paula  *3,5* ')).toBe('Ana Paula 3,5');
   });
@@ -146,6 +177,16 @@ describe('trocarNomeNaLinha ("Você quis dizer X?")', () => {
   it('sem achar o texto, a linha vira o nome novo; linha fora do texto não muda nada', () => {
     expect(trocarNomeNaLinha('a\nzzz', 1, 'Marquino', 'Marquinho')).toBe('a\nMarquinho');
     expect(trocarNomeNaLinha('a', 5, 'x', 'y')).toBe('a');
+  });
+  it('não troca dentro do prefixo da mensagem copiada (iPhone e Android)', () => {
+    expect(trocarNomeNaLinha('x\n[04/11, 20:31] Pepe: 1. Pep 3.0', 1, 'Pep', 'Pepe')).toBe('x\n[04/11, 20:31] Pepe: 1. Pepe 3.0');
+    expect(trocarNomeNaLinha('x\n04/11/2026 20:31 - Pepe: 1. Pep', 1, 'Pep', 'Pepe')).toBe('x\n04/11/2026 20:31 - Pepe: 1. Pepe');
+  });
+  it('sem achar o texto, mantém o prefixo e põe o nome novo depois dele', () => {
+    expect(trocarNomeNaLinha('x\n[04/11, 20:31] Pepe: zzz', 1, 'Marquino', 'Marquinho')).toBe('x\n[04/11, 20:31] Pepe: Marquinho');
+  });
+  it('emoji de número antes do nome: troca só o nome', () => {
+    expect(trocarNomeNaLinha('x\n1️⃣ Marquino 3.5', 1, 'Marquino', 'Marquinho')).toBe('x\n1️⃣ Marquinho 3.5');
   });
   it('o nome lido do texto, trocado de volta no texto, casa na prévia', () => {
     const texto = 'Time 1\n1.  🔥 Marquino   3.5\nTime 2\nCaio';
