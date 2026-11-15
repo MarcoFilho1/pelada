@@ -16,12 +16,22 @@ export type TimeColado = { nomes: NomeColado[]; completes: number[] };
 const notaValida = (n: number) => Number.isFinite(n) && n >= 0 && n <= 5 && Number.isInteger(n * 2);
 
 /**
- * O que não é o texto da linha: o prefixo de mensagem copiada do WhatsApp ("[04/11, 20:31] Pepe: "), a formatação
+ * Prefixo de mensagem copiada do WhatsApp: no iPhone "[04/11, 20:31] Pepe: "; na exportação do Android, sem colchetes,
+ * "04/11/2026 20:31 - Pepe: " (também "04/11/26, 20:31 - " e "8:31 PM - ").
+ */
+const PREFIXO_MENSAGEM =
+  /^\s*(?:\[[^\]]*\]\s*[^:]{1,40}:|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s+\d{1,2}:\d{2}(?:\s*[AaPp]\.?\s*[Mm]\.?)?\s+-\s+[^:]{1,40}:)\s*/u;
+/** Emoji de número ("1️⃣"): é a numeração da linha, sai inteiro (senão o "1" sobra grudado no nome). */
+const EMOJI_DE_NUMERO = /[0-9#*]\uFE0F?\u20E3/gu;
+
+/**
+ * O que não é o texto da linha: o prefixo de mensagem copiada do WhatsApp, o emoji de número, a formatação
  * (*negrito*, _itálico_, ~riscado~), as marcas da lista ((M), (D), (?)) e os emojis. Espaços repetidos viram um.
  */
 export function limparLinha(linha: string): string {
   return linha
-    .replace(/^\s*\[[^\]]*\]\s*[^:]{1,40}:\s*/u, '')
+    .replace(PREFIXO_MENSAGEM, '')
+    .replace(EMOJI_DE_NUMERO, '')
     .replace(/[*_~]/g, '')
     .replace(/\((?:M|D|\?)\)/gi, '')
     .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
@@ -54,14 +64,18 @@ function lerLinha(linha: string): { nome: string; nota: number | null } {
 
 /**
  * "Você quis dizer X?": troca o nome escrito pelo `novo` na linha `linha` do texto colado. Tolera espaços repetidos e a
- * formatação do WhatsApp entre as palavras; se mesmo assim não achar, a linha vira só o nome novo.
+ * formatação do WhatsApp entre as palavras e nunca mexe no prefixo da mensagem copiada; se mesmo assim não achar, o que
+ * vem depois do prefixo vira só o nome novo.
  */
 export function trocarNomeNaLinha(texto: string, linha: number, escrito: string, novo: string): string {
   const linhas = texto.split(/\r?\n/);
   if (linha < 0 || linha >= linhas.length) return texto;
   const palavras = escrito.split(' ').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const re = new RegExp(palavras.join('[\\s*_~]+'), 'u');
-  linhas[linha] = re.test(linhas[linha]) ? linhas[linha].replace(re, novo) : novo;
+  // O prefixo da mensagem copiada fica de fora da busca: o nome de quem mandou não é o jogador.
+  const prefixo = PREFIXO_MENSAGEM.exec(linhas[linha])?.[0] ?? '';
+  const resto = linhas[linha].slice(prefixo.length);
+  linhas[linha] = prefixo + (re.test(resto) ? resto.replace(re, novo) : novo);
   return linhas.join('\n');
 }
 
