@@ -11,6 +11,8 @@ import { getDb } from '@/db/client';
 import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
+import { cadastrarJogadores } from '@/server/jogadores';
+import { respostaCadastro } from './cadastro-zap';
 import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
@@ -251,6 +253,7 @@ async function laco(): Promise<void> {
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
         consultar: (tipo, n) => consultar(db, tipo, n),
+        cadastrar: async (pessoas) => respostaCadastro(await cadastrarJogadores(db, pessoas)),
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas }) =>
           perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora), ...acoes], agora, quem, ehJonas }),

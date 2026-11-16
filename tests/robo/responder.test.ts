@@ -9,6 +9,7 @@ import { calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINH
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
+import { TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO } from '@/robo/cadastro-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
 const GRUPO = 'g@g.us';
@@ -54,6 +55,7 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     perguntar: vi.fn(async () => 'O João está na lista.'),
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
     consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
+    cadastrar: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Cadastrado: Caio (2,5).', mudou: true })),
     enviar: vi.fn(async () => {}),
     log: vi.fn(),
     ...over,
@@ -377,10 +379,10 @@ describe('configDasRespostas (.env)', () => {
 });
 
 describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
-  const nomes = ['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'ver_lista', 'quem_falta_confirmar', 'ver_fila', 'ver_times', 'artilheiros', 'garcons', 'ranking', 'pedir_sorteio'];
+  const nomes = ['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'ver_lista', 'quem_falta_confirmar', 'ver_fila', 'ver_times', 'artilheiros', 'garcons', 'ranking', 'cadastrar_jogadores', 'pedir_sorteio'];
   const achar = (fs: ReturnType<typeof ferramentasDeAcao>, nome: string) => fs.find((f) => f.nome === nome)!;
 
-  it('as onze ações, com schema estrito e nenhuma que confirme sorteio', () => {
+  it('as doze ações, com schema estrito e nenhuma que confirme sorteio', () => {
     const fs = ferramentasDeAcao(msg('x'), ctx());
     expect(fs.map((f) => f.nome)).toEqual(nomes);
     for (const f of fs) {
@@ -392,7 +394,7 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
       expect(achar(fs, n).altera).toBe(true);
     }
     expect(achar(fs, 'pedir_sorteio').sorteio).toBe(true);
-    expect(fs.filter((f) => f.altera || f.sorteio).map((f) => f.nome)).toEqual(['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'pedir_sorteio']);
+    expect(fs.filter((f) => f.altera || f.sorteio).map((f) => f.nome)).toEqual(['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'cadastrar_jogadores', 'pedir_sorteio']);
   });
 
   it('as descrições não mudam com quem pergunta (prefixo do cache estável)', () => {
@@ -801,5 +803,53 @@ describe('responder: nome repetido na mesma mensagem', () => {
     const c = ctx({ mexerNaLista: vi.fn(async () => (n++ === 0 ? { texto: '✅ Ana entrou na lista!', mudou: true } : { texto: '👍 Ana já está na lista.', mudou: false })) });
     const r = await responder(msg('adicionar Ana, Ana'), c);
     expect(r?.texto).toBe('✅ Ana entrou na lista! (pedido por Zeca)\n👍 Ana já está na lista.');
+  });
+});
+
+describe('cadastrar', () => {
+  it('organizador: cadastra e mostra quem pediu', async () => {
+    const c = ctx();
+    const m = msg('cadastrar Caio - 2,5', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' });
+    const r = await responder(m, c);
+    expect(c.cadastrar).toHaveBeenCalledWith([{ nome: 'Caio', nota: 2.5 }], m.quando);
+    expect(r?.texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)');
+  });
+
+  it('quem não é organizador, ou sem telefone (LID), não cadastra', async () => {
+    for (const tel of [QUALQUER, null]) {
+      const c = ctx();
+      const r = await responder(msg('cadastrar Caio - 2,5', { remetenteTelefone: tel }), c);
+      expect(r?.texto).toBe(TEXTO_SO_ADMIN_CADASTRO);
+      expect(c.cadastrar).not.toHaveBeenCalled();
+    }
+  });
+
+  it('nada cadastrado: sem "pedido por"; mais de 10: avisa', async () => {
+    const c = ctx({ cadastrar: vi.fn(async () => ({ texto: '👍 Já estava cadastrado: Caio.', mudou: false })) });
+    const muitos = Array.from({ length: 11 }, (_, i) => `J${'a'.repeat(i + 1)} 3`).join(', ');
+    const r = await responder(msg(`cadastrar ${muitos}`, { remetenteTelefone: ADMIN }), c);
+    expect(r?.texto).toBe(`👍 Já estava cadastrado: Caio.\n${TEXTO_MAX_CADASTROS}`);
+  });
+
+  it('pela IA: cadastrar_jogadores usa o mesmo caminho e confere o organizador', async () => {
+    const adminCtx = ctx();
+    const doAdmin = ferramentasDeAcao(msg('x', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), adminCtx).find((f) => f.nome === 'cadastrar_jogadores')!;
+    expect(doAdmin.altera).toBe(true);
+    const pronto = await doAdmin.executar({ pessoas: 'Caio - 2.5, Pedro - 2.5' });
+    expect(adminCtx.cadastrar).toHaveBeenCalledWith(
+      [
+        { nome: 'Caio', nota: 2.5 },
+        { nome: 'Pedro', nota: 2.5 },
+      ],
+      expect.any(Date),
+    );
+    expect(pronto).toBeInstanceOf(TextoPronto);
+    expect((pronto as TextoPronto).texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)');
+
+    const outroCtx = ctx();
+    const deOutro = ferramentasDeAcao(msg('x'), outroCtx).find((f) => f.nome === 'cadastrar_jogadores')!;
+    await expect(deOutro.executar({ pessoas: 'Caio - 2.5' })).rejects.toThrow(TEXTO_SO_ADMIN_CADASTRO);
+    expect(outroCtx.cadastrar).not.toHaveBeenCalled();
+    await expect(doAdmin.executar({ pessoas: '' })).rejects.toBeInstanceOf(ErroDeFerramenta);
   });
 });

@@ -17,6 +17,7 @@ import {
   type Comando,
   type Consulta,
 } from './comandos';
+import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO, type PessoaPedida } from './cadastro-zap';
 import { ErroDeFerramenta, semParametros, TextoPronto, type Ferramenta, type Parametros } from './ferramentas';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
@@ -61,6 +62,8 @@ export type ContextoDaResposta = {
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
+  /** Cadastra jogadores novos (quem confere se é organizador é o `responder`). */
+  cadastrar: (pessoas: PessoaPedida[], now: Date) => Promise<{ texto: string; mudou: boolean }>;
   /** Resolve só com o envio confirmado pelo WhatsApp. */
   enviar: (texto: string) => Promise<void>;
   log: (linha: string) => void;
@@ -217,6 +220,28 @@ async function respostaVariosNomes(acao: AcaoNaLista, nomes: string[], excedeu: 
   return linhas.join('\n');
 }
 
+/** cadastrar: só organizadores, pelo telefone (como o sorteio); o cadastro mostra quem pediu. */
+async function respostaCadastrar(pessoas: PessoaPedida[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean }> {
+  if (!m.remetenteTelefone || !ehAdmin(m.remetenteTelefone, c.admins)) return { texto: TEXTO_SO_ADMIN_CADASTRO, mudou: false };
+  const feito = await c.cadastrar(pessoas, m.quando);
+  const linhas = feito.texto.split('\n');
+  if (feito.mudou) linhas[0] = `${linhas[0]} (pedido por ${quemPediu(m)})`;
+  if (excedeu) linhas.push(TEXTO_MAX_CADASTROS);
+  return { texto: linhas.join('\n'), mudou: feito.mudou };
+}
+
+const comPessoas: Parametros = {
+  type: 'object',
+  properties: {
+    pessoas: {
+      type: 'string',
+      description: 'Cada pessoa como "Nome - nota", separadas por vírgula, ex.: "Caio - 2.5, Pedro - 3". Nota de 0 a 5, de 0,5 em 0,5; sem nota, fica 3,0.',
+    },
+  },
+  required: ['pessoas'],
+  additionalProperties: false,
+};
+
 const comNome: Parametros = {
   type: 'object',
   properties: { nome: { type: 'string', description: 'O nome do jogador como a pessoa escreveu (pode ser só o começo).' } },
@@ -291,6 +316,22 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
     consulta('garcom', 'garcons', 'Os 3 com mais assistências no mês (ou no geral).'),
     consulta('ranking', 'ranking', 'Os 5 primeiros em pontos no mês (ou no geral).'),
     {
+      nome: 'cadastrar_jogadores',
+      descricao: `Cadastra jogadores NOVOS no site, com nota, só para os organizadores (o código confere quem mandou). Até ${MAX_CADASTROS_POR_MENSAGEM} por vez. Não põe ninguém na lista. Devolve o texto para o grupo.`,
+      parametros: comPessoas,
+      altera: true,
+      async executar(args) {
+        const texto = args && typeof args === 'object' && !Array.isArray(args) ? (args as { pessoas?: unknown }).pessoas : undefined;
+        if (typeof texto !== 'string' || !texto.trim()) throw new ErroDeFerramenta('Pessoas inválidas.');
+        const pessoas = lerCadastro(texto);
+        if (!pessoas.length) throw new ErroDeFerramenta('Nenhum nome encontrado.');
+        const feito = await respostaCadastrar(pessoas.slice(0, MAX_CADASTROS_POR_MENSAGEM), pessoas.length > MAX_CADASTROS_POR_MENSAGEM, m, c);
+        // Ninguém cadastrado (não é organizador, já existiam, nota inválida): o modelo explica.
+        if (!feito.mudou) throw new ErroDeFerramenta(feito.texto);
+        return new TextoPronto(feito.texto, 'acao');
+      },
+    },
+    {
       nome: 'pedir_sorteio',
       descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
       parametros: comTimes,
@@ -347,7 +388,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
   const p = c.proposta.atual;
   const simDeQuemPediu = cmd.tipo === 'sim' && p !== null && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, [p.adminTelefone]);
   if (!simDeQuemPediu && !c.freio.podeResponder()) return avisarLimite(m, c);
-  if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim') && m.remetenteTelefone === null) {
+  if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim' || cmd.tipo === 'cadastrar') && m.remetenteTelefone === null) {
     c.log('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
   }
 
@@ -375,6 +416,9 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     case 'confirmar':
     case 'remover':
       r = { texto: 'nomes' in cmd ? await respostaVariosNomes(cmd.tipo, cmd.nomes, cmd.excedeu, m, c) : await respostaNaLista(cmd.tipo, cmd.nome, m, c) };
+      break;
+    case 'cadastrar':
+      r = { texto: (await respostaCadastrar(cmd.pessoas, cmd.excedeu, m, c)).texto };
       break;
     case 'artilheiro':
     case 'garcom':
