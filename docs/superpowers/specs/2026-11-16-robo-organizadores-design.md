@@ -55,7 +55,7 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
 | `sortear` / `sortear 3 times` | Proposta de times (parte B). |
 | `importar` + times colados | Proposta com os times feitos fora (parte B). |
 | `sim` | Voto na proposta pendente (parte B). |
-| `anotar` | O link temporário de anotar (parte C). |
+| `anotar` | O link temporário de anotar (parte C); também no grupo, só organizadores. |
 | `ajuda` | A ajuda do grupo mais os comandos de organizador. |
 
 - Texto livre vai para a IA, com as ferramentas do grupo mais as de organizador (notas, mudar nota,
@@ -91,21 +91,22 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
      mudou desde o sorteio" ou partidas já jogadas). Recusado: a proposta acaba e os três recebem o
      motivo no privado;
   2. avisa os três no privado ("🏆 Times confirmados e salvos no site.");
-  3. manda no grupo os times **sem notas** ("🏆 Times da noite:" e os times, no formato do `times`).
+  3. manda no grupo os times **com a nota de cada jogador** e a soma de cada time ("🏆 Times da noite:",
+     no formato da proposta, sem a linha de "Confirma?") — decisão do usuário.
 - **Validade:** a proposta vence em 60 minutos ou quando outra a substitui (vale também para o sorteio
   no grupo; hoje são 10 minutos). Voto em proposta vencida:
   "⌛ Essa proposta venceu. Peça *sortear* (ou *importar*) de novo."
 - **Sem vazamento:** `times` no grupo (comando e IA) só lê os times salvos no site e nunca a proposta.
-  Sem times salvos, responde "👕 Os times de hoje ainda não foram definidos." (com ou sem proposta, para
-  não dar pista). Com times já salvos e um novo sorteio pendente, mostra os salvos, que seguem valendo até
-  o novo ser confirmado.
+  Com proposta pendente (mesmo que já existam times salvos) ou sem times salvos, responde "👕 Os times de
+  hoje ainda não foram definidos." (decisão do usuário). Os times salvos só aparecem sem proposta pendente.
 - **Sorteio no grupo** (decisão do usuário de manter): o `sortear` de organizador no grupo mostra a
   proposta no grupo, como hoje, e entra na mesma regra de 2 de 3. Os votos valem com `sim` no grupo ou
   no privado, e ela é a mesma proposta única (substitui a do privado, e vice-versa).
 
 ## Link temporário de anotar (parte C)
 
-- `anotar` no privado (ou pela IA no privado) cria uma chave aleatória (32 bytes) e responde
+- `anotar` no privado ou **no grupo** (só organizadores, pelo telefone; decisão do usuário: no grupo
+  todos ficam com o link) cria uma chave aleatória (32 bytes) e responde
   `…/anotar/<chave>`. Só no dia da pelada (a pelada de hoje); em outro dia: "📅 Hoje não tem pelada para
   anotar." O banco guarda só o hash da chave, a pelada, quem pediu e o vencimento: 3h da manhã seguinte,
   horário de Recife (cobre partidas que passam da meia-noite).
@@ -144,10 +145,7 @@ separadas).
 - Proposta vence em 60 minutos.
 - Sem silêncio no privado.
 - Os outros organizadores recebem no privado cada proposta nova e cada voto.
-- No grupo os times anunciados vão sem notas. A proposta do `sortear` no grupo continua como hoje
-  (com notas), já que o usuário quis manter o sorteio lá.
 - Link de anotar: um válido por pelada, até as 3h da manhã seguinte; só no dia da pelada.
-- `times` no grupo sem times salvos diz "ainda não foram definidos", com ou sem proposta pendente.
 - Proposta recusada pelo site ao salvar (ex.: partidas já jogadas) acaba, e os três recebem o motivo.
 - Voto só conta com telefone reconhecido; LID sozinho não vota.
 - Importação com dupla separada junta: só um aviso no privado, não bloqueia.
