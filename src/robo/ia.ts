@@ -94,8 +94,22 @@ function mensagemDoUsuario(pergunta: string, op: OpcoesIA, agora: Date): string 
   ].join('\n');
 }
 
-function paraTool(f: Ferramenta): Anthropic.Tool {
-  return { name: f.nome, description: f.descricao, input_schema: f.parametros, strict: true };
+/** A Anthropic aceita no máximo 20 ferramentas `strict` por pedido (o privado tem mais de 20 ferramentas). */
+export const MAX_FERRAMENTAS_ESTRITAS = 20;
+
+/**
+ * Ferramenta no formato da API. Só as que recebem argumentos são `strict` (é aí que o formato importa); as sem
+ * argumento não precisam. Passou de 20 estritas: as do fim vão sem `strict` (o código valida os argumentos de
+ * qualquer jeito).
+ */
+export function paraTools(fs: Ferramenta[]): Anthropic.Tool[] {
+  let estritas = 0;
+  return fs.map((f) => {
+    const temArgumentos = Object.keys(f.parametros.properties).length > 0;
+    const strict = temArgumentos && estritas < MAX_FERRAMENTAS_ESTRITAS;
+    if (strict) estritas++;
+    return { name: f.nome, description: f.descricao, input_schema: f.parametros, ...(strict ? { strict: true } : {}) };
+  });
 }
 
 const cortar = (t: string) => (t.length > MAX_RESPOSTA ? `${t.slice(0, MAX_RESPOSTA - 1).trimEnd()}…` : t);
@@ -143,7 +157,7 @@ function montar(prosa: string, a: Anuncios): string[] {
 const restoDaFalha = (a: Anuncios) => juntar([...unicos(a.acoes), a.proposta]);
 
 async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sinal: AbortSignal, anuncios: Anuncios, uso: UsoDaIA): Promise<string[]> {
-  const tools = op.ferramentas.map(paraTool);
+  const tools = paraTools(op.ferramentas);
   const agora = (op.agora ?? (() => new Date()))();
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: mensagemDoUsuario(pergunta, op, agora) }];
   let mudancas = 0;

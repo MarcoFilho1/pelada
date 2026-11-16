@@ -195,7 +195,7 @@ export const TEXTO_AJUDA_PRIVADO = [
   '',
   '🎲 sortear (ou sortear 3 times) — proposta de times',
   '📥 importar e os times colados embaixo — times feitos fora',
-  '✅ sim — confirma a proposta; valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma)',
+  '✅ sim — quem sorteou aprova primeiro; aí os outros recebem e mais um confirma com sim',
   '📣 mandar — quem propôs manda os times confirmados no grupo',
   '👕 times — a proposta esperando confirmação, ou os times confirmados',
   '📝 anotar — link para anotar as partidas de hoje, sem senha',

@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { ERRO_IA, perguntar, perguntarEmPartes, SISTEMA, TEXTO_IA_FORA, type ClienteIA, type OpcoesIA } from '@/robo/ia';
+import { ERRO_IA, MAX_FERRAMENTAS_ESTRITAS, paraTools, perguntar, perguntarEmPartes, SISTEMA, TEXTO_IA_FORA, type ClienteIA, type OpcoesIA } from '@/robo/ia';
 import { ErroDeFerramenta, TextoPronto, type Ferramenta } from '@/robo/ferramentas';
 
 const ERRO = '😕 Não consegui responder agora.';
@@ -55,7 +55,9 @@ describe('perguntar (Claude)', () => {
     expect(p.max_tokens).toBe(4000);
     expect(p.tool_choice).toEqual({ type: 'auto' });
     expect(p).not.toHaveProperty('thinking');
-    expect(p.tools?.[0]).toMatchObject({ name: 'lista_da_semana', description: 'd', strict: true, input_schema: { type: 'object', additionalProperties: false } });
+    expect(p.tools?.[0]).toMatchObject({ name: 'lista_da_semana', description: 'd', input_schema: { type: 'object', additionalProperties: false } });
+    // Sem argumentos: não vai como strict (a Anthropic aceita só 20 strict por pedido).
+    expect(p.tools?.[0]).not.toHaveProperty('strict');
   });
 
   it('usa o modelo do ROBO_MODELO quando vem', async () => {
@@ -437,5 +439,27 @@ describe('resenha e mensagens em partes', () => {
     const { cliente, pedidos } = falso(texto('a'));
     await perguntarEmPartes('x', { ...base(cliente), privado: true });
     expect(JSON.stringify(pedidos[0].messages[0])).toContain('mensagens curtas, uma ideia por mensagem');
+  });
+});
+
+describe('ferramentas estritas (limite da Anthropic: 20)', () => {
+  const comArg = (nome: string) => ferramenta(nome, undefined, { parametros: { type: 'object', properties: { nome: { type: 'string' } }, required: ['nome'], additionalProperties: false } });
+
+  it('só as ferramentas com argumentos vão como strict', () => {
+    const tools = paraTools([ferramenta('ver_lista'), comArg('adicionar_jogador')]);
+    expect(tools.map((t) => [t.name, t.strict])).toEqual([['ver_lista', undefined], ['adicionar_jogador', true]]);
+  });
+
+  it('nunca passa de 20 estritas, mesmo com mais ferramentas com argumentos', () => {
+    const muitas = Array.from({ length: 25 }, (_, i) => comArg(`f${i}`));
+    expect(paraTools(muitas).filter((t) => t.strict).length).toBe(MAX_FERRAMENTAS_ESTRITAS);
+  });
+
+  it('o pedido de verdade vai com no máximo 20 estritas (o erro 400 do privado)', async () => {
+    const { cliente, pedidos } = falso(texto('ok'));
+    const muitas = [...Array.from({ length: 25 }, (_, i) => comArg(`f${i}`)), ferramenta('sem_arg')];
+    await perguntar('x', base(cliente, muitas));
+    const tools = pedidos[0].tools as { strict?: boolean }[];
+    expect(tools.filter((t) => t.strict).length).toBeLessThanOrEqual(20);
   });
 });

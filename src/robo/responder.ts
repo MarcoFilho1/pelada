@@ -272,10 +272,16 @@ async function proporTimes(origem: Proposta['origem'], r: TimesPropostos | { err
   c.proposta.atual = p;
   // Uma proposta nova descarta times salvos que ainda não foram para o grupo (eles seriam trocados).
   c.anuncio.atual = null;
+  // Os outros organizadores só recebem depois que quem propôs aprovar (pedido do usuário).
   // O aviso de dupla separada junta vai só no privado: no grupo a regra não aparece.
-  const comAviso = p.aviso ? `${p.texto}\n\n${p.aviso}` : p.texto;
-  await avisarOutros(c, comAviso, [tel]);
-  return m.privado ? comAviso : p.texto;
+  return m.privado && p.aviso ? `${p.texto}\n\n${p.aviso}` : p.texto;
+}
+
+/** O que os outros organizadores recebem quando quem propôs aprova: os times (e o aviso de dupla) para confirmar. */
+function textoParaConfirmar(p: Proposta): string {
+  const titulo = p.texto.split('\n\n')[0];
+  const corpo = `${titulo}\n\n${p.blocos}${p.aviso ? `\n\n${p.aviso}` : ''}`;
+  return `✅ ${p.quemProposNome} aprovou estes times. Responda *sim* para confirmar: com o seu, eles ficam salvos no site.\n\n${corpo}`;
 }
 
 async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta, times: QtdDeTimes): Promise<string> {
@@ -293,14 +299,19 @@ async function respostaImportar(texto: string, m: MensagemRecebida, c: ContextoD
 }
 
 /**
- * "sim" de organizador: um voto na proposta. No 2º voto, salva no site, avisa os outros organizadores no
- * privado e anuncia os times (com as notas) no grupo. Vencida ou recusada pelo site, a proposta acaba.
+ * "sim" de organizador: um voto na proposta. Quem propôs aprova primeiro (só aí os outros recebem os times);
+ * o voto de outro organizador antes disso não conta. No 2º voto, salva no site e pergunta a quem propôs se
+ * manda no grupo. Vencida ou recusada pelo site, a proposta acaba.
  */
 async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: boolean): Promise<string> {
   const p = c.proposta.atual;
   if (!p) return TEXTO_SEM_PROPOSTA;
   const tel = m.remetenteTelefone;
   if (!tel || !ehAdmin(tel, c.admins)) return TEXTO_SO_ADMIN_CONFIRMA;
+  const propos = ehAdmin(tel, [p.quemPropos]);
+  if (!propos && !p.votos.some((v) => ehAdmin(v, [p.quemPropos])) && !propostaVencida(p, m.quando)) {
+    return `⏳ ${p.quemProposNome} ainda não aprovou esses times. Quando aprovar, eu te mando para confirmar.`;
+  }
   const { proposta, resultado } = votar(p, tel, m.quando);
   const nome = quemPediu(m);
   switch (resultado.tipo) {
@@ -311,6 +322,11 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
       return `👍 Você já confirmou. Falta ${resultado.faltam} organizador confirmar.`;
     case 'contou':
       c.proposta.atual = proposta;
+      // Quem propôs aprovou: agora sim os outros recebem os times para confirmar.
+      if (propos) {
+        await avisarOutros(c, textoParaConfirmar(proposta), [tel]);
+        return `✅ Aprovado! Mandei para os outros organizadores; falta ${resultado.faltam} confirmar.`;
+      }
       await avisarOutros(c, `✅ ${nome} confirmou os times. Falta ${resultado.faltam}: responda *sim* para confirmar.`, [tel]);
       return `✅ Confirmado! Falta ${resultado.faltam} organizador confirmar.`;
     case 'fechou': {
