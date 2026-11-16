@@ -1168,3 +1168,21 @@ describe('privado: conversa em mensagens curtas e tudo por linguagem natural', (
     await expect(g.executar({})).rejects.toThrow('Não deu para importar');
   });
 });
+
+describe('aviso de dupla separada só no privado', () => {
+  const AVISO = '⚠️ Luiz e Jonas estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.';
+  const comAviso = { ...TIMES, aviso: AVISO };
+
+  it('sortear no grupo: o grupo vê a proposta sem o aviso; os outros organizadores recebem com o aviso', async () => {
+    const c = ctx({ propor: vi.fn(async () => comAviso) });
+    const r = await responder(msg('sortear', { remetenteTelefone: ADMIN }), c);
+    expect(r?.texto).toBe(textoProposta());
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(`${textoProposta()}\n\n${AVISO}`, [ADMIN]);
+  });
+
+  it('no privado, quem pediu vê o aviso', async () => {
+    const c = ctx({ importar: vi.fn(async () => comAviso) });
+    const r = await responder(msg('importar Time 1', { privado: true, grupoId: 'x@s.whatsapp.net', remetenteTelefone: ADMIN, remetenteNome: 'Marco', mencionaORobo: false }), c);
+    expect(r?.texto).toBe(`${textoProposta('Marco', 'importado')}\n\n${AVISO}`);
+  });
+});

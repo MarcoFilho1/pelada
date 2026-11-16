@@ -84,6 +84,9 @@ export function SorteioAdmin(p: Props) {
             <Marca className="size-5 shrink-0 text-lima" />
           </span>
         )}
+        <Link href="/admin/sorteio/duplas" className="ml-auto font-medium text-tinta underline underline-offset-4">
+          Duplas separadas
+        </Link>
       </p>
       {p.emAndamento !== null && (
         <div role="status" className="mt-3 flex items-center gap-3 rounded-placa bg-placa py-1 pr-1 pl-4">
@@ -196,6 +199,7 @@ function Sorteio(p: Props & { onVoltar?: () => void; onSalvo: () => void; onImpo
           r.times.map((t) => ({ jogadores: t.jogadores, completes: t.completes.map((nota) => ({ chave: proximaChave.current++, nota })) })),
         );
         setTroca({ ids: [], n: troca.n + 1 });
+        if (r.aviso) setErro(r.aviso);
       } else setErro(r.erro);
       setAcao(null);
     });

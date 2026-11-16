@@ -2,7 +2,8 @@ import { desc, lte } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { peladas } from '@/db/schema';
 import { previaDosTimes, TAM_MAX_TEXTO_COLADO, type Previa } from '@/domain/importarTimes';
-import { CORES, diferenca, formatarNota, sortearDaNoite, type QtdDeTimes, type TimeSorteado } from '@/domain/sorteio';
+import { CORES, diferenca, duplasJuntas, formatarNota, sortearDaNoite, type QtdDeTimes, type Separar, type TimeSorteado } from '@/domain/sorteio';
+import { paresSeparados } from '@/server/duplas';
 import { dataDe } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { listarJogadores } from '@/server/jogadores';
@@ -33,10 +34,20 @@ export type Proposta = {
   texto: string;
   /** Telefones de quem já confirmou (sem repetir). */
   votos: string[];
+  /** Dupla separada junta no mesmo time: vai só no privado dos organizadores (o grupo não vê a regra). */
+  aviso?: string;
 };
 
 /** O que o banco devolve para montar uma proposta: os times já com nomes e notas. */
-export type TimesPropostos = { peladaId: number; times: TimeSorteado[] };
+export type TimesPropostos = { peladaId: number; times: TimeSorteado[]; aviso?: string };
+
+/** "⚠️ Luiz e Jonas estão no mesmo time." para as duplas separadas que ficaram juntas; `undefined` se nenhuma. */
+export function avisoDeDuplas(times: TimeSorteado[], separar: Separar): string | undefined {
+  const nome = new Map(times.flatMap((t) => t.jogadores.map((j) => [j.id, j.nome] as const)));
+  const juntas = duplasJuntas(times, separar).map(([a, b]) => `${nome.get(a)} e ${nome.get(b)}`);
+  if (!juntas.length) return undefined;
+  return `${juntas.map((d) => `⚠️ ${d} estão no mesmo time (dupla separada).`).join('\n')}\nSó vocês, organizadores, veem este aviso.`;
+}
 
 /** Forma única do número: só dígitos, sem 55 e sem o 9 extra do celular depois do DDD. */
 function canonico(telefone: string): string {
@@ -103,6 +114,7 @@ export function montarProposta(
     blocos,
     texto: `${titulo}\n\n${blocos}\n\n${INSTRUCOES_VOTO}`,
     votos: [],
+    ...(t.aviso ? { aviso: t.aviso } : {}),
   };
 }
 
@@ -143,7 +155,10 @@ export async function sortearTimesDaNoite(
   if (!p) return { erro: TEXTO_SEM_PELADA_HOJE };
   const participantes = await participantesPadrao(db, p.id, now);
   if (participantes.length < 2) return { erro: '👥 Poucos confirmados para sortear.' };
-  return { peladaId: p.id, times: sortearDaNoite(participantes, times, rng) };
+  const separar = await paresSeparados(db);
+  const sorteados = sortearDaNoite(participantes, times, rng, separar);
+  const aviso = avisoDeDuplas(sorteados, separar);
+  return { peladaId: p.id, times: sorteados, ...(aviso ? { aviso } : {}) };
 }
 
 /** Texto do "não deu para importar": cada nome com problema e o que fazer. */
@@ -170,7 +185,9 @@ export async function importarTimesColados(db: DB, now: Date, texto: string): Pr
     const jogadores = t.nomes.flatMap((n) => (n.tipo === 'ok' ? [n.jogador] : []));
     return { jogadores, completes: t.completes, soma: [...jogadores.map((j) => j.nota), ...t.completes].reduce((a, b) => a + b, 0) };
   });
-  return { peladaId: p.id, times };
+  // Times de fora não são mexidos: dupla separada junta só gera o aviso para os organizadores.
+  const aviso = avisoDeDuplas(times, await paresSeparados(db));
+  return { peladaId: p.id, times, ...(aviso ? { aviso } : {}) };
 }
 
 /**
@@ -215,7 +232,8 @@ export function deGuardada(x: unknown): Proposta | null {
     typeof g.blocos !== 'string' ||
     typeof g.texto !== 'string' ||
     !Array.isArray(g.votos) ||
-    !g.votos.every((v) => typeof v === 'string')
+    !g.votos.every((v) => typeof v === 'string') ||
+    (g.aviso !== undefined && typeof g.aviso !== 'string')
   ) {
     return null;
   }

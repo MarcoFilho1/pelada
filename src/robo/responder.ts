@@ -259,8 +259,10 @@ async function proporTimes(origem: Proposta['origem'], r: TimesPropostos | { err
   if ('erro' in r) return r.erro;
   const p = montarProposta(origem, { telefone: tel, nome: quemPediu(m) }, m.quando, r);
   c.proposta.atual = p;
-  await avisarOutros(c, p.texto, [tel]);
-  return p.texto;
+  // O aviso de dupla separada junta vai só no privado: no grupo a regra não aparece.
+  const comAviso = p.aviso ? `${p.texto}\n\n${p.aviso}` : p.texto;
+  await avisarOutros(c, comAviso, [tel]);
+  return m.privado ? comAviso : p.texto;
 }
 
 async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta, times: QtdDeTimes): Promise<string> {
@@ -525,7 +527,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
         const texto = await respostaSortear(m, c, qtdDeTimes((args as { times?: unknown } | null)?.times));
         const nova = c.proposta.atual;
         // Recusa (não é admin) ou erro do sorteio: nada guardado, o modelo explica.
-        if (!nova || nova === antes || nova.texto !== texto) throw new ErroDeFerramenta(texto);
+        if (!nova || nova === antes) throw new ErroDeFerramenta(texto);
         return new TextoPronto(texto, 'sorteio', () => {
           if (c.proposta.atual === nova) c.proposta.atual = null;
         });

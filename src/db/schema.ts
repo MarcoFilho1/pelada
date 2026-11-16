@@ -182,3 +182,20 @@ export const linksAnotador = pgTable('links_anotador', {
   expiraEm: timestamptz('expira_em').notNull(),
   revogadoEm: timestamptz('revogado_em'),
 });
+
+// Duplas que o sorteio nunca põe no mesmo time (ex.: Luiz e Jonas). Só os organizadores veem e mexem.
+// A dupla é guardada com o menor id em `jogador_a_id`, então "A e B" e "B e A" são a mesma linha.
+export const duplasSeparadas = pgTable(
+  'duplas_separadas',
+  {
+    id: serial('id').primaryKey(),
+    jogadorAId: integer('jogador_a_id')
+      .notNull()
+      .references(() => jogadores.id, { onDelete: 'cascade' }),
+    jogadorBId: integer('jogador_b_id')
+      .notNull()
+      .references(() => jogadores.id, { onDelete: 'cascade' }),
+    criadaEm: timestamptz('criada_em').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('duplas_separadas_par_uniq').on(t.jogadorAId, t.jogadorBId)],
+);

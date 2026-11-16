@@ -8,6 +8,7 @@ vi.mock('@/server/jogadores', () => ({ listarJogadores, criarJogadores: vi.fn(),
 vi.mock('@/server/times', () => ({}));
 vi.mock('@/server/sessao', () => ({ lerSessaoAdmin: async () => ({ adminId: 1 }) }));
 vi.mock('@/db/client', () => ({ getDb: () => ({}) }));
+vi.mock('@/server/duplas', () => ({ paresSeparados: async () => [] }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
