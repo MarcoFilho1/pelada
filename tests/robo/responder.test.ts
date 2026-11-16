@@ -18,8 +18,9 @@ import {
   TEXTO_SO_ADMIN_IMPORTAR,
   TEXTO_TIMES_INDEFINIDOS,
 } from '@/robo/responder';
-import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, lerTrocas, TEXTO_NADA_PARA_DESFAZER, TEXTO_SEM_TIMES_PARA_TROCAR, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
+import { ConversasPrivadas } from '@/robo/conversa-privada';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { INSTRUCOES_VOTO, montarProposta, TEXTO_SO_ADMIN, type AnuncioPendente, type Proposta, type TimesPropostos } from '@/robo/sorteio-zap';
 import { TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO } from '@/robo/cadastro-zap';
@@ -86,7 +87,7 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
     consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
     cadastrar: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Cadastrado: Caio (2,5).', mudou: true })),
-    linkAnotar: vi.fn(async (): Promise<{ url: string } | { erro: string }> => ({ url: 'https://pelada.exemplo/anotar/CHAVE' })),
+    linkAnotar: vi.fn(async (): Promise<{ url: string; data?: string } | { erro: string }> => ({ url: 'https://pelada.exemplo/anotar/CHAVE', data: '2026-11-18' })),
     notas: vi.fn(async () => '📋 Notas (2 jogadores):\nAna 3,0\nBia 2,5'),
     mudarNota: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Nota de Ana: 3,0 → 3,5.', mudou: true })),
     urlSite: 'https://pelada.exemplo',
@@ -1154,7 +1155,15 @@ describe('privado dos organizadores', () => {
 });
 
 describe('anotar (link temporário)', () => {
-  const LINK = '📝 Link para anotar as partidas de hoje:\nhttps://pelada.exemplo/anotar/CHAVE\nAbre direto na tela de partidas, sem senha. Vale até as 3h da manhã; um link novo cancela este.';
+  // A data é a da pelada (o link pode ser gerado antes, na segunda), e a validade, a madrugada seguinte a ela.
+  const LINK = '📝 Link para anotar as partidas de quarta, 18/11:\nhttps://pelada.exemplo/anotar/CHAVE\nAbre direto na tela de partidas, sem senha. Vale até as 3h de quinta, 19/11; um link novo cancela este.';
+
+  it('virada de mês: a validade cai no dia 1º', async () => {
+    const c = ctx({ linkAnotar: vi.fn(async () => ({ url: 'https://pelada.exemplo/anotar/CHAVE', data: '2026-09-30' })) });
+    const r = await responder(msg('anotar', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), c);
+    expect(r?.texto).toContain('partidas de quarta, 30/09:');
+    expect(r?.texto).toContain('Vale até as 3h de quinta, 01/10;');
+  });
 
   it('organizador no grupo: o link vai para o grupo, com quem pediu', async () => {
     const c = ctx();
@@ -1246,5 +1255,104 @@ describe('aviso de dupla separada só no privado', () => {
     const c = ctx({ importar: vi.fn(async () => comAviso) });
     const r = await responder(msg('importar Time 1', { privado: true, grupoId: 'x@s.whatsapp.net', remetenteTelefone: ADMIN, remetenteNome: 'Marco', mencionaORobo: false }), c);
     expect(r?.texto).toBe(`${textoProposta('Marco', 'importado')}\n\n${AVISO}`);
+  });
+});
+
+describe('privado: memória da conversa, troca nos times e desfazer', () => {
+  const noPrivado = (texto: string, tel = ADMIN, nome = 'Marco', quando = t('2026-11-10T15:40:00')) =>
+    msg(texto, { privado: true, grupoId: `${tel}@s.whatsapp.net`, remetenteTelefone: tel, remetenteNome: nome, mencionaORobo: false, quando });
+
+  it('a IA recebe as falas anteriores do privado (e o grupo nunca recebe histórico)', async () => {
+    const memoria = new ConversasPrivadas();
+    const perguntar = vi.fn(async () => 'Feito!');
+    const c = ctx({ memoria, perguntar });
+    await responder(noPrivado('sortear'), c);
+    await responder(noPrivado('troca o Caio pelo Jonas'), c);
+    const op = (perguntar.mock.calls.at(-1) as unknown as [string, { historico?: unknown }])[1];
+    expect(op.historico).toEqual([
+      { papel: 'user', texto: 'sortear' },
+      { papel: 'assistant', texto: c.proposta.atual!.texto },
+    ]);
+    await responder(msg('e aí?'), c);
+    expect((perguntar.mock.calls.at(-1) as unknown as [string, { historico?: unknown }])[1].historico).toBeUndefined();
+  });
+
+  it('desfazer: volta as mudanças da última mensagem que mexeu na lista (da última para a primeira)', async () => {
+    const memoria = new ConversasPrivadas();
+    const mudanca = (nome: string) => ({ peladaId: 1, jogadorId: nome.length, nome, antes: { tipo: 'M' as const, status: 'confirmado' as const, entrouEm: t('2026-11-09T00:00:00') } });
+    const desfazer = vi.fn(async () => {});
+    const c = ctx({
+      memoria,
+      desfazer,
+      mexerNaLista: vi.fn(async (_a: AcaoNaLista, nome: string) => ({ texto: `👋 ${nome} saiu da lista.`, mudou: true, mudanca: mudanca(nome) })),
+    });
+    // A IA tira dois na mesma mensagem.
+    c.perguntar = vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+      const tirar = op.acoes.find((f) => f.nome === 'remover_jogador')!;
+      await tirar.executar({ nome: 'Caio' });
+      await tirar.executar({ nome: 'Bia' });
+      return 'Pronto.';
+    }) as ContextoDaResposta['perguntar'];
+    await responder(noPrivado('tira o caio e a bia'), c);
+    const f = ferramentasDoOrganizador(noPrivado('desfaz'), c).find((x) => x.nome === 'desfazer_mudanca_na_lista')!;
+    const r = (await f.executar({})) as TextoPronto;
+    expect(desfazer).toHaveBeenCalledWith([mudanca('Bia'), mudanca('Caio')], expect.any(Date));
+    expect(r.texto).toBe(`↩️ Desfeito: Caio e Bia voltaram como estava.\n\n${LISTA}`);
+    // Já desfeito: não tem mais nada.
+    await expect(f.executar({})).rejects.toThrow(TEXTO_NADA_PARA_DESFAZER);
+  });
+
+  it('desfazer sem mudança guardada (ou de outro organizador): explica', async () => {
+    const memoria = new ConversasPrivadas();
+    const c = ctx({ memoria, desfazer: vi.fn(async () => {}), mexerNaLista: vi.fn(async () => ({ texto: '👋 Caio saiu da lista.', mudou: true, mudanca: { peladaId: 1, jogadorId: 3, nome: 'Caio', antes: null } })) });
+    await responder(noPrivado('remover Caio', OUTRO_ADMIN, 'Pepe'), c);
+    const f = ferramentasDoOrganizador(noPrivado('desfaz'), c).find((x) => x.nome === 'desfazer_mudanca_na_lista')!;
+    await expect(f.executar({})).rejects.toThrow(TEXTO_NADA_PARA_DESFAZER);
+    expect(c.desfazer).not.toHaveBeenCalled();
+  });
+
+  it('trocar_nos_times: troca na proposta de quem propôs e mostra os times de novo', async () => {
+    const nova = proposta({ texto: 'TIMES NOVOS', criadaEm: t('2026-11-10T15:40:00') });
+    const trocarNosTimes = vi.fn(async () => ({ proposta: nova, feitas: ['Caio ↔ Jonas'] }));
+    const c = ctx({ trocarNosTimes });
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
+    const f = ferramentasDoOrganizador(noPrivado('troca o caio pelo jonas'), c).find((x) => x.nome === 'trocar_nos_times')!;
+    const r = (await f.executar({ trocas: 'Caio por Jonas' })) as TextoPronto;
+    expect(trocarNosTimes).toHaveBeenCalledWith(expect.objectContaining({ quemPropos: ADMIN }), [{ de: 'Caio', por: 'Jonas' }], expect.any(Date));
+    expect(r.texto).toBe('🔁 Troquei: Caio ↔ Jonas.\n\nTIMES NOVOS');
+    expect(c.proposta.atual).toBe(nova);
+    // Ninguém tinha recebido os times ainda: não avisa os outros.
+    expect(c.avisarOrganizadores).not.toHaveBeenCalled();
+  });
+
+  it('trocar_nos_times depois de quem propôs aprovar: os outros ficam sabendo que aqueles times não valem', async () => {
+    const c = ctx({ trocarNosTimes: vi.fn(async () => ({ proposta: proposta(), feitas: ['Ana ↔ Bia'] })) });
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), votos: [ADMIN] });
+    await ferramentasDoOrganizador(noPrivado('x'), c).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'Ana por Bia' });
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN]);
+  });
+
+  it('trocar_nos_times: sem proposta, proposta de outro ou troca que não dá', async () => {
+    const semProposta = ctx({ trocarNosTimes: vi.fn() });
+    await expect(ferramentasDoOrganizador(noPrivado('x'), semProposta).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'A por B' })).rejects.toThrow(
+      TEXTO_SEM_TIMES_PARA_TROCAR,
+    );
+    const deOutro = ctx({ trocarNosTimes: vi.fn() });
+    deOutro.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), quemPropos: OUTRO_ADMIN, quemProposNome: 'Pepe' });
+    await expect(ferramentasDoOrganizador(noPrivado('x'), deOutro).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'A por B' })).rejects.toThrow('Só Pepe');
+    const recusa = ctx({ trocarNosTimes: vi.fn(async () => ({ erro: '🤔 Ana e Bia já estão no mesmo time.' })) });
+    recusa.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
+    const antes = recusa.proposta.atual;
+    await expect(ferramentasDoOrganizador(noPrivado('x'), recusa).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'Ana por Bia' })).rejects.toThrow('mesmo time');
+    expect(recusa.proposta.atual).toBe(antes);
+  });
+
+  it('lerTrocas: "por", "pelo", "x", vírgula não separa, ponto e vírgula e linha separam', () => {
+    expect(lerTrocas('Caio por Jonas; Pedro pelo Paulo\nAna x Bia')).toEqual([
+      { de: 'Caio', por: 'Jonas' },
+      { de: 'Pedro', por: 'Paulo' },
+      { de: 'Ana', por: 'Bia' },
+    ]);
+    expect(lerTrocas('só o Caio')).toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ import {
   salvarProposta,
   sortearTimesDaNoite,
   TEXTO_SO_ADMIN,
+  trocarNaProposta,
   TEXTO_SEM_PELADA_DA_SEMANA,
   avisoDeDuplas,
   anuncioDeGuardado,
@@ -263,5 +264,52 @@ describe('anúncio pendente (estado.json)', () => {
     expect(anuncioDeGuardado(JSON.parse(JSON.stringify(anuncioParaGuardar(a))))).toEqual(a);
     expect(anuncioParaGuardar(null)).toBeNull();
     for (const ruim of [null, {}, { ...a, criadoEm: 'x' }, { ...a, peladaId: '1' }]) expect(anuncioDeGuardado(ruim)).toBeNull();
+  });
+});
+
+describe('trocarNaProposta (troca jogadores entre os times de uma proposta)', () => {
+  const quemPropos = { telefone: ADMIN, nome: 'Marco' };
+  const idDe = async (nome: string) => (await db.select().from(jogadores)).find((j) => j.nome === nome)!.id;
+  const propostaImportada = async () => {
+    const r = (await importarTimesColados(db, QUARTA, 'Time 1\nAna\nBeto\n\nTime 2\nCaio\nDavi')) as TimesPropostos;
+    return { ...montarProposta('importado', quemPropos, QUARTA, r), votos: [ADMIN] };
+  };
+  const DEPOIS = new Date(QUARTA.getTime() + 10 * 60_000);
+
+  it('troca de time, refaz as somas, zera os votos e renova a validade', async () => {
+    const p = await propostaImportada();
+    const r = await trocarNaProposta(db, p, [{ de: 'ana', por: 'Caio' }], DEPOIS);
+    if ('erro' in r) throw new Error(r.erro);
+    expect(r.proposta.elencos).toEqual([[await idDe('Caio'), await idDe('Beto')], [await idDe('Ana'), await idDe('Davi')]]);
+    expect(r.proposta.blocos).toContain('🔵 Azul (7,0)\n- Caio 4,0\n- Beto 3,0');
+    expect(r.proposta.blocos).toContain('🟠 Laranja (7,0)\n- Ana 2,0\n- Davi 5,0');
+    expect(r.proposta.votos).toEqual([]);
+    expect(r.proposta.criadaEm).toEqual(DEPOIS);
+    expect(r.proposta.texto).toContain(INSTRUCOES_VOTO);
+    expect(r.feitas).toEqual(['Ana ↔ Caio']);
+  });
+
+  it('várias trocas de uma vez, na ordem', async () => {
+    const r = await trocarNaProposta(db, await propostaImportada(), [{ de: 'Ana', por: 'Caio' }, { de: 'Beto', por: 'Davi' }], DEPOIS);
+    if ('erro' in r) throw new Error(r.erro);
+    expect(r.proposta.elencos).toEqual([[await idDe('Caio'), await idDe('Davi')], [await idDe('Ana'), await idDe('Beto')]]);
+  });
+
+  it('recusa: mesmo time, quem não está nos times e nome que não existe (nada muda)', async () => {
+    const p = await propostaImportada();
+    expect(await trocarNaProposta(db, p, [{ de: 'Ana', por: 'Beto' }], DEPOIS)).toEqual({ erro: '🤔 Ana e Beto já estão no mesmo time.' });
+    expect(await trocarNaProposta(db, p, [{ de: 'Ana', por: 'Jonas' }], DEPOIS)).toEqual({
+      erro: '🤔 Jonas não está nos times. Para pôr alguém de fora, mude a lista e sorteie de novo.',
+    });
+    expect(await trocarNaProposta(db, p, [{ de: 'Zé', por: 'Ana' }], DEPOIS)).toEqual({ erro: '🤔 Zé não está nos times.' });
+    expect(p.votos).toEqual([ADMIN]);
+  });
+
+  it('dupla separada que fica junta com a troca: aviso para os organizadores', async () => {
+    const [a, d] = [await idDe('Ana'), await idDe('Davi')];
+    await db.insert(duplasSeparadas).values({ jogadorAId: Math.min(a, d), jogadorBId: Math.max(a, d) });
+    const r = await trocarNaProposta(db, await propostaImportada(), [{ de: 'Beto', por: 'Davi' }], DEPOIS);
+    if ('erro' in r) throw new Error(r.erro);
+    expect(r.proposta.aviso).toBe('⚠️ Ana e Davi estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.');
   });
 });

@@ -269,3 +269,36 @@ export async function adminRemover(db: DB, peladaId: number, jogadorId: number, 
     if (minha && minha.status !== 'removido') await marcarStatus(tx, peladaId, jogadorId, 'removido', now);
   });
 }
+
+// ---- Desfazer (robô, pedido de organizador) ---------------------------------------
+
+/** Como a presença estava: `null` = o jogador não tinha presença nesta pelada. */
+export type FotoDaPresenca = { tipo: 'M' | 'D'; status: 'pendente' | 'confirmado' | 'removido'; entrouEm: Date } | null;
+
+/** A presença do jogador nesta pelada, para poder voltar a ela depois. */
+export async function fotoDaPresenca(db: DB, peladaId: number, jogadorId: number): Promise<FotoDaPresenca> {
+  const [p] = await db
+    .select({ tipo: presencas.tipo, status: presencas.status, entrouEm: presencas.entrouEm })
+    .from(presencas)
+    .where(and(eq(presencas.peladaId, peladaId), eq(presencas.jogadorId, jogadorId)));
+  return p ?? null;
+}
+
+/**
+ * Volta a presença para a foto (tipo, status e a hora em que entrou): quem saiu volta para o mesmo lugar, e
+ * quem tinha subido da fila por causa da saída volta para a fila. Foto `null`: apaga a presença criada.
+ */
+export async function restaurarPresenca(db: DB, peladaId: number, jogadorId: number, foto: FotoDaPresenca, now: Date): Promise<void> {
+  await mudarLista(db, peladaId, jogadorId, now, async ({ tx }) => {
+    const desta = and(eq(presencas.peladaId, peladaId), eq(presencas.jogadorId, jogadorId));
+    if (!foto) {
+      await tx.delete(presencas).where(desta);
+      return;
+    }
+    const valores = { tipo: foto.tipo, status: foto.status, entrouEm: foto.entrouEm, atualizadoEm: now };
+    await tx
+      .insert(presencas)
+      .values({ peladaId, jogadorId, ...valores })
+      .onConflictDoUpdate({ target: [presencas.peladaId, presencas.jogadorId], set: valores });
+  });
+}
