@@ -237,3 +237,9 @@ describe('interpretarPrivado', () => {
     expect(interpretarPrivado('qual a nota do Pepe?').tipo).toBe('pergunta');
   });
 });
+
+describe('interpretar: anotar', () => {
+  it('anotar e variações', () => {
+    for (const t of ['anotar', 'Anotar!', 'link de anotar', 'link pra anotar', 'anotador']) expect(interpretar(t)).toEqual({ tipo: 'anotar' });
+  });
+});

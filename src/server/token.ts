@@ -4,6 +4,8 @@ import { jwtVerify, SignJWT } from 'jose';
 
 export const COOKIE_JOGADOR = 'pelada_jogador';
 export const COOKIE_ADMIN = 'pelada_admin';
+/** Chave crua do link de anotar (não é assinada: o site confere o hash no banco a cada uso). */
+export const COOKIE_ANOTADOR = 'pelada_anotador';
 
 /**
  * `precisaTrocar` aqui só serve ao redirecionamento otimista do proxy; quem decide é o banco.

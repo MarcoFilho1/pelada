@@ -5,7 +5,8 @@ import { getDb } from '@/db/client';
 import type { TipoLance } from '@/domain/partida';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
 import { corrigirContagem, desfazerUltimo, encerrarPartida, registrarLance } from '@/server/partidas';
-import { lerSessaoAdmin } from '@/server/sessao';
+import { peladaDaPartida } from '@/server/anotador';
+import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
 import { lerEstado, type EstadoDaPartida } from './estado';
 
 export type RespostaPartida = { ok: true; estado: EstadoDaPartida } | { ok: false; erro: string };
@@ -18,8 +19,12 @@ const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 const TIPOS: readonly unknown[] = ['gol', 'assistencia'] satisfies TipoLance[];
 const tipoValido = (v: unknown): v is TipoLance => TIPOS.includes(v);
 
-async function exigirAdmin() {
-  if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
+/** Admin, ou o anotador do link de hoje se a partida é da pelada dele. */
+async function exigirAcesso(partidaId: number) {
+  const db = getDb();
+  const acesso = await lerAcessoPartidas(db);
+  if (acesso?.tipo === 'admin') return;
+  if (!acessoNaPelada(acesso, idValido(partidaId) ? await peladaDaPartida(db, partidaId) : null)) redirect(destinoSemAcesso(acesso));
 }
 
 /**
@@ -46,7 +51,7 @@ export async function anotar(
   jogadorId: number,
   tipo: TipoLance,
 ): Promise<{ ok: true; estado: EstadoDaPartida | null; lanceId: number } | { ok: false; erro: string }> {
-  await exigirAdmin();
+  await exigirAcesso(partidaId);
   if (!idValido(partidaId) || !idValido(jogadorId) || !tipoValido(tipo)) return PEDIDO_INVALIDO;
   let lanceId = 0;
   const r = await eDepoisLer(partidaId, async () => {
@@ -60,7 +65,7 @@ export async function anotar(
  * (outro admin desfez, ou entrou lance novo), não mexe em nada: a tela compara com o estado novo.
  */
 export async function desfazer(partidaId: number, esperadoId: number): Promise<RespostaDeDesfazer> {
-  await exigirAdmin();
+  await exigirAcesso(partidaId);
   if (!idValido(partidaId) || !idValido(esperadoId)) return PEDIDO_INVALIDO;
   let apagado: number | null = null;
   const r = await eDepoisLer(partidaId, async () => {
@@ -71,7 +76,7 @@ export async function desfazer(partidaId: number, esperadoId: number): Promise<R
 
 /** Encerra com o placar de agora e volta para a noite (histórico). */
 export async function encerrar(partidaId: number): Promise<{ ok: false; erro: string }> {
-  await exigirAdmin();
+  await exigirAcesso(partidaId);
   if (!idValido(partidaId)) return PEDIDO_INVALIDO;
   try {
     await encerrarPartida(getDb(), partidaId, new Date());
@@ -83,7 +88,7 @@ export async function encerrar(partidaId: number): Promise<{ ok: false; erro: st
 
 /** Corrigir partida encerrada: +1 ou −1 num gol ou assistência de um jogador. */
 export async function corrigir(partidaId: number, jogadorId: number, tipo: TipoLance, delta: 1 | -1): Promise<RespostaPartida> {
-  await exigirAdmin();
+  await exigirAcesso(partidaId);
   if (!idValido(partidaId) || !idValido(jogadorId) || !tipoValido(tipo) || (delta !== 1 && delta !== -1)) return PEDIDO_INVALIDO;
   const r = await eDepoisLer(partidaId, () => corrigirContagem(getDb(), partidaId, jogadorId, tipo, delta));
   if (r.ok && !r.estado) return { ok: false, erro: 'Salvou, mas não deu para ler a partida. Recarregue a página.' };

@@ -5,10 +5,16 @@ import { getDb } from '@/db/client';
 import type { JogadorNota } from '@/domain/sorteio';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
 import { iniciarPartida, quemPodeCompletar } from '@/server/partidas';
-import { lerSessaoAdmin } from '@/server/sessao';
+import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
 import { completamValido, type Completam } from './quem-completa';
 
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
+
+/** Admin, ou o anotador do link se a pelada é a dele. */
+async function exigirAcesso(peladaId: number) {
+  const acesso = await lerAcessoPartidas(getDb());
+  if (!acessoNaPelada(acesso, peladaId)) redirect(destinoSemAcesso(acesso));
+}
 
 /**
  * Começa a partida entre os dois times escolhidos e abre o anotador. `completam` = quem completa os
@@ -20,7 +26,7 @@ export async function iniciar(
   timeBId: number,
   completam: Completam = { A: [], B: [] },
 ): Promise<{ ok: false; erro: string }> {
-  if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
+  await exigirAcesso(peladaId);
   if (!idValido(peladaId) || !idValido(timeAId) || !idValido(timeBId) || !completamValido(completam)) return PEDIDO_INVALIDO;
   let id: number;
   try {
@@ -40,7 +46,7 @@ export async function quemCompleta(
   timeAId: number,
   timeBId: number,
 ): Promise<{ ok: true; deFora: JogadorNota[]; semTime: JogadorNota[] } | { ok: false; erro: string }> {
-  if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
+  await exigirAcesso(peladaId);
   if (!idValido(peladaId) || !idValido(timeAId) || !idValido(timeBId)) return PEDIDO_INVALIDO;
   try {
     return { ok: true, ...(await quemPodeCompletar(getDb(), peladaId, timeAId, timeBId)) };

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import type { DB } from '@/db/client';
 import { dadosSessaoJogador, validarSessaoAdmin, versaoSessaoAdmin, validarSessaoJogador, type SessaoJogador } from './auth';
+import { COOKIE_ANOTADOR, validarChaveAnotador } from './anotador';
 import { assinarToken, COOKIE_ADMIN, COOKIE_JOGADOR, verificarToken, type Token } from './token';
 
 const DIA = 24 * 60 * 60;
@@ -53,6 +54,24 @@ export async function lerSessaoAdmin(db: DB): Promise<{ adminId: number } | null
   const t = await verificarToken((await cookies()).get(COOKIE_ADMIN)?.value);
   return t?.tipo === 'admin' ? validarSessaoAdmin(db, t) : null;
 }
+
+/** Quem pode mexer nas telas de partida: o admin (tudo) ou o anotador do link (só a pelada da chave). */
+export type AcessoPartidas = { tipo: 'admin' } | { tipo: 'anotador'; peladaId: number };
+
+/** Admin primeiro; sem ele, o cookie do link de anotar conferido no banco (vencido ou revogado = `null`). */
+export async function lerAcessoPartidas(db: DB, now: Date = new Date()): Promise<AcessoPartidas | null> {
+  if (await lerSessaoAdmin(db)) return { tipo: 'admin' };
+  const link = await validarChaveAnotador(db, (await cookies()).get(COOKIE_ANOTADOR)?.value, now);
+  return link ? { tipo: 'anotador', peladaId: link.peladaId } : null;
+}
+
+/** O acesso vale para esta pelada? O admin vale para todas; o anotador, só para a do link. */
+export const acessoNaPelada = (a: AcessoPartidas | null, peladaId: number | null): boolean =>
+  a !== null && (a.tipo === 'admin' || (peladaId !== null && a.peladaId === peladaId));
+
+/** Para onde vai quem não tem acesso: o anotador, para o aviso de link vencido; os outros, para o login. */
+export const destinoSemAcesso = (a: AcessoPartidas | null) => (a?.tipo === 'anotador' ? LINK_VENCIDO : '/admin/entrar');
+export const LINK_VENCIDO = '/anotar/vencido';
 
 export async function sair(tipo: 'jogador' | 'admin'): Promise<void> {
   (await cookies()).delete(tipo === 'jogador' ? COOKIE_JOGADOR : COOKIE_ADMIN);
