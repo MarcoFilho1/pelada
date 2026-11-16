@@ -2,7 +2,23 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, partidas, peladas, presencas, times } from '@/db/schema';
-import { confirmarSorteio, ehAdmin, paraWhatsApp, proporSorteio, TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
+import {
+  deGuardada,
+  ehAdmin,
+  importarTimesColados,
+  INSTRUCOES_VOTO,
+  montarProposta,
+  paraGuardar,
+  paraWhatsApp,
+  propostaVencida,
+  salvarProposta,
+  sortearTimesDaNoite,
+  TEXTO_SO_ADMIN,
+  VALIDADE_MS,
+  votar,
+  VOTOS_NECESSARIOS,
+  type TimesPropostos,
+} from '@/robo/sorteio-zap';
 import { timesDaPelada } from '@/server/times';
 import { createTestDb } from '../helpers/db';
 
@@ -54,105 +70,138 @@ describe('ehAdmin', () => {
   it('texto fixo', () => expect(TEXTO_SO_ADMIN).toBe('🔐 Só os organizadores podem sortear pelo WhatsApp.'));
 });
 
-describe('proporSorteio', () => {
-  it('propõe sem gravar nada e monta o texto', async () => {
+const quem = { telefone: ADMIN, nome: 'Marco' };
+const mais = (min: number, s = 0) => new Date(QUARTA.getTime() + min * 60_000 + s * 1000);
+const sorteados = async (n: 3 | 4 = 4) => (await sortearTimesDaNoite(db, QUARTA, rng, n)) as TimesPropostos;
+const proposta = async (n: 3 | 4 = 4) => montarProposta('sorteio', quem, QUARTA, await sorteados(n));
+
+describe('sortearTimesDaNoite + montarProposta', () => {
+  it('sorteia sem gravar nada; a proposta tem os times com notas, a diferença e como confirmar', async () => {
     const antes = await tudo();
-    const p = (await proporSorteio(db, QUARTA, ADMIN, rng)) as Proposta;
+    const p = await proposta();
     expect(await tudo()).toBe(antes);
-    expect(p.peladaId).toBe(peladaId);
-    expect(p.adminTelefone).toBe(ADMIN);
-    expect(p.criadaEm).toEqual(QUARTA);
+    expect(p).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, quemProposNome: 'Marco', criadaEm: QUARTA, peladaId, votos: [] });
     expect(p.elencos.flat()).toHaveLength(10);
     expect(p.completes).toHaveLength(p.elencos.length);
-    expect(p.texto).toMatch(/^🎲 Times sorteados:\n\n🔵 Azul \(\d+,\d\)\n- \S+ \d,\d/);
-    expect(p.texto).toContain('- COMPLETE ');
-    expect(p.texto).toMatch(/\n\nDiferença: \d+,\d\nConfirma\? Responda \*sim\* em até 10 minutos ✅$/);
+    expect(p.blocos).toMatch(/^🔵 Azul \(\d+,\d\)\n- \S+ \d,\d/);
+    expect(p.blocos).toContain('- COMPLETE ');
+    expect(p.blocos).toMatch(/\n\nDiferença: \d+,\d$/);
+    expect(p.texto).toBe(`🎲 Times sorteados por Marco:\n\n${p.blocos}\n\n${INSTRUCOES_VOTO}`);
   });
 
   it('sem pelada hoje ou com poucos confirmados devolve erro e não cria nada', async () => {
     const antes = await tudo();
-    expect(await proporSorteio(db, new Date('2026-11-18T15:00:00Z'), ADMIN, rng)).toEqual({ erro: '📅 Hoje não tem pelada para sortear.' });
-    expect(await tudo()).toBe(antes);
-    expect(await proporSorteio(db, new Date('2026-11-12T15:00:00Z'), ADMIN, rng)).toEqual({ erro: '📅 Hoje não tem pelada para sortear.' });
-    expect(await proporSorteio(db, new Date('2026-11-10T15:00:00Z'), ADMIN, rng)).toEqual({ erro: '📅 Hoje não tem pelada para sortear.' });
+    for (const d of ['2026-11-18T15:00:00Z', '2026-11-12T15:00:00Z', '2026-11-10T15:00:00Z']) {
+      expect(await sortearTimesDaNoite(db, new Date(d), rng)).toEqual({ erro: '📅 Hoje não tem pelada para sortear.' });
+    }
     expect(await tudo()).toBe(antes);
     await db.execute(sql`update presencas set status = 'removido' where id > 1`);
-    expect(await proporSorteio(db, QUARTA, ADMIN, rng)).toEqual({ erro: '👥 Poucos confirmados para sortear.' });
+    expect(await sortearTimesDaNoite(db, QUARTA, rng)).toEqual({ erro: '👥 Poucos confirmados para sortear.' });
+  });
+
+  it('padrão 4; com 3: Azul, Laranja e Verde (10 jogadores: 4, 3, 3 com 2 COMPLETE)', async () => {
+    expect((await proposta(4)).elencos).toHaveLength(4);
+    const p = await proposta(3);
+    expect(p.elencos).toHaveLength(3);
+    expect(p.completes.flat()).toHaveLength(2);
+    expect(p.elencos.map((e, i) => e.length + p.completes[i].length)).toEqual([4, 4, 4]);
+    expect(p.blocos).toContain('🟢 Verde');
+    expect(p.blocos).not.toContain('⚫');
   });
 });
 
-describe('proporSorteio em 3 times', () => {
-  it('padrão 4; com 3: Azul, Laranja e Verde (10 jogadores: 4, 3, 3 com 2 COMPLETE)', async () => {
-    const quatro = (await proporSorteio(db, QUARTA, ADMIN, rng)) as Proposta;
-    expect(quatro.elencos).toHaveLength(4);
-    const p = (await proporSorteio(db, QUARTA, ADMIN, rng, 3)) as Proposta;
-    expect(p.elencos).toHaveLength(3);
-    expect(p.elencos.flat()).toHaveLength(10);
-    expect(p.completes.flat()).toHaveLength(2);
-    expect(p.elencos.map((e, i) => e.length + p.completes[i].length)).toEqual([4, 4, 4]);
-    expect(p.texto).toContain('🔵 Azul');
-    expect(p.texto).toContain('🟠 Laranja');
-    expect(p.texto).toContain('🟢 Verde');
-    expect(p.texto).not.toContain('⚫');
+describe('votar (2 de 3)', () => {
+  it('o 1º voto conta (falta 1), repetido não conta de novo (aceita variação do número), o 2º fecha', async () => {
+    const p = await proposta();
+    const a = votar(p, ADMIN, mais(1));
+    expect(a.resultado).toEqual({ tipo: 'contou', faltam: 1 });
+    expect(a.proposta.votos).toEqual([ADMIN]);
+    expect(p.votos).toEqual([]);
+    expect(votar(a.proposta, '558190000001', mais(2)).resultado).toEqual({ tipo: 'ja_votou', faltam: 1 });
+    expect(votar(a.proposta, '5581990000002', mais(3)).resultado).toEqual({ tipo: 'fechou' });
   });
 
-  it('o "sim" salva exatamente os 3 times mostrados', async () => {
-    const p = (await proporSorteio(db, QUARTA, ADMIN, rng, 3)) as Proposta;
-    expect(await confirmarSorteio(db, new Date(QUARTA.getTime() + 60_000), ADMIN, p)).toEqual({ ok: '🏆 Times definitivos salvos!' });
+  it('com 60 minutos ou mais, vencida', async () => {
+    const p = await proposta();
+    expect(votar(p, ADMIN, mais(59, 59)).resultado.tipo).toBe('contou');
+    expect(votar(p, ADMIN, mais(60)).resultado).toEqual({ tipo: 'vencida' });
+    expect(propostaVencida(p, mais(60))).toBe(true);
+    expect(VALIDADE_MS).toBe(60 * 60_000);
+    expect(VOTOS_NECESSARIOS).toBe(2);
+  });
+});
+
+describe('salvarProposta', () => {
+  it('grava exatamente os times mostrados (3 times)', async () => {
+    const p = await proposta(3);
+    expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
     expect(ts.map((t) => t.jogadores.map((j) => j.id).sort())).toEqual(p.elencos.map((e) => [...e].sort()));
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual(p.completes);
   });
-});
 
-describe('confirmarSorteio', () => {
-  const proposta = async () => (await proporSorteio(db, QUARTA, ADMIN, rng)) as Proposta;
-  const mais = (min: number, s = 0) => new Date(QUARTA.getTime() + min * 60_000 + s * 1000);
-
-  it('mesmo admin grava times iguais aos da proposta (aceita variação do número)', async () => {
-    const p = await proposta();
-    expect(await confirmarSorteio(db, mais(9, 59), '558190000001', p)).toEqual({ ok: '🏆 Times definitivos salvos!' });
-    const ts = await timesDaPelada(db, peladaId);
-    expect(ts.map((t) => t.jogadores.map((j) => j.id).sort())).toEqual(p.elencos.map((e) => [...e].sort()));
-    expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual(p.completes);
-  });
-
-  it('sem proposta', async () => {
-    expect(await confirmarSorteio(db, QUARTA, ADMIN, null)).toEqual({ erro: '🤔 Não tem sorteio esperando confirmação.' });
-  });
-
-  it('outro telefone não grava', async () => {
-    const antes = await tudo();
-    expect(await confirmarSorteio(db, mais(1), '5581990000002', await proposta())).toEqual({ erro: '🔐 Só quem pediu o sorteio pode confirmar.' });
-    expect(await tudo()).toBe(antes);
-  });
-
-  it('com 10 minutos ou mais não grava', async () => {
-    const p = await proposta();
-    const antes = await tudo();
-    expect(await confirmarSorteio(db, mais(10), ADMIN, p)).toEqual({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' });
-    expect(await confirmarSorteio(db, mais(30), ADMIN, p)).toEqual({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' });
-    expect(await tudo()).toBe(antes);
-  });
-
-  it('lista mudou depois da proposta: não grava', async () => {
+  it('sorteio com a lista mudada depois da proposta: não grava', async () => {
     const p = await proposta();
     await db.execute(sql`update presencas set status = 'removido' where id = (select min(id) from presencas)`);
     const antes = await tudo();
-    expect(await confirmarSorteio(db, mais(1), ADMIN, p)).toEqual({ erro: '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.' });
+    expect(await salvarProposta(db, mais(1), p)).toEqual({ erro: '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.' });
     expect(await tudo()).toBe(antes);
   });
 
   it('partida em andamento: repassa o erro do site e não grava', async () => {
     const p = await proposta();
-    expect(await confirmarSorteio(db, mais(1), ADMIN, p)).toEqual({ ok: '🏆 Times definitivos salvos!' });
+    expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
     const [a, b] = await db.select().from(times);
     await db.insert(partidas).values({ peladaId, timeAId: a.id, timeBId: b.id });
     const antes = await tudo();
-    const r = await confirmarSorteio(db, mais(2), ADMIN, p);
-    expect(r).toEqual({ erro: '⚠️ Tem partida em andamento; encerre antes de sortear de novo.' });
+    expect(await salvarProposta(db, mais(2), p)).toEqual({ erro: '⚠️ Tem partida em andamento; encerre antes de sortear de novo.' });
     expect(await tudo()).toBe(antes);
+  });
+});
+
+describe('importarTimesColados', () => {
+  const colado = 'Time 1\nAna\nBeto\nCaio\nDavi\n\nTime 2\nEdu\nFabio\nGil\nHugo';
+
+  it('casa os nomes com os ativos, soma as notas e não grava; vira proposta "importado"', async () => {
+    const antes = await tudo();
+    const r = (await importarTimesColados(db, QUARTA, colado)) as TimesPropostos;
+    expect(await tudo()).toBe(antes);
+    expect(r.peladaId).toBe(peladaId);
+    expect(r.times.map((t) => t.jogadores.map((j) => j.nome))).toEqual([['Ana', 'Beto', 'Caio', 'Davi'], ['Edu', 'Fabio', 'Gil', 'Hugo']]);
+    expect(r.times[0].soma).toBe(2 + 3 + 4 + 5);
+    const p = montarProposta('importado', quem, QUARTA, r);
+    expect(p.texto.startsWith('📥 Times importados por Marco:\n\n🔵 Azul (14,0)')).toBe(true);
+    // Importado salva sem conferir a lista (os times vieram de fora).
+    expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
+  });
+
+  it('nome não achado, ambíguo ou repetido: diz o que corrigir', async () => {
+    await db.insert(jogadores).values({ nome: 'Caique', nota: '3.0' });
+    const r = await importarTimesColados(db, QUARTA, 'Time 1\nAnaa\nCa\nBeto\nBeto\n\nTime 2\nEdu\nFabio');
+    expect(r).toEqual({
+      erro: [
+        '🤔 Não deu para importar:',
+        '- "Anaa": não achei. Você quis dizer Ana?',
+        '- "Ca": serve para Caio, Caique. Mande o nome inteiro.',
+        '- Beto aparece mais de uma vez.',
+        'Corrija e mande *importar* com os times de novo.',
+      ].join('\n'),
+    });
+  });
+
+  it('sem pelada hoje', async () => {
+    expect(await importarTimesColados(db, new Date('2026-11-12T15:00:00Z'), colado)).toEqual({ erro: '📅 Hoje não tem pelada para importar times.' });
+  });
+});
+
+describe('guardar e ler a proposta (estado.json)', () => {
+  it('ida e volta mantém tudo; formato estranho vira null', async () => {
+    const p = votar(await proposta(), ADMIN, mais(1)).proposta;
+    const guardada = JSON.parse(JSON.stringify(paraGuardar(p)));
+    expect(deGuardada(guardada)).toEqual(p);
+    expect(paraGuardar(null)).toBeNull();
+    for (const ruim of [null, 1, {}, { ...guardada, criadaEm: 'x' }, { ...guardada, votos: [1] }, { ...guardada, origem: 'outra' }]) expect(deGuardada(ruim)).toBeNull();
   });
 });
 

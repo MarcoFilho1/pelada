@@ -24,7 +24,7 @@ import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
-import { confirmarSorteio, proporSorteio, type Proposta } from './sorteio-zap';
+import { deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -222,7 +222,9 @@ async function laco(): Promise<void> {
   // Um cliente da Anthropic para o robô todo; a chave nunca vai para o log.
   const clienteIA = ia ? criarCliente(ia.chave) : null;
   const freio = new Freio(() => new Date());
-  const proposta = { atual: null as Proposta | null };
+  // A proposta de times volta do estado depois de um reinício (com os votos e a validade).
+  const proposta = { atual: deGuardada(estado.proposta) as Proposta | null };
+  let propostaGravada = proposta.atual;
   const gravar = (novo: typeof estado) => {
     try {
       gravarEstado(arquivoEstado, novo);
@@ -245,7 +247,34 @@ async function laco(): Promise<void> {
     await wa.enviar(conversa, texto);
   };
 
+  // A conversa privada de cada organizador: a que ele já usou com o robô ou a que o WhatsApp informa.
+  const conversas = new Map<string, string>();
+  const conversaDe = async (admin: string): Promise<string | null> => {
+    for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
+    const digitos = admin.replace(/\D/g, '');
+    const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
+    return (await conexao!).conversaDoTelefone(comDdi);
+  };
+  /** Um texto no privado de cada organizador (menos `exceto`); falha de um não impede os outros. */
+  const avisarOrganizadores = async (texto: string, exceto: string[]) => {
+    const wa = await conexao!;
+    for (const admin of admins) {
+      if (exceto.some((t) => ehAdmin(t, [admin]))) continue;
+      try {
+        const jid = await conversaDe(admin);
+        if (!jid) {
+          log('aviso a um organizador não saiu: o número não tem WhatsApp');
+          continue;
+        }
+        await wa.enviar(jid, texto);
+      } catch (err) {
+        log(`aviso a um organizador não saiu: ${(err as Error).message}`);
+      }
+    }
+  };
+
   const tratar = async (m: MensagemRecebida) => {
+    if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     try {
       const r = await responder(m, {
         estadoGrupoId: grupoId,
@@ -258,8 +287,11 @@ async function laco(): Promise<void> {
         proposta,
         // Fora da janela só lê (nunca cria a pelada da semana), como o ensaio.
         lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
-        propor: (n, tel, times) => proporSorteio(db, n, tel, Math.random, times),
-        confirmar: (n, tel, p) => confirmarSorteio(db, n, tel, p),
+        propor: (n, times) => sortearTimesDaNoite(db, n, Math.random, times),
+        importar: (n, texto) => importarTimesColados(db, n, texto),
+        salvar: (n, p) => salvarProposta(db, n, p),
+        avisarOrganizadores,
+        anunciarNoGrupo: enviarNoGrupo,
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
         consultar: (tipo, n) => consultar(db, tipo, n),
@@ -273,10 +305,15 @@ async function laco(): Promise<void> {
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
-          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora), ...acoes], agora, quem, ehJonas, jogador, privado }),
+          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });
+      if (proposta.atual !== propostaGravada) {
+        propostaGravada = proposta.atual;
+        estado = { ...estado, proposta: paraGuardar(proposta.atual) };
+        gravar(estado);
+      }
       if (!r) return;
       log(`respondeu ${m.privado ? 'no privado' : 'a uma marcação'} (${r.texto.split('\n')[0].slice(0, 60)})`);
       if (r.ehListaCompleta && r.gravar && podeGravarLista(new Date(), r.gravar.foto, estado)) {

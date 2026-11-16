@@ -5,10 +5,19 @@ import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA, TEXTO_AJUDA_ORGANIZADOR, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SO_ADMIN_ANOTAR, TEXTO_SORTEIO_NO_PRIVADO, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import {
+  TEXTO_IMPORTAR_NO_PRIVADO,
+  TEXTO_PROPOSTA_VENCIDA,
+  TEXTO_SALVOS,
+  TEXTO_SEM_PROPOSTA,
+  TEXTO_SO_ADMIN_CONFIRMA,
+  TEXTO_SO_ADMIN_IMPORTAR,
+  TEXTO_TIMES_INDEFINIDOS,
+} from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
-import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
+import { INSTRUCOES_VOTO, montarProposta, TEXTO_SO_ADMIN, type Proposta, type TimesPropostos } from '@/robo/sorteio-zap';
 import { TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO } from '@/robo/cadastro-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -39,8 +48,19 @@ function msg(texto: string, over: Partial<MensagemRecebida> = {}): MensagemReceb
   return { grupoId: GRUPO, remetenteTelefone: QUALQUER, remetenteNome: 'Zeca', texto, mencionaORobo: true, respondeAoRobo: false, quando: t('2026-11-10T15:40:00'), ...over };
 }
 
+const TIMES: TimesPropostos = {
+  peladaId: 1,
+  times: [
+    { jogadores: [{ id: 1, nome: 'Ana', nota: 3 }], completes: [], soma: 3 },
+    { jogadores: [{ id: 2, nome: 'Bia', nota: 2.5 }], completes: [], soma: 2.5 },
+  ],
+};
+const BLOCOS = '🔵 Azul (3,0)\n- Ana 3,0\n\n🟠 Laranja (2,5)\n- Bia 2,5\n\nDiferença: 0,5';
+const textoProposta = (nome = 'Zeca', origem: 'sorteio' | 'importado' = 'sorteio') =>
+  `${origem === 'sorteio' ? '🎲 Times sorteados' : '📥 Times importados'} por ${nome}:\n\n${BLOCOS}\n\n${INSTRUCOES_VOTO}`;
+
 function proposta(over: Partial<Proposta> = {}): Proposta {
-  return { adminTelefone: ADMIN, criadaEm: t('2026-11-11T15:00:00'), peladaId: 1, elencos: [[1], [2]], completes: [[], []], texto: 'Times propostos', ...over };
+  return { ...montarProposta('sorteio', { telefone: ADMIN, nome: 'Zeca' }, t('2026-11-11T15:00:00'), TIMES), ...over };
 }
 
 function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-10T15:40:00')) {
@@ -52,8 +72,11 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     ultimo: null as Envio | null,
     proposta: { atual: null as Proposta | null },
     lerLista: vi.fn(async () => lista),
-    propor: vi.fn(async (now: Date, tel: string) => proposta({ adminTelefone: tel, criadaEm: now })),
-    confirmar: vi.fn(async (): Promise<{ ok: string } | { erro: string }> => ({ ok: '🏆 Times definitivos salvos!' })),
+    propor: vi.fn(async (): Promise<TimesPropostos | { erro: string }> => TIMES),
+    importar: vi.fn(async (): Promise<TimesPropostos | { erro: string }> => TIMES),
+    salvar: vi.fn(async (): Promise<{ ok: true } | { erro: string }> => ({ ok: true })),
+    avisarOrganizadores: vi.fn(async () => {}),
+    anunciarNoGrupo: vi.fn(async () => {}),
     perguntar: vi.fn(async () => 'O João está na lista.'),
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
     consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
@@ -223,16 +246,17 @@ describe('responder: pergunta livre', () => {
   });
 });
 
-describe('responder: sorteio', () => {
+describe('responder: sorteio com 2 de 3', () => {
   // Cada passo um minuto depois, para o freio deixar responder.
   const relogio = (() => {
     let n = 0;
     return { agora: () => new Date(t('2026-11-11T15:00:00').getTime() + n * 60_000), andar: () => n++ };
   })();
-  const passo = (texto: string, c: ReturnType<typeof ctx>, tel: string | null) => {
+  const passo = (texto: string, c: ReturnType<typeof ctx>, tel: string | null, over: Partial<MensagemRecebida> = {}) => {
     relogio.andar();
-    return responder(msg(texto, { remetenteTelefone: tel, quando: relogio.agora() }), c);
+    return responder(msg(texto, { remetenteTelefone: tel, quando: relogio.agora(), ...over }), c);
   };
+  const noPrivado = (tel: string, nome: string) => ({ privado: true, grupoId: `${tel}@s.whatsapp.net`, mencionaORobo: false, remetenteNome: nome });
 
   it('quem não é admin (ou sem telefone) recebe o aviso, sem propor', async () => {
     const c = ctx({}, relogio.agora);
@@ -245,122 +269,178 @@ describe('responder: sorteio', () => {
   it('"sortear 3 times" propõe em 3; "sortear" em 4; "sortear 5 times" recusa sem propor', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sortear 3 times', c, ADMIN);
-    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), ADMIN, 3);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 3);
     await passo('sortear', c, ADMIN);
-    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), ADMIN, 4);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 4);
     expect((await passo('sortear 5 times', c, ADMIN))?.texto).toBe(TEXTO_SO_3_OU_4);
     expect(c.propor).toHaveBeenCalledTimes(2);
   });
 
-  it('admin: propõe, guarda uma proposta só (a nova substitui a antiga)', async () => {
+  it('no grupo: a proposta aparece no grupo e vai para o privado dos outros organizadores; a nova substitui a antiga', async () => {
     const c = ctx({}, relogio.agora);
-    expect((await passo('sortear', c, ADMIN))?.texto).toBe('Times propostos');
-    expect(c.proposta.atual?.adminTelefone).toBe(ADMIN);
+    expect((await passo('sortear', c, ADMIN))?.texto).toBe(textoProposta());
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(textoProposta(), [ADMIN]);
+    expect(c.proposta.atual).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, votos: [] });
+    await passo('sim', c, ADMIN);
+    expect(c.proposta.atual?.votos).toEqual([ADMIN]);
     await passo('sorteia', c, OUTRO_ADMIN);
-    expect(c.proposta.atual?.adminTelefone).toBe(OUTRO_ADMIN);
-    expect(c.propor).toHaveBeenCalledTimes(2);
+    expect(c.proposta.atual).toMatchObject({ quemPropos: OUTRO_ADMIN, votos: [] });
   });
 
   it('erro ao propor: responde o erro e não guarda nada', async () => {
     const c = ctx({ propor: vi.fn(async () => ({ erro: '📅 Hoje não tem pelada para sortear.' })) }, relogio.agora);
     expect((await passo('sortear', c, ADMIN))?.texto).toBe('📅 Hoje não tem pelada para sortear.');
     expect(c.proposta.atual).toBeNull();
+    expect(c.avisarOrganizadores).not.toHaveBeenCalled();
   });
 
-  it('"sim" confirma a proposta guardada e a apaga; o segundo "sim" não tem o que confirmar', async () => {
+  it('no privado: 1º sim de quem sorteou conta e avisa os outros; 2º sim de outro organizador salva, anuncia no grupo e avisa', async () => {
     const c = ctx({}, relogio.agora);
-    await passo('sortear', c, ADMIN);
+    expect((await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(textoProposta('Marco'));
+    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('✅ Marco confirmou os times. Falta 1: responda *sim* para confirmar.', [ADMIN]);
+    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('👍 Você já confirmou. Falta 1 organizador confirmar.');
+    expect(c.salvar).not.toHaveBeenCalled();
+
     const guardada = c.proposta.atual;
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('🏆 Times definitivos salvos!');
-    expect(c.confirmar).toHaveBeenCalledWith(expect.any(Date), ADMIN, guardada);
+    expect((await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe(TEXTO_SALVOS);
+    expect(c.salvar).toHaveBeenCalledWith(expect.any(Date), { ...guardada, votos: [ADMIN, OUTRO_ADMIN] });
+    expect(c.anunciarNoGrupo).toHaveBeenCalledWith(`🏆 Times da noite:\n\n${BLOCOS}`);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(`🏆 Pepe confirmou. ${TEXTO_SALVOS}`, [OUTRO_ADMIN]);
     expect(c.proposta.atual).toBeNull();
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
-    expect(c.confirmar).toHaveBeenCalledTimes(1);
+    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_PROPOSTA);
   });
 
-  it('"sim" de outra pessoa: não apaga a proposta (quem pediu ainda pode confirmar)', async () => {
-    const c = ctx({ confirmar: vi.fn(async () => ({ erro: '🔐 Só quem pediu o sorteio pode confirmar.' })) }, relogio.agora);
-    await passo('sortear', c, ADMIN);
-    expect((await passo('sim', c, QUALQUER))?.texto).toBe('🔐 Só quem pediu o sorteio pode confirmar.');
-    expect(c.proposta.atual).not.toBeNull();
-  });
-
-  it('proposta expirada: responde a expiração e apaga; o "sim" seguinte não tem o que confirmar', async () => {
-    const c = ctx({ confirmar: vi.fn(async () => ({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' })) }, relogio.agora);
-    c.proposta.atual = proposta({ criadaEm: new Date(relogio.agora().getTime() - 20 * 60_000) });
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('⌛ A proposta expirou. Peça *sortear* de novo.');
-    expect(c.proposta.atual).toBeNull();
-    expect((await passo('sim', c, ADMIN))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
-  });
-
-  it('"sim" de quem não é admin, sem proposta: não tem o que confirmar', async () => {
+  it('2º sim no grupo: a resposta no grupo já é o anúncio (com as notas); os outros recebem aviso no privado', async () => {
     const c = ctx({}, relogio.agora);
-    expect((await passo('sim', c, QUALQUER))?.texto).toBe('🤔 Não tem sorteio esperando confirmação.');
-    expect(c.confirmar).not.toHaveBeenCalled();
+    await passo('sortear', c, ADMIN);
+    await passo('sim', c, ADMIN);
+    const r = await passo('sim', c, OUTRO_ADMIN, { remetenteNome: 'Pepe' });
+    expect(r?.texto).toBe(`🏆 Times da noite:\n\n${BLOCOS}`);
+    expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Pepe confirmou e os times foram salvos no site e mandados no grupo.', [OUTRO_ADMIN]);
   });
 
-  it('"sim" de quem pediu, no mesmo minuto do sortear: o freio não bloqueia e a resposta conta', async () => {
+  it('o site recusa ao salvar: a proposta acaba e todos recebem o motivo', async () => {
+    const c = ctx({ salvar: vi.fn(async () => ({ erro: '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.' })) }, relogio.agora);
+    await passo('sortear', c, ADMIN);
+    await passo('sim', c, ADMIN);
+    const esperado = '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.\nOs times não foram salvos.';
+    expect((await passo('sim', c, OUTRO_ADMIN))?.texto).toBe(esperado);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(esperado, [OUTRO_ADMIN]);
+    expect(c.proposta.atual).toBeNull();
+    expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
+  });
+
+  it('"sim" de quem não é organizador não conta; sem proposta, não tem o que confirmar', async () => {
+    const c = ctx({}, relogio.agora);
+    expect((await passo('sim', c, QUALQUER))?.texto).toBe(TEXTO_SEM_PROPOSTA);
+    await passo('sortear', c, ADMIN);
+    expect((await passo('sim', c, QUALQUER))?.texto).toBe(TEXTO_SO_ADMIN_CONFIRMA);
+    expect((await passo('sim', c, null))?.texto).toBe(TEXTO_SO_ADMIN_CONFIRMA);
+    expect(c.proposta.atual?.votos).toEqual([]);
+  });
+
+  it('proposta com 60 minutos: vence e acaba', async () => {
     const c = ctx({}, relogio.agora);
     relogio.andar();
-    const quando = relogio.agora();
-    await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
-    const registrar = vi.spyOn(c.freio, 'registrarResposta');
-    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('🏆 Times definitivos salvos!');
-    expect(registrar).toHaveBeenCalledTimes(1);
+    c.proposta.atual = proposta({ criadaEm: new Date(relogio.agora().getTime() - 60 * 60_000) });
+    expect((await passo('sim', c, ADMIN))?.texto).toBe(TEXTO_PROPOSTA_VENCIDA);
+    expect(c.proposta.atual).toBeNull();
   });
 
-  it('com o limite de 10 por minuto cheio: o "sim" de outra pessoa é barrado, o de quem pediu passa', async () => {
+  it('com o limite de respostas cheio: o "sim" de organizador passa; o de outra pessoa é barrado', async () => {
     const c = ctx({}, relogio.agora);
     relogio.andar();
     const quando = relogio.agora();
     await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
     for (let i = 1; i < LIMITE_RESPOSTAS; i++) await responder(msg('fila', { quando }), c);
     expect(await responder(msg('sim', { remetenteTelefone: QUALQUER, quando }), c)).toBeNull();
-    expect(c.confirmar).not.toHaveBeenCalled();
-    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('🏆 Times definitivos salvos!');
+    expect((await responder(msg('sim', { remetenteTelefone: OUTRO_ADMIN, quando }), c))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
   });
 
-  it('"sim" respondendo (citando) a proposta, sem marcar o robô: confirma', async () => {
+  it('"sim" citando o robô, sem marcar: conta; citação sem "sim" ou sem proposta é ignorada', async () => {
     const c = ctx({}, relogio.agora);
-    await passo('sortear', c, ADMIN);
-    relogio.andar();
-    const r = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: relogio.agora(), mencionaORobo: false, respondeAoRobo: true }), c);
-    expect(r?.texto).toBe('🏆 Times definitivos salvos!');
-  });
-
-  it('citação do robô sem marcação: só o "sim" com proposta guardada conta', async () => {
-    const c = ctx({}, relogio.agora);
-    const cita = (texto: string) => {
-      relogio.andar();
-      return responder(msg(texto, { remetenteTelefone: ADMIN, quando: relogio.agora(), mencionaORobo: false, respondeAoRobo: true }), c);
-    };
-    expect(await cita('sim')).toBeNull(); // sem proposta
-    expect(await cita('lista')).toBeNull();
-    expect(await cita('quem é o artilheiro?')).toBeNull();
+    const cita = (texto: string, tel = ADMIN) => passo(texto, c, tel, { mencionaORobo: false, respondeAoRobo: true });
+    expect(await cita('sim')).toBeNull();
     await passo('sortear', c, ADMIN);
     expect(await cita('legal')).toBeNull();
-    expect(c.enviar).toHaveBeenCalledTimes(1);
+    expect((await cita('sim', OUTRO_ADMIN))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
   });
 
-  it('sortear ou sim de remetente sem telefone (só LID): registra uma linha no log', async () => {
+  it('sortear, sim ou importar de remetente sem telefone (só LID): uma linha no log', async () => {
     const c = ctx({}, relogio.agora);
-    await passo('sortear', c, null);
-    expect(c.log).toHaveBeenCalledWith('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
-    vi.mocked(c.log).mockClear();
-    await passo('sim', c, null);
-    expect(c.log).toHaveBeenCalledWith('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
-    vi.mocked(c.log).mockClear();
-    await passo('fila', c, null);
-    expect(c.log).not.toHaveBeenCalled();
+    for (const cmd of ['sortear', 'sim', 'importar Ana']) {
+      vi.mocked(c.log).mockClear();
+      await passo(cmd, c, null);
+      expect(c.log).toHaveBeenCalledWith('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
+    }
   });
 
-  it('pedido de sorteio em texto livre vai para a IA, que só pode sortear pela ferramenta pedir_sorteio (com a checagem de admin)', async () => {
+  it('pedido de sorteio em texto livre vai para a IA, que só sorteia pela ferramenta (sem confirmar)', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sorteia os times aí', c, ADMIN);
-    // O comando não sorteia sozinho: quem decide chamar a ferramenta é a IA.
     expect(c.propor).not.toHaveBeenCalled();
     expect(c.perguntar).toHaveBeenCalledWith('sorteia os times aí', expect.objectContaining({ acoes: expect.arrayContaining([expect.objectContaining({ nome: 'pedir_sorteio', sorteio: true })]) }));
     expect(c.perguntar).toHaveBeenCalledWith('sorteia os times aí', expect.objectContaining({ acoes: expect.not.arrayContaining([expect.objectContaining({ nome: 'confirmar_sorteio' })]) }));
+  });
+});
+
+describe('importar times (privado)', () => {
+  const privado = (texto: string, tel: string | null = ADMIN) =>
+    msg(texto, { privado: true, grupoId: `${ADMIN}@s.whatsapp.net`, remetenteTelefone: tel, mencionaORobo: false, remetenteNome: 'Marco' });
+
+  it('organizador no privado: lê os times colados (com as quebras de linha) e vira proposta importada', async () => {
+    const c = ctx();
+    const r = await responder(privado('importar times:\nTime 1\nAna\n\nTime 2\nBia'), c);
+    expect(c.importar).toHaveBeenCalledWith(expect.any(Date), 'Time 1\nAna\n\nTime 2\nBia');
+    expect(r?.texto).toBe(textoProposta('Marco', 'importado'));
+    expect(c.proposta.atual).toMatchObject({ origem: 'importado', votos: [] });
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(textoProposta('Marco', 'importado'), [ADMIN]);
+  });
+
+  it('nomes com problema: responde o que corrigir e não cria proposta', async () => {
+    const c = ctx({ importar: vi.fn(async () => ({ erro: '🤔 Não deu para importar:\n- "Anaa": não achei.' })) });
+    expect((await responder(privado('importar Anaa'), c))?.texto).toBe('🤔 Não deu para importar:\n- "Anaa": não achei.');
+    expect(c.proposta.atual).toBeNull();
+  });
+
+  it('no grupo não importa (os times vazariam); quem não é organizador também não', async () => {
+    const c = ctx();
+    expect((await responder(msg('importar Ana', { remetenteTelefone: ADMIN }), c))?.texto).toBe(TEXTO_IMPORTAR_NO_PRIVADO);
+    expect((await responder(msg('importar Ana', { remetenteTelefone: QUALQUER }), ctx()))?.texto).toBe(TEXTO_SO_ADMIN_IMPORTAR);
+    expect(c.importar).not.toHaveBeenCalled();
+  });
+});
+
+describe('times com proposta pendente (sem vazar)', () => {
+  it('no grupo: "ainda não foram definidos", mesmo com times salvos; sem proposta, os salvos', async () => {
+    const c = ctx({ consultar: vi.fn(async () => '👕 Times de hoje:\n\n🔵 Azul\n- Ana') });
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
+    expect((await responder(msg('times'), c))?.texto).toBe(TEXTO_TIMES_INDEFINIDOS);
+    expect(c.consultar).not.toHaveBeenCalled();
+    c.proposta.atual = null;
+    expect((await responder(msg('times'), c))?.texto).toBe('👕 Times de hoje:\n\n🔵 Azul\n- Ana');
+  });
+
+  it('proposta vencida não trava mais', async () => {
+    const c = ctx({ consultar: vi.fn(async () => '👕 Times de hoje:') });
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T14:00:00') });
+    expect((await responder(msg('times'), c))?.texto).toBe('👕 Times de hoje:');
+  });
+
+  it('no privado do organizador: mostra a proposta e quantos votos tem', async () => {
+    const c = ctx();
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), votos: [ADMIN] });
+    const r = await responder(msg('times', { privado: true, grupoId: 'x@s.whatsapp.net', remetenteTelefone: OUTRO_ADMIN, mencionaORobo: false }), c);
+    expect(r?.texto).toBe(`⏳ Times esperando confirmação (1 de 2):\n\n${textoProposta()}`);
+  });
+
+  it('a ferramenta ver_times da IA segue a mesma regra', async () => {
+    const c = ctx();
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
+    const f = ferramentasDeAcao(msg('x'), c).find((x) => x.nome === 'ver_times')!;
+    expect(await f.executar({})).toBe(TEXTO_TIMES_INDEFINIDOS);
   });
 });
 
@@ -454,12 +534,11 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     const quando = t('2026-11-11T15:00:00');
     const c = ctx({}, () => quando);
     const r = (await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
-    expect(r).toMatchObject({ texto: 'Times propostos', como: 'sorteio' });
-    expect(c.propor).toHaveBeenCalledWith(quando, ADMIN, 4);
-    expect(c.proposta.atual).toMatchObject({ adminTelefone: ADMIN, texto: 'Times propostos' });
+    expect(r).toMatchObject({ texto: textoProposta(), como: 'sorteio' });
+    expect(c.propor).toHaveBeenCalledWith(quando, 4);
+    expect(c.proposta.atual).toMatchObject({ quemPropos: ADMIN, texto: textoProposta() });
     const sim = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-11T15:02:00') }), c);
-    expect(sim?.texto).toBe('🏆 Times definitivos salvos!');
-    expect(c.confirmar).toHaveBeenCalledWith(t('2026-11-11T15:02:00'), ADMIN, expect.objectContaining({ texto: 'Times propostos' }));
+    expect(sim?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
   });
 
   it('pedir_sorteio: `times` opcional (3 ou 4) no schema estrito; 3 vai para o sorteio, ausente/estranho vira 4', async () => {
@@ -472,10 +551,10 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
       additionalProperties: false,
     });
     await f.executar({ times: 3 });
-    expect(c.propor).toHaveBeenLastCalledWith(quando, ADMIN, 3);
+    expect(c.propor).toHaveBeenLastCalledWith(quando, 3);
     for (const args of [{}, { times: 4 }, { times: 7 }, { times: '3' }, null]) {
       await f.executar(args);
-      expect(c.propor).toHaveBeenLastCalledWith(quando, ADMIN, 4);
+      expect(c.propor).toHaveBeenLastCalledWith(quando, 4);
     }
   });
 
@@ -735,18 +814,20 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
 
   it('sortear: linha só com proposta; erro continua sério', async () => {
     const c = ctx({ calvinho: [JONAS], admins: [JONAS], rng: () => 0 });
-    expect((await responder(doJonas('sortear'), c))!.texto).toBe('🍀 Sorteando com a sorte do calvinho:\nTimes propostos');
+    expect((await responder(doJonas('sortear'), c))!.texto).toBe(`🍀 Sorteando com a sorte do calvinho:\n${textoProposta('Jonas')}`);
     const erro = ctx({ calvinho: [JONAS], admins: [JONAS], propor: vi.fn(async () => ({ erro: '👥 Poucos confirmados para sortear.' })) });
     expect((await responder(doJonas('sortear'), erro))!.texto).toBe('👥 Poucos confirmados para sortear.');
     const naoAdmin = ctx({ calvinho: [JONAS] });
     expect((await responder(doJonas('sortear'), naoAdmin))!.texto).toBe(TEXTO_SO_ADMIN);
   });
 
-  it('sim: texto salvo do calvinho; erro continua sério', async () => {
-    const c = ctx({ calvinho: [JONAS], admins: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) } });
-    expect(SALVOS_CALVINHO).toContain((await responder(doJonas('sim'), c))!.texto);
-    const erro = ctx({ calvinho: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) }, confirmar: vi.fn(async () => ({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' })) });
-    expect((await responder(doJonas('sim'), erro))!.texto).toBe('⌛ A proposta expirou. Peça *sortear* de novo.');
+  it('sim que fecha no privado: texto salvo do calvinho; erro continua sério', async () => {
+    const quando = t('2026-11-10T15:40:00');
+    const noPrivado = { privado: true, grupoId: `${JONAS}@s.whatsapp.net`, mencionaORobo: false };
+    const c = ctx({ calvinho: [JONAS], admins: [JONAS, ADMIN], proposta: { atual: proposta({ criadaEm: quando, votos: [ADMIN] }) } });
+    expect(SALVOS_CALVINHO).toContain((await responder(doJonas('sim', noPrivado), c))!.texto);
+    const erro = ctx({ calvinho: [JONAS], admins: [JONAS, ADMIN], proposta: { atual: proposta({ criadaEm: quando, votos: [ADMIN] }) }, salvar: vi.fn(async () => ({ erro: '⚠️ Deu ruim.' })) });
+    expect((await responder(doJonas('sim', noPrivado), erro))!.texto).toBe('⚠️ Deu ruim.\nOs times não foram salvos.');
   });
 
   it('texto desconhecido sem IA: "não entendi" + ajuda; com IA, só a resposta da IA', async () => {
@@ -986,13 +1067,8 @@ describe('privado dos organizadores', () => {
     expect((await responder(privado('cadastrar Caio - 2,5'), ctx()))?.texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)');
   });
 
-  it('ajuda traz os comandos de organizador; sortear e sim ainda não valem aqui', async () => {
+  it('ajuda traz os comandos de organizador', async () => {
     expect((await responder(privado('ajuda'), ctx({ ia: null })))?.texto).toBe(`${TEXTO_AJUDA}\n\n${TEXTO_AJUDA_ORGANIZADOR}`);
-    const c = ctx();
-    expect((await responder(privado('sortear'), c))?.texto).toBe(TEXTO_SORTEIO_NO_PRIVADO);
-    expect((await responder(privado('sim'), c))?.texto).toBe(TEXTO_SORTEIO_NO_PRIVADO);
-    expect(c.propor).not.toHaveBeenCalled();
-    expect(c.confirmar).not.toHaveBeenCalled();
   });
 
   it('texto livre: a IA recebe as ferramentas de organizador e sabe que é privado; no grupo, não', async () => {

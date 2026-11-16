@@ -21,6 +21,8 @@ export type Comando =
   | { tipo: 'notas' }
   | { tipo: 'nota'; nome: string; nota: number }
   | { tipo: 'site' }
+  /** "importar" seguido dos times colados (as linhas ficam como vieram). */
+  | { tipo: 'importar'; texto: string }
   | { tipo: 'pergunta'; texto: string }
   /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
   | { tipo: 'recusa'; texto: string };
@@ -124,6 +126,8 @@ export function interpretar(textoSemMarcacao: string): Comando {
   if (tipo) return { tipo };
   const sortear = comandoDeSortear(limpo);
   if (sortear) return sortear;
+  const importar = /^\s*importar(?:\s+(?:os\s+)?times)?\s*:?\s*([\s\S]*)$/iu.exec(textoSemMarcacao);
+  if (importar) return { tipo: 'importar', texto: importar[1].trim() };
   const cadastro = comandoDeCadastro(textoSemMarcacao);
   if (cadastro) return cadastro;
   const deLista = comandoDeLista(textoSemMarcacao);
@@ -171,7 +175,7 @@ export const TEXTO_AJUDA = [
   '👋 remover Nome — tira da lista ou da fila — até 3 nomes: A, B e C',
   '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
   '👕 times — os times de hoje',
-  '🎲 sortear (ou sortear 3 times) — só os organizadores',
+  '🎲 sortear (ou sortear 3 times) — só os organizadores; vale quando 2 dos 3 confirmarem com sim',
   '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3) — só os organizadores',
   '📝 anotar — link para anotar as partidas de hoje, sem senha — só os organizadores',
 ].join('\n');
@@ -182,6 +186,9 @@ export const TEXTO_AJUDA_ORGANIZADOR = [
   '📋 notas — todos os jogadores com a nota',
   '✏️ nota Fulano 3,5 — muda a nota',
   '🆕 cadastrar Nome - nota — jogador novo',
+  '🎲 sortear — proposta de times (vale com 2 dos 3 organizadores respondendo sim)',
+  '📥 importar + os times colados — times feitos fora, na mesma regra do sim',
+  '👕 times — mostra a proposta esperando confirmação',
   '🌐 site — o link do site',
   '📝 anotar — link para anotar as partidas de hoje',
 ].join('\n');

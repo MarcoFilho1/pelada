@@ -73,4 +73,15 @@ describe('ferramentasDeLeitura', () => {
     expect(await f('times_da_noite').executar({})).toMatchObject({ data: '2026-11-11', ehHoje: true });
     expect(await f('partidas_da_noite').executar({})).toMatchObject({ data: '2026-11-11', ehHoje: true });
   });
+
+  it('com times propostos esperando votos, times_da_noite de hoje não mostra time nenhum', async () => {
+    await db.insert(peladas).values({ data: '2026-11-11' });
+    const pendente = ferramentasDeLeitura(db, () => new Date('2026-11-11T23:00:00Z'), { timesPendentes: () => true });
+    expect(await pendente.find((x) => x.nome === 'times_da_noite')!.executar({})).toEqual({
+      data: '2026-11-11',
+      ehHoje: true,
+      times: [],
+      aviso: 'Os times de hoje ainda não foram definidos.',
+    });
+  });
 });
