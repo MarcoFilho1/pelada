@@ -98,7 +98,7 @@ export function blocosDosTimes(times: TimeSorteado[]): string {
 }
 
 export const INSTRUCOES_VOTO =
-  '✅ Responda *sim* para confirmar. Os times valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma); aí eu salvo no site e quem propôs decide quando mandar no grupo. A proposta vale por 60 minutos; *sortear* de novo troca a proposta.';
+  '✅ Gostou? Responda *sim* para aprovar: aí eu mando para os outros organizadores, e os times valem quando mais um deles confirmar. Não gostou? *sortear* de novo troca a proposta. Vale por 60 minutos.';
 
 /** Times confirmados e salvos, esperando quem propôs mandar no grupo (com *mandar*). */
 export type AnuncioPendente = { texto: string; quemPropos: string; quemProposNome: string; peladaId: number; criadoEm: Date };

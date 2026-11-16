@@ -281,10 +281,10 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.propor).toHaveBeenCalledTimes(2);
   });
 
-  it('no grupo: a proposta aparece no grupo e vai para o privado dos outros organizadores; a nova substitui a antiga', async () => {
+  it('no grupo: a proposta aparece no grupo, mas os outros organizadores só recebem quando quem sorteou aprovar; a nova substitui a antiga', async () => {
     const c = ctx({}, relogio.agora);
     expect((await passo('sortear', c, ADMIN))?.texto).toBe(textoProposta());
-    expect(c.avisarOrganizadores).toHaveBeenCalledWith(textoProposta(), [ADMIN]);
+    expect(c.avisarOrganizadores).not.toHaveBeenCalled();
     expect(c.proposta.atual).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, votos: [] });
     await passo('sim', c, ADMIN);
     expect(c.proposta.atual?.votos).toEqual([ADMIN]);
@@ -302,8 +302,12 @@ describe('responder: sorteio com 2 de 3', () => {
   it('no privado: 1º sim de quem sorteou conta e avisa os outros; 2º sim de outro organizador salva, NÃO manda no grupo e pergunta a quem sorteou', async () => {
     const c = ctx({}, relogio.agora);
     expect((await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(textoProposta('Marco'));
-    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('✅ Marco confirmou os times. Falta 1: responda *sim* para confirmar.', [ADMIN]);
+    expect(c.avisarOrganizadores).not.toHaveBeenCalled();
+    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('✅ Aprovado! Mandei para os outros organizadores; falta 1 confirmar.');
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(
+      `✅ Marco aprovou estes times. Responda *sim* para confirmar: com o seu, eles ficam salvos no site.\n\n🎲 Times sorteados por Marco:\n\n${BLOCOS}`,
+      [ADMIN],
+    );
     expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('👍 Você já confirmou. Falta 1 organizador confirmar.');
     expect(c.salvar).not.toHaveBeenCalled();
 
@@ -328,13 +332,20 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
   });
 
-  it('quem sorteou dá o 2º sim no privado: a pergunta de mandar vem na resposta; o outro organizador só é avisado', async () => {
+  it('outro organizador dá sim antes de quem sorteou aprovar: não conta e ele fica sabendo que precisa esperar', async () => {
+    const c = ctx({}, relogio.agora);
+    await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+    expect((await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe('⏳ Marco ainda não aprovou esses times. Quando aprovar, eu te mando para confirmar.');
+    expect(c.proposta.atual?.votos).toEqual([]);
+    expect(c.salvar).not.toHaveBeenCalled();
+  });
+
+  it('com 3 organizadores, no 2º sim o terceiro só é avisado de que está salvo', async () => {
     const c = ctx({ admins: [ADMIN, OUTRO_ADMIN, QUALQUER] }, relogio.agora);
     await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco'));
     await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
-    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(`${TEXTO_SALVOS}\n${PERGUNTA_MANDAR}`);
-    // Os outros dois (inclusive quem já votou) ficam sabendo; quem sorteou já recebeu a pergunta na resposta.
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Times confirmados e salvos no site. Marco decide quando mandar no grupo.', [ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Times confirmados e salvos no site. Marco decide quando mandar no grupo.', [ADMIN, OUTRO_ADMIN]);
   });
 
   it('mandar: só quem sorteou, só no privado; aí os times vão ao grupo e os outros são avisados', async () => {
@@ -403,7 +414,7 @@ describe('responder: sorteio com 2 de 3', () => {
     await responder(msg('sortear', { remetenteTelefone: ADMIN, quando }), c);
     for (let i = 1; i < LIMITE_RESPOSTAS; i++) await responder(msg('fila', { quando }), c);
     expect(await responder(msg('sim', { remetenteTelefone: QUALQUER, quando }), c)).toBeNull();
-    expect((await responder(msg('sim', { remetenteTelefone: OUTRO_ADMIN, quando }), c))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
+    expect((await responder(msg('sim', { remetenteTelefone: ADMIN, quando }), c))?.texto).toBe('✅ Aprovado! Mandei para os outros organizadores; falta 1 confirmar.');
   });
 
   it('"sim" citando o robô, sem marcar: conta; citação sem "sim" ou sem proposta é ignorada', async () => {
@@ -412,7 +423,7 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(await cita('sim')).toBeNull();
     await passo('sortear', c, ADMIN);
     expect(await cita('legal')).toBeNull();
-    expect((await cita('sim', OUTRO_ADMIN))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
+    expect((await cita('sim', ADMIN))?.texto).toBe('✅ Aprovado! Mandei para os outros organizadores; falta 1 confirmar.');
   });
 
   it('sortear, sim ou importar de remetente sem telefone (só LID): uma linha no log', async () => {
@@ -443,7 +454,7 @@ describe('importar times (privado)', () => {
     expect(c.importar).toHaveBeenCalledWith(expect.any(Date), 'Time 1\nAna\n\nTime 2\nBia');
     expect(r?.texto).toBe(textoProposta('Marco', 'importado'));
     expect(c.proposta.atual).toMatchObject({ origem: 'importado', votos: [] });
-    expect(c.avisarOrganizadores).toHaveBeenCalledWith(textoProposta('Marco', 'importado'), [ADMIN]);
+    expect(c.avisarOrganizadores).not.toHaveBeenCalled();
   });
 
   it('nomes com problema: responde o que corrigir e não cria proposta', async () => {
@@ -585,7 +596,7 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     expect(c.propor).toHaveBeenCalledWith(quando, 4);
     expect(c.proposta.atual).toMatchObject({ quemPropos: ADMIN, texto: textoProposta() });
     const sim = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-11T15:02:00') }), c);
-    expect(sim?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
+    expect(sim?.texto).toBe('✅ Aprovado! Mandei para os outros organizadores; falta 1 confirmar.');
   });
 
   it('pedir_sorteio: `times` opcional (3 ou 4) no schema estrito; 3 vai para o sorteio, ausente/estranho vira 4', async () => {
@@ -1220,11 +1231,15 @@ describe('aviso de dupla separada só no privado', () => {
   const AVISO = '⚠️ Luiz e Jonas estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.';
   const comAviso = { ...TIMES, aviso: AVISO };
 
-  it('sortear no grupo: o grupo vê a proposta sem o aviso; os outros organizadores recebem com o aviso', async () => {
+  it('sortear no grupo: o grupo vê a proposta sem o aviso; quando quem sorteou aprova, os outros recebem com o aviso', async () => {
     const c = ctx({ propor: vi.fn(async () => comAviso) });
     const r = await responder(msg('sortear', { remetenteTelefone: ADMIN }), c);
     expect(r?.texto).toBe(textoProposta());
-    expect(c.avisarOrganizadores).toHaveBeenCalledWith(`${textoProposta()}\n\n${AVISO}`, [ADMIN]);
+    await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-10T15:41:00') }), c);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(
+      `✅ Zeca aprovou estes times. Responda *sim* para confirmar: com o seu, eles ficam salvos no site.\n\n🎲 Times sorteados por Zeca:\n\n${BLOCOS}\n\n${AVISO}`,
+      [ADMIN],
+    );
   });
 
   it('no privado, quem pediu vê o aviso', async () => {
