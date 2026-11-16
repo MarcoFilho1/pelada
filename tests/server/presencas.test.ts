@@ -13,7 +13,9 @@ import {
   entrarNaFila,
   estadoDaSemana,
   estadoDaSemanaSemCriar,
+  fotoDaPresenca,
   remover,
+  restaurarPresenca,
 } from '@/server/presencas';
 import { createTestDb } from '../helpers/db';
 
@@ -488,5 +490,39 @@ describe('estadoDaSemanaSemCriar', () => {
   it('com a pelada criada, lê a lista real', async () => {
     const p = await obterPeladaDaSemana(db, SEGUNDA);
     expect((await estadoDaSemanaSemCriar(db, SEGUNDA)).peladaId).toBe(p.id);
+  });
+});
+
+describe('desfazer (foto e restauração da presença)', () => {
+  it('quem saiu volta para o mesmo lugar, confirmado e como M; quem subiu da fila volta para a fila', async () => {
+    const { ms, ds } = await cenarioCheio(1);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    await confirmar(db, ms[5], SEGUNDA);
+    await entrarNaFila(db, ds[0], SEGUNDA);
+    const antesDele = await fotoDaPresenca(db, p.id, ms[5]);
+    const antesDoDiarista = await fotoDaPresenca(db, p.id, ds[0]);
+    const ordem = idsDe((await estadoDaSemana(db, SEGUNDA)).principal);
+
+    // O caso do privado: tirou por engano (o diarista sobe) e o "adicionar" de volta põe no fim da fila como D.
+    await remover(db, ms[5], TERCA);
+    await entrarNaFila(db, ms[5], TERCA);
+    expect(idsDe((await estadoDaSemana(db, TERCA)).fila)).toEqual([ms[5]]);
+
+    await restaurarPresenca(db, p.id, ms[5], antesDele, TERCA);
+    await restaurarPresenca(db, p.id, ds[0], antesDoDiarista, TERCA);
+    const depois = await estadoDaSemana(db, TERCA);
+    expect(idsDe(depois.principal)).toEqual(ordem);
+    expect(depois.principal.find((i) => i.jogadorId === ms[5])).toMatchObject({ tipo: 'M', confirmado: true });
+    expect(idsDe(depois.fila)).toEqual([ds[0]]);
+  });
+
+  it('foto vazia (não tinha presença): a presença criada é apagada', async () => {
+    const { ds } = await cenarioCheio(1);
+    const p = await obterPeladaDaSemana(db, SEGUNDA);
+    const antes = await fotoDaPresenca(db, p.id, ds[0]);
+    expect(antes).toBeNull();
+    await entrarNaFila(db, ds[0], SEGUNDA);
+    await restaurarPresenca(db, p.id, ds[0], antes, SEGUNDA);
+    expect(await db.select().from(presencas).where(eq(presencas.jogadorId, ds[0]))).toHaveLength(0);
   });
 });

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
 import { dataDe } from '@/domain/tempo';
-import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
+import { estadoDaSemana, estadoDaSemanaSemCriar, restaurarPresenca } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { criarLinkAnotador } from '@/server/anotador';
@@ -21,11 +21,12 @@ import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
 import { Freio } from './freio';
 import { criarCliente, perguntarEmPartes, type UsoDaIA } from './ia';
+import { ConversasPrivadas } from './conversa-privada';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
-import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, type Proposta } from './sorteio-zap';
+import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -298,6 +299,9 @@ async function laco(): Promise<void> {
     ).catch(() => {});
   };
 
+  // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
+  const memoria = new ConversasPrivadas();
+
   const tratar = async (m: MensagemRecebida) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     try {
@@ -320,18 +324,23 @@ async function laco(): Promise<void> {
         anunciarNoGrupo: enviarNoGrupo,
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
+        memoria,
+        desfazer: async (mudancas, n) => {
+          for (const x of mudancas) await restaurarPresenca(db, x.peladaId, x.jogadorId, x.antes, n);
+        },
+        trocarNosTimes: (p, trocas, n) => trocarNaProposta(db, p, trocas, n),
         consultar: (tipo, n) => consultar(db, tipo, n),
         cadastrar: async (pessoas) => respostaCadastro(await cadastrarJogadores(db, pessoas)),
         notas: () => textoDasNotas(db),
         linkAnotar: async (quem, n) => {
           const r = await criarLinkAnotador(db, quem, n);
-          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 A lista da próxima quarta ainda não abriu; o link de anotar sai quando ela abrir.' };
+          return r.ok ? { url: `${urlSite}/anotar/${r.chave}`, data: r.data } : { erro: '📅 A lista da próxima quarta ainda não abriu; o link de anotar sai quando ela abrir.' };
         },
         mudarNota: (nome, nota) => mudarNota(db, nome, nota),
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
-        perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
-          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
+        perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
+          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });

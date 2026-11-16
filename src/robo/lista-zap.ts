@@ -5,7 +5,7 @@ import { acharJogador, normalizarNome, sugerirNome } from '@/domain/nome';
 import { mensagemParaUsuario } from '@/server/erros';
 import { listarJogadores } from '@/server/jogadores';
 import { ErroLista } from '@/server/pelada';
-import { confirmar, entrarNaFila, estadoDaSemana, remover, type EstadoDaSemana } from '@/server/presencas';
+import { confirmar, entrarNaFila, estadoDaSemana, fotoDaPresenca, remover, type EstadoDaSemana, type FotoDaPresenca } from '@/server/presencas';
 import type { AcaoNaLista } from './comandos';
 import { juntarNomes } from './foto';
 import { paraWhatsApp } from './sorteio-zap';
@@ -15,8 +15,11 @@ export { acharJogador, levenshtein, sugerirNome } from '@/domain/nome';
 
 const MAX_ECO = 30;
 
-/** `mudou`: a lista mudou (a resposta ganha o "pedido por"). */
-export type ResultadoNaLista = { texto: string; mudou: boolean };
+/** Como voltar a mudança: a presença do jogador antes dela (o privado guarda para o "desfazer"). */
+export type MudancaNaLista = { peladaId: number; jogadorId: number; nome: string; antes: FotoDaPresenca };
+
+/** `mudou`: a lista mudou (a resposta ganha o "pedido por"); `mudanca`: como desfazer. */
+export type ResultadoNaLista = { texto: string; mudou: boolean; mudanca?: MudancaNaLista };
 
 // Apelido carinhoso do Jonas no grupo ("calvinho"): brincadeira, não ofensa. Vale pelo jogador achado.
 const ehJonas = (nome: string) => normalizarNome(nome) === 'jonas';
@@ -69,6 +72,9 @@ async function adicionar(db: DB, texto: string, now: Date, rng: () => number): P
   if (!achado) return { texto: naoAchei(texto, sugerirNome(texto, ativos), `🤔 ${eco(texto)} não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.`), mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
+  // A foto antes de mudar (sem pelada criada ainda, não havia presença).
+  const peladaAntes = (await estadoDaSemana(db, now)).peladaId;
+  const antes = peladaAntes === null ? null : await fotoDaPresenca(db, peladaAntes, j.id);
   try {
     await entrarNaFila(db, j.id, now);
   } catch (e) {
@@ -80,13 +86,15 @@ async function adicionar(db: DB, texto: string, now: Date, rng: () => number): P
     }
     return recusa(e);
   }
-  const agora = onde(await estadoDaSemana(db, now), j.id);
+  const estadoDepois = await estadoDaSemana(db, now);
+  const agora = onde(estadoDepois, j.id);
   const jonas = ehJonas(j.nome);
+  const mudanca = estadoDepois.peladaId === null ? undefined : { peladaId: estadoDepois.peladaId, jogadorId: j.id, nome: j.nome, antes };
   if (agora?.lugar === 'fila') {
     const texto = jonas ? sortear(CALVINHO.entrouNaFila, rng).replace('{n}', String(agora.posicao)) : `📝 ${j.nome} entrou na fila (${agora.posicao}º).`;
-    return { texto, mudou: true };
+    return { texto, mudou: true, ...(mudanca ? { mudanca } : {}) };
   }
-  return { texto: jonas ? sortear(CALVINHO.entrouNaLista, rng) : `✅ ${j.nome} entrou na lista!`, mudou: true };
+  return { texto: jonas ? sortear(CALVINHO.entrouNaLista, rng) : `✅ ${j.nome} entrou na lista!`, mudou: true, ...(mudanca ? { mudanca } : {}) };
 }
 
 async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: string, now: Date, rng: () => number): Promise<ResultadoNaLista> {
@@ -105,14 +113,17 @@ async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: 
   const j = achado.jogador;
   const jonas = ehJonas(j.nome);
   const antes = onde(estado, j.jogadorId);
+  // Quem está na lista ou na fila já tem presença (a pelada existe): a foto é para o "desfazer".
+  const foto = estado.peladaId === null ? null : await fotoDaPresenca(db, estado.peladaId, j.jogadorId);
+  const mudanca = estado.peladaId === null ? {} : { mudanca: { peladaId: estado.peladaId, jogadorId: j.jogadorId, nome: j.nome, antes: foto } };
   try {
     if (acao === 'confirmar') {
       if (antes?.lugar === 'lista' && antes.confirmado) return { texto: jonas ? sortear(CALVINHO.jaConfirmado, rng) : `👍 ${j.nome} já estava confirmado.`, mudou: false };
       await confirmar(db, j.jogadorId, now);
-      return { texto: jonas ? sortear(CALVINHO.confirmado, rng) : `✅ ${j.nome} confirmado!`, mudou: true };
+      return { texto: jonas ? sortear(CALVINHO.confirmado, rng) : `✅ ${j.nome} confirmado!`, mudou: true, ...mudanca };
     }
     await remover(db, j.jogadorId, now);
-    return { texto: jonas ? sortear(CALVINHO.saiu, rng) : `👋 ${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true };
+    return { texto: jonas ? sortear(CALVINHO.saiu, rng) : `👋 ${j.nome} saiu da ${antes?.lugar === 'fila' ? 'fila' : 'lista'}.`, mudou: true, ...mudanca };
   } catch (e) {
     return recusa(e);
   }

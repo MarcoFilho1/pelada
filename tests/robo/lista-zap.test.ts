@@ -71,7 +71,7 @@ describe('acharJogador (nome escrito no WhatsApp → jogador)', () => {
 describe('adicionar', () => {
   it('com vaga entra direto na lista', async () => {
     await criar(['Pepe']);
-    expect(await mexerNaLista(db, 'adicionar', 'pepe', TERCA)).toEqual({ texto: '✅ Pepe entrou na lista!', mudou: true });
+    expect(await mexerNaLista(db, 'adicionar', 'pepe', TERCA)).toMatchObject({ texto: '✅ Pepe entrou na lista!', mudou: true });
     const e = await estadoDaSemana(db, TERCA);
     expect(e.principal.map((i) => i.nome)).toEqual(['Pepe']);
   });
@@ -79,8 +79,8 @@ describe('adicionar', () => {
   it('lista cheia: vai para a fila com a posição', async () => {
     await listaCheia();
     await criar(['Caio', 'Davi']);
-    expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA)).toEqual({ texto: '📝 Caio entrou na fila (1º).', mudou: true });
-    expect(await mexerNaLista(db, 'adicionar', 'davi', TERCA)).toEqual({ texto: '📝 Davi entrou na fila (2º).', mudou: true });
+    expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA)).toMatchObject({ texto: '📝 Caio entrou na fila (1º).', mudou: true });
+    expect(await mexerNaLista(db, 'adicionar', 'davi', TERCA)).toMatchObject({ texto: '📝 Davi entrou na fila (2º).', mudou: true });
   });
 
   it('não cadastrado ou desativado: pede para um admin cadastrar', async () => {
@@ -149,7 +149,7 @@ describe('adicionar', () => {
 describe('confirmar', () => {
   it('confirma quem está pendente na lista; a segunda vez avisa', async () => {
     await listaCheia();
-    expect(await mexerNaLista(db, 'confirmar', 'm01', TERCA)).toEqual({ texto: '✅ M01 confirmado!', mudou: true });
+    expect(await mexerNaLista(db, 'confirmar', 'm01', TERCA)).toMatchObject({ texto: '✅ M01 confirmado!', mudou: true });
     expect((await estadoDaSemana(db, TERCA)).principal.find((i) => i.nome === 'M01')?.confirmado).toBe(true);
     expect(await mexerNaLista(db, 'confirmar', 'M01', TERCA)).toEqual({ texto: '👍 M01 já estava confirmado.', mudou: false });
   });
@@ -191,11 +191,21 @@ describe('remover', () => {
     await listaCheia();
     await criar(['Caio']);
     await mexerNaLista(db, 'adicionar', 'Caio', TERCA);
-    expect(await mexerNaLista(db, 'remover', 'Caio', TERCA)).toEqual({ texto: '👋 Caio saiu da fila.', mudou: true });
-    expect(await mexerNaLista(db, 'remover', 'M16', TERCA)).toEqual({ texto: '👋 M16 saiu da lista.', mudou: true });
+    expect(await mexerNaLista(db, 'remover', 'Caio', TERCA)).toMatchObject({ texto: '👋 Caio saiu da fila.', mudou: true });
+    expect(await mexerNaLista(db, 'remover', 'M16', TERCA)).toMatchObject({ texto: '👋 M16 saiu da lista.', mudou: true });
     const e = await estadoDaSemana(db, TERCA);
     expect(e.principal.map((i) => i.nome)).not.toContain('M16');
     expect(e.fila).toEqual([]);
+  });
+
+  it('a mudança traz como desfazer: a presença de antes (nenhuma, para quem entrou agora)', async () => {
+    await listaCheia();
+    await criar(['Caio']);
+    const entrou = await mexerNaLista(db, 'adicionar', 'Caio', TERCA);
+    expect(entrou.mudanca).toMatchObject({ nome: 'Caio', antes: null });
+    const saiu = await mexerNaLista(db, 'remover', 'M16', TERCA);
+    expect(saiu.mudanca).toMatchObject({ nome: 'M16', antes: { tipo: 'M', status: 'pendente' } });
+    expect(saiu.mudanca?.peladaId).toBe(entrou.mudanca?.peladaId);
   });
 
   it('quem não está na lista', async () => {
@@ -219,11 +229,11 @@ describe('brincadeira do calvinho (Jonas)', () => {
     const [m] = await criar(['Jonas']);
     await definirMensalistas(db, '2026-11', [m]);
     const c = await mexerNaLista(db, 'confirmar', 'jon', TERCA, rng0);
-    expect(c).toEqual({ texto: CALVINHO.confirmado[0], mudou: true });
+    expect(c).toMatchObject({ texto: CALVINHO.confirmado[0], mudou: true });
     expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaConfirmado[0]);
     expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rngFim)).texto).toBe(CALVINHO.jaConfirmado[1]);
     const s = await mexerNaLista(db, 'remover', 'jonas', TERCA, rngFim);
-    expect(s).toEqual({ texto: CALVINHO.saiu[2], mudou: true });
+    expect(s).toMatchObject({ texto: CALVINHO.saiu[2], mudou: true });
     expect((await mexerNaLista(db, 'remover', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.foraDaLista[0]);
     expect((await mexerNaLista(db, 'confirmar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.foraDaLista[0]);
   });
@@ -232,18 +242,18 @@ describe('brincadeira do calvinho (Jonas)', () => {
     await listaCheia();
     await criar(['Jonas', 'Caio']);
     const f = await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0);
-    expect(f).toEqual({ texto: '📝 Calvinho na fila (1º)… aguenta firme, calvo 🙏', mudou: true });
+    expect(f).toMatchObject({ texto: '📝 Calvinho na fila (1º)… aguenta firme, calvo 🙏', mudou: true });
     expect((await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaNaFila[0]);
     await mexerNaLista(db, 'remover', 'M01', TERCA);
     await mexerNaLista(db, 'remover', 'jonas', TERCA, rng0);
     const l = await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rngFim);
-    expect(l).toEqual({ texto: CALVINHO.entrouNaLista[2], mudou: true });
+    expect(l).toMatchObject({ texto: CALVINHO.entrouNaLista[2], mudou: true });
     expect((await mexerNaLista(db, 'adicionar', 'jonas', TERCA, rng0)).texto).toBe(CALVINHO.jaNaLista[0]);
   });
 
   it('outros jogadores seguem com o texto normal', async () => {
     await criar(['Caio']);
-    expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA, rng0)).toEqual({ texto: '✅ Caio entrou na lista!', mudou: true });
+    expect(await mexerNaLista(db, 'adicionar', 'Caio', TERCA, rng0)).toMatchObject({ texto: '✅ Caio entrou na lista!', mudou: true });
     expect((await mexerNaLista(db, 'remover', 'Caio', TERCA, rng0)).texto).toBe('👋 Caio saiu da lista.');
   });
 });

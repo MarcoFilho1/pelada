@@ -3,6 +3,7 @@
 import { normalizarNome } from '@/domain/nome';
 import { qtdDeTimes, type QtdDeTimes } from '@/domain/sorteio';
 import { textoWhatsApp } from '@/domain/copiarLista';
+import { diaMes } from '@/domain/tempo';
 import type { EstadoDaSemana } from '@/server/presencas';
 import { decidir, emSilencio, type Envio, type EstadoDoRobo, type TipoMensagem } from './agenda';
 import {
@@ -22,13 +23,14 @@ import {
 } from './comandos';
 import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, pedirNotas, TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO, type PessoaPedida } from './cadastro-zap';
 import { textoDoSite } from './organizador-zap';
+import type { ConversasPrivadas, Desfazer, Fala } from './conversa-privada';
 import { ErroDeFerramenta, semParametros, TextoPronto, type Ferramenta, type Parametros } from './ferramentas';
-import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
+import { fotografar, haMudanca, juntarNomes, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
-import { daQuarta, ehAdmin, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos } from './sorteio-zap';
+import { daQuarta, ehAdmin, MAX_TROCAS, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos, type TrocaNosTimes } from './sorteio-zap';
 
 export type MensagemRecebida = {
   grupoId: string;
@@ -76,12 +78,21 @@ export type ContextoDaResposta = {
   anunciarNoGrupo: (texto: string) => Promise<void>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
-  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null; privado: boolean }) => Promise<string | string[]>;
-  /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
-  mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
+  perguntar: (
+    texto: string,
+    op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null; privado: boolean; historico?: Fala[] },
+  ) => Promise<string | string[]>;
+  /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site; `mudanca`: como desfazer. */
+  mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean; mudanca?: Desfazer }>;
+  /** Memória curta do privado (falas e o que dá para desfazer); sem ela, cada mensagem vale sozinha. */
+  memoria?: ConversasPrivadas;
+  /** Volta as presenças para como estavam (o "desfazer" do privado). */
+  desfazer?: (mudancas: Desfazer[], now: Date) => Promise<void>;
+  /** Troca jogadores de time numa proposta, sem gravar nada. */
+  trocarNosTimes?: (p: Proposta, trocas: TrocaNosTimes[], now: Date) => Promise<{ proposta: Proposta; feitas: string[] } | { erro: string }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
   /** Link temporário de anotar da pelada de hoje (quem confere se é organizador é o `responder`). */
-  linkAnotar: (quem: string, now: Date) => Promise<{ url: string } | { erro: string }>;
+  linkAnotar: (quem: string, now: Date) => Promise<{ url: string; data?: string } | { erro: string }>;
   /** Privado: todos os jogadores ativos com a nota. */
   notas: (now: Date) => Promise<string>;
   /** Privado: muda a nota de um jogador achado pelo nome. */
@@ -192,7 +203,7 @@ function comBrincadeira(cmd: Comando, texto: string, c: ContextoDaResposta): str
     : cmd.tipo === 'sortear' ? c.proposta.atual?.texto === texto
     : cmd.tipo === 'adicionar' || cmd.tipo === 'confirmar' || cmd.tipo === 'remover' ? mudouSemBrincadeira(texto)
     : cmd.tipo === 'cadastrar' ? texto.startsWith('✅ Cadastr')
-    : cmd.tipo === 'anotar' ? texto.startsWith(INICIO_LINK_ANOTAR)
+    : cmd.tipo === 'anotar' ? texto.startsWith('📝 Link para anotar as partidas')
     : true;
   return ok ? `${sortear(variantes)}\n${texto}` : texto;
 }
@@ -399,7 +410,17 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
   if (!c.freio.podePerguntar()) return [TEXTO_LIMITE];
   const marca = { entrouOuConfirmou: false };
   const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
-  const r = await c.perguntar(texto, { agora: () => m.quando, acoes, quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c), jogador: jogadorDoRemetente(m, c), privado: m.privado === true });
+  // No privado, a IA vê as últimas falas: "troca o Caio pelo Jonas" e "desfaz" dependem do que veio antes.
+  const historico = m.privado && m.remetenteTelefone ? c.memoria?.historico(m.remetenteTelefone, m.quando) : undefined;
+  const r = await c.perguntar(texto, {
+    agora: () => m.quando,
+    acoes,
+    quem: quemPediu(m),
+    ehJonas: remetenteEhJonas(m, c),
+    jogador: jogadorDoRemetente(m, c),
+    privado: m.privado === true,
+    ...(historico?.length ? { historico } : {}),
+  });
   c.freio.registrarPergunta();
   const partes = Array.isArray(r) ? r : [r];
   if (!marca.entrouOuConfirmou) return partes;
@@ -423,8 +444,14 @@ async function listaAtual(m: MensagemRecebida, c: ContextoDaResposta): Promise<s
 /** adicionar/confirmar/remover: qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu. */
 async function mudarNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean }> {
   const feito = await c.mexerNaLista(acao, nomeDoPedido(nome, m, c), m.quando);
-  return feito.mudou ? { texto: `${feito.texto} (pedido por ${quemPediu(m)})`, mudou: true } : feito;
+  if (!feito.mudou) return { texto: feito.texto, mudou: false };
+  // No privado, a mudança fica guardada para o "desfazer" (todas as desta mensagem juntas).
+  if (m.privado && feito.mudanca) mudancasDaMensagem.set(m, [...(mudancasDaMensagem.get(m) ?? []), feito.mudanca]);
+  return { texto: `${feito.texto} (pedido por ${quemPediu(m)})`, mudou: true };
 }
+
+/** As mudanças na lista feitas por cada mensagem do privado, até a resposta sair. */
+const mudancasDaMensagem = new WeakMap<MensagemRecebida, Desfazer[]>();
 
 /** Um ou vários nomes (cada um pelo caminho de um só, com teto de tamanho), numa única mensagem; depois de entrar ou confirmar, a lista. */
 async function respostaNaLista(acao: AcaoNaLista, nomes: string[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
@@ -655,11 +682,96 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
         return new TextoPronto(texto, 'sorteio');
       },
     },
+    {
+      nome: 'trocar_nos_times',
+      sorteio: true,
+      descricao:
+        'Troca jogadores de time nos times propostos (sorteados ou importados) que ainda esperam aprovação: cada par muda de time um com o outro. Use quando o organizador pedir "troca o Caio pelo Jonas", "põe o Caio no time do Jonas" ou parecido, logo depois de um sorteio. Não mexe na lista. Só quem propôs pode; depois da troca ele aprova de novo. Devolve o texto para a conversa.',
+      parametros: comTrocas,
+      async executar(args) {
+        const bruto = args && typeof args === 'object' ? (args as { trocas?: unknown }).trocas : undefined;
+        const r = await respostaTrocar(typeof bruto === 'string' ? lerTrocas(bruto) : [], m, c);
+        if ('erro' in r) throw new ErroDeFerramenta(r.erro);
+        const nova = c.proposta.atual;
+        return new TextoPronto(r.texto, 'sorteio', () => {
+          if (c.proposta.atual === nova) c.proposta.atual = r.antes;
+        });
+      },
+    },
+    {
+      nome: 'desfazer_mudanca_na_lista',
+      altera: true,
+      descricao:
+        'Desfaz a última mudança na lista que o robô fez por esta conversa (entrada, confirmação ou saída): cada um volta ao lugar e ao estado de antes, e quem tinha subido da fila volta para a fila. Use quando o organizador pedir para desfazer, voltar ou anular o que foi feito na lista. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        const tel = m.remetenteTelefone;
+        const mudancas = tel ? c.memoria?.tirarDesfazer(tel, m.quando) : null;
+        if (!mudancas?.length || !c.desfazer) throw new ErroDeFerramenta(TEXTO_NADA_PARA_DESFAZER);
+        // Da última para a primeira: se o mesmo jogador mudou duas vezes, vale a foto mais antiga.
+        await c.desfazer([...mudancas].reverse(), m.quando);
+        const nomes = [...new Set(mudancas.map((x) => x.nome))];
+        return new TextoPronto(`↩️ Desfeito: ${juntarNomes(nomes)} ${nomes.length > 1 ? 'voltaram' : 'voltou'} como estava.\n\n${await listaAtual(m, c)}`, 'acao');
+      },
+    },
   ];
 }
 
+const comTrocas: Parametros = {
+  type: 'object',
+  properties: {
+    trocas: {
+      type: 'string',
+      description: 'Cada troca como "Nome por Nome", separadas por ponto e vírgula, ex.: "Caio por Jonas; Pedro por Paulo". Os nomes como a pessoa escreveu.',
+    },
+  },
+  required: ['trocas'],
+  additionalProperties: false,
+};
+
+/** "Caio por Jonas; Pedro x Paulo" → os pares (no máximo `MAX_TROCAS`). */
+export function lerTrocas(texto: string): TrocaNosTimes[] {
+  return texto
+    .split(/[;\n]/)
+    .map((t) => t.trim().split(/\s+(?:por|pelo|pela|com|x|e|↔|<->)\s+/iu))
+    .filter((par) => par.length === 2 && par[0].trim() && par[1].trim())
+    .map(([de, por]) => ({ de: de.trim().slice(0, TAM_MAX_NOME_PEDIDO), por: por.trim().slice(0, TAM_MAX_NOME_PEDIDO) }))
+    .slice(0, MAX_TROCAS);
+}
+
+export const TEXTO_SEM_TIMES_PARA_TROCAR = '🤔 Não tem times esperando aprovação para trocar. Peça um sorteio novo.';
+export const TEXTO_NADA_PARA_DESFAZER =
+  '🤔 Não tenho mudança na lista para desfazer: só dá para desfazer o que eu mudei por esta conversa, nos últimos 30 minutos.';
+
+/** Troca jogadores de time na proposta esperando aprovação. Só quem propôs; a aprovação dele (e as outras) recomeça. */
+async function respostaTrocar(trocas: TrocaNosTimes[], m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; antes: Proposta } | { erro: string }> {
+  const tel = m.remetenteTelefone;
+  if (!tel || !ehAdmin(tel, c.admins) || !c.trocarNosTimes) return { erro: TEXTO_SO_ADMIN };
+  const p = c.proposta.atual;
+  if (!p || propostaVencida(p, m.quando)) return { erro: TEXTO_SEM_TIMES_PARA_TROCAR };
+  if (!ehAdmin(tel, [p.quemPropos])) return { erro: `🔐 Só ${p.quemProposNome}, que propôs os times, troca jogadores. Você pode sortear de novo.` };
+  if (!trocas.length) return { erro: '🤔 Não entendi quem troca com quem. Mande assim: Caio por Jonas.' };
+  const r = await c.trocarNosTimes(p, trocas, m.quando);
+  if ('erro' in r) return r;
+  c.proposta.atual = r.proposta;
+  // Quem propôs já tinha aprovado: os outros receberam os times antigos e precisam saber que mudou.
+  if (p.votos.some((v) => ehAdmin(v, [p.quemPropos]))) {
+    await avisarOutros(c, `🔁 ${p.quemProposNome} trocou jogadores nos times que eu mandei, então aqueles não valem mais. Quando ele aprovar os novos, eu mando para você confirmar.`, [tel]);
+  }
+  const corpo = r.proposta.aviso ? `${r.proposta.texto}\n\n${r.proposta.aviso}` : r.proposta.texto;
+  return { texto: `🔁 Troquei: ${r.feitas.join(', ')}.\n\n${corpo}`, antes: p };
+}
+
 export const TEXTO_SO_ADMIN_ANOTAR = '🔐 Só os organizadores podem gerar o link de anotar.';
-const INICIO_LINK_ANOTAR = '📝 Link para anotar as partidas de hoje:';
+/** "de quarta, 18/11" (sem data, "da pelada"). */
+const inicioLinkAnotar = (data?: string) => `📝 Link para anotar as partidas${data ? ` de quarta, ${diaMes(data)}` : ' da pelada'}:`;
+/** O link vence às 3h do dia seguinte à pelada. */
+function validadeDoLink(data?: string): string {
+  if (!data) return 'Vale até as 3h da manhã depois da pelada';
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return `Vale até as 3h de quinta, ${diaMes(d.toISOString().slice(0, 10))}`;
+}
 
 /** anotar: só organizadores (pelo telefone), no grupo ou no privado; no grupo, todo mundo fica com o link. */
 async function respostaAnotar(m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; ok: boolean }> {
@@ -667,7 +779,7 @@ async function respostaAnotar(m: MensagemRecebida, c: ContextoDaResposta): Promi
   const r = await c.linkAnotar(quemPediu(m), m.quando);
   if ('erro' in r) return { texto: r.erro, ok: false };
   return {
-    texto: `${INICIO_LINK_ANOTAR}\n${r.url}\nAbre direto na tela de partidas, sem senha. Vale até as 3h da manhã; um link novo cancela este. (pedido por ${quemPediu(m)})`,
+    texto: `${inicioLinkAnotar(r.data)}\n${r.url}\nAbre direto na tela de partidas, sem senha. ${validadeDoLink(r.data)}; um link novo cancela este. (pedido por ${quemPediu(m)})`,
     ok: true,
   };
 }
@@ -734,6 +846,9 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
   const cmd = interpretarPrivado(m.texto);
   if (!simDeOrganizador(cmd, m, c) && !c.freio.podeResponder()) return avisarLimite(m, c);
   const r = await responderComando(cmd, m, c);
+  const tel = m.remetenteTelefone;
+  c.memoria?.guardarDesfazer(tel, mudancasDaMensagem.get(m) ?? [], m.quando);
+  if (r) c.memoria?.registrar(tel, m.texto, r.texto, m.quando);
   return r && { ...r, ehListaCompleta: false, gravar: undefined };
 }
 

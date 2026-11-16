@@ -21,7 +21,7 @@ export function vencimentoDoLink(dataPelada: string): Date {
   return d;
 }
 
-export type LinkCriado = { ok: true; chave: string; expiraEm: Date } | { ok: false; motivo: 'sem_pelada_hoje' };
+export type LinkCriado = { ok: true; chave: string; expiraEm: Date; data: string } | { ok: false; motivo: 'sem_pelada_hoje' };
 
 /**
  * Cria o link da pelada da semana (lista ainda não aberta: recusa) e revoga os anteriores dela.
@@ -40,7 +40,7 @@ export async function criarLinkAnotador(db: DB, criadoPor: string, now: Date): P
       .where(and(eq(linksAnotador.peladaId, p.id), isNull(linksAnotador.revogadoEm)));
     await tx.insert(linksAnotador).values({ peladaId: p.id, chaveHash: hashDaChave(chave), criadoPor: criadoPor.slice(0, 60), criadoEm: now, expiraEm });
   });
-  return { ok: true, chave, expiraEm };
+  return { ok: true, chave, expiraEm, data: p.data };
 }
 
 /** A pelada da chave, se ela existe, não venceu e não foi revogada; senão `null`. */

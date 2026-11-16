@@ -2,6 +2,7 @@
 // O laço de ferramentas é feito aqui (sem o tool runner beta) para manter os tetos de custo e de tempo.
 import Anthropic from '@anthropic-ai/sdk';
 import { dataDe } from '@/domain/tempo';
+import type { Fala } from './conversa-privada';
 import { ErroDeFerramenta, TextoPronto, type Ferramenta } from './ferramentas';
 
 export const MODELO_PADRAO = 'claude-haiku-5-5';
@@ -51,6 +52,8 @@ export type OpcoesIA = {
   aoParar?: (motivo: string) => void;
   /** O nome de quem mandou no site, quando difere do WhatsApp (`ROBO_APELIDOS`). */
   jogador?: string | null;
+  /** Privado: as últimas falas da conversa, da mais velha para a mais nova (começa por uma do usuário). */
+  historico?: Fala[];
 };
 
 /** Um cliente por robô; o prazo de cada pergunta é controlado em `perguntar`. */
@@ -66,9 +69,13 @@ export const SISTEMA = [
   'Limites da resenha: zoeira de futebol e de amigo, sem ofender ninguém de verdade, sem palavrão pesado, sem política, religião, aparência (fora o apelido carinhoso do Jonas) ou assunto sério de alguém.',
   'Dados da pelada (lista, confirmados, fila, gols, assistências, ranking, times, notas, datas): só com o que as ferramentas trazem. Nunca invente jogador, número ou data; se não souber, diga que não sabe (pode ser com graça).',
   'Para adicionar, confirmar ou remover alguém da lista, use sempre a ferramenta, com o nome como a pessoa escreveu. Nunca diga que a lista mudou sem a ferramenta ter respondido.',
-  'A lista (ver_lista), as mudanças na lista e o sorteio o robô acrescenta sozinho no fim da sua resposta, palavra por palavra: não reescreva esses textos; uma frase curta basta. Outros textos prontos (fila, times, ranking), repita sem mudar nada.',
-  'No privado com um organizador, você também pode mostrar e mudar notas (ver_notas, mudar_nota) e dar o link do site (link_do_site). No grupo, essas ferramentas não existem.',
-  'Quando a pessoa fala de si mesma ("eu vou", "me tira"), use o nome dela no site, se vier na mensagem; senão, o nome do WhatsApp.',
+  'A lista (ver_lista), as mudanças na lista, os links (de anotar) e o sorteio o robô acrescenta sozinho no fim da sua resposta, palavra por palavra: não reescreva esses textos nem repita o link ou a validade dele; uma frase curta basta. Outros textos prontos (fila, times, ranking), repita sem mudar nada.',
+  'No privado com um organizador, você também pode mostrar e mudar notas (ver_notas, mudar_nota), dar o link do site (link_do_site), trocar jogadores de time num sorteio (trocar_nos_times) e desfazer uma mudança na lista (desfazer_mudanca_na_lista). No grupo, essas ferramentas não existem.',
+  'Se um organizador perguntar o que você faz, no privado: lista e fila, pôr/confirmar/tirar alguém, cadastrar jogador novo com nota, ver e mudar notas, sortear ou importar times, trocar jogadores de time, aprovar os times e mandar no grupo, link de anotar as partidas, link do site, ranking, artilheiros e assistências, e desfazer a última mudança na lista.',
+  'Quando a pessoa fala de si mesma ("eu vou", "me tira"), use o nome dela no site, se vier na mensagem; senão, o nome do WhatsApp. Para chamar a pessoa, use sempre o mesmo nome (o do site, se vier).',
+  'Pedido com mais de uma coisa ("ver a lista e sortear", "tira o X e confirma o Y"): faça todas, na ordem pedida, e não pule nenhuma. Se pedir para ver algo antes, chame primeiro a ferramenta de ver.',
+  'Remover alguém da lista só quando pedirem claramente para tirar ou dizerem que a pessoa não vai. "Troca o X pelo Y" ou "põe o X no time do Y" logo depois de um sorteio é troca de time (trocar_nos_times), nunca mudança na lista. Na dúvida sobre o que a pessoa quer, pergunte antes de mexer na lista.',
+  'No privado, as falas anteriores da conversa vêm antes da mensagem atual: use para entender "isso", "desfaz", "troca" e "de volta". "Desfaz"/"volta como estava" sobre a lista usa desfazer_mudanca_na_lista.',
   'Para cadastrar jogadores novos (com nota), use cadastrar_jogadores, só quando pedirem para cadastrar ou adicionar pessoas novas, ou mandarem as notas. Se faltar a nota de alguém, pergunte a nota em vez de cadastrar. Nunca cadastre alguém só porque adicionar_jogador disse que não está cadastrado.',
   'Se uma ferramenta der erro, explique em uma frase o que o erro diz. No máximo 3 mudanças na lista e 1 sorteio por mensagem.',
   'Se uma ferramenta trouxer ehHoje false, os dados são da pelada da data mostrada, não de hoje.',
@@ -147,7 +154,10 @@ function montar(prosa: string, a: Anuncios): string[] {
     return juntar([curta, ...integrais, a.proposta]);
   }
   const faltam = integrais.filter((t) => !prosa.includes(t));
-  if (prosa.length <= MAX_RESPOSTA) return juntar([...emMensagens(prosa), ...faltam]);
+  // Link que já vai no texto pronto: o parágrafo da fala que repete esse link sai (senão o link chega duas vezes).
+  const links = new Set(faltam.flatMap((t) => t.match(/https?:\/\/\S+/g) ?? []));
+  const semRepetir = (ps: string[]) => (links.size ? ps.filter((p) => ![...links].some((l) => p.includes(l))) : ps);
+  if (prosa.length <= MAX_RESPOSTA) return juntar([...semRepetir(emMensagens(prosa)), ...faltam]);
   // Longa demais: os textos prontos saem do meio da fala e vão inteiros no fim; só a fala é cortada.
   const resto = tirar(prosa, integrais);
   return juntar([...emMensagens(resto && cortar(resto)), ...integrais]);
@@ -159,7 +169,9 @@ const restoDaFalha = (a: Anuncios) => juntar([...unicos(a.acoes), a.proposta]);
 async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sinal: AbortSignal, anuncios: Anuncios, uso: UsoDaIA): Promise<string[]> {
   const tools = paraTools(op.ferramentas);
   const agora = (op.agora ?? (() => new Date()))();
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: mensagemDoUsuario(pergunta, op, agora) }];
+  // As falas anteriores do privado entram antes da mensagem atual, só como texto (sem ferramentas).
+  const anteriores: Anthropic.MessageParam[] = (op.historico ?? []).map((f) => ({ role: f.papel, content: f.texto }));
+  const messages: Anthropic.MessageParam[] = [...anteriores, { role: 'user', content: mensagemDoUsuario(pergunta, op, agora) }];
   let mudancas = 0;
   let sorteios = 0;
   for (let volta = 0; volta <= MAX_VOLTAS; volta++) {

@@ -463,3 +463,31 @@ describe('ferramentas estritas (limite da Anthropic: 20)', () => {
     expect(tools.filter((t) => t.strict).length).toBeLessThanOrEqual(20);
   });
 });
+
+describe('privado: histórico da conversa e link repetido', () => {
+  it('as falas anteriores vão antes da mensagem atual, como texto', async () => {
+    const { cliente, pedidos } = falso(texto('Trocado!'));
+    await perguntarEmPartes('troca o caio pelo jonas', {
+      ...base(cliente),
+      privado: true,
+      historico: [
+        { papel: 'user', texto: 'sortear' },
+        { papel: 'assistant', texto: '🎲 Times sorteados…' },
+      ],
+    });
+    const ms = pedidos[0].messages;
+    expect(ms.slice(0, 2)).toEqual([
+      { role: 'user', content: 'sortear' },
+      { role: 'assistant', content: '🎲 Times sorteados…' },
+    ]);
+    expect(ms[2].role).toBe('user');
+    expect(String(ms[2].content)).toContain('Mensagem: troca o caio pelo jonas');
+  });
+
+  it('a fala que repete o link do texto pronto sai; o resto da fala fica', async () => {
+    const PRONTO = '📝 Link para anotar as partidas de quarta, 18/11:\nhttps://site/anotar/ABC\nAbre direto na tela de partidas, sem senha.';
+    const anotar = ferramenta('link_de_anotar', async () => new TextoPronto(PRONTO, 'acao'));
+    const { cliente } = falso(chamada('link_de_anotar', {}), texto('Toma o link!\n\nhttps://site/anotar/ABC'));
+    expect(await perguntarEmPartes('quero o link', { ...base(cliente, [anotar]), privado: true })).toEqual(['Toma o link!', PRONTO]);
+  });
+});

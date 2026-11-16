@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { acharJogador } from '@/domain/nome';
 import type { DB } from '@/db/client';
 import { peladas } from '@/db/schema';
 import { previaDosTimes, TAM_MAX_TEXTO_COLADO, type Previa } from '@/domain/importarTimes';
@@ -231,6 +232,55 @@ export async function salvarProposta(db: DB, now: Date, proposta: Proposta): Pro
     return { erro: paraWhatsApp(mensagemParaUsuario(e)) };
   }
   return { ok: true };
+}
+
+/** Um pedido de troca: os dois jogadores mudam de time um com o outro. */
+export type TrocaNosTimes = { de: string; por: string };
+export const MAX_TROCAS = 4;
+
+/**
+ * Troca jogadores de time numa proposta (sorteada ou importada), um par de cada vez e na ordem. Devolve uma proposta
+ * nova, com as somas refeitas, os votos zerados (quem propôs aprova de novo) e a validade renovada. Só os jogadores
+ * que já estão nos times entram na troca: pôr alguém de fora muda a lista, e aí o certo é sortear de novo.
+ */
+export async function trocarNaProposta(
+  db: DB,
+  p: Proposta,
+  trocas: TrocaNosTimes[],
+  now: Date,
+): Promise<{ proposta: Proposta; feitas: string[] } | { erro: string }> {
+  const todos = (await listarJogadores(db, { incluirInativos: true })).map((j) => ({ id: j.id, nome: j.nome, nota: j.nota }));
+  const porId = new Map(todos.map((j) => [j.id, j]));
+  const elencos = p.elencos.map((e) => [...e]);
+  const nosTimes = elencos.flat().flatMap((id) => (porId.has(id) ? [porId.get(id)!] : []));
+  const achar = (texto: string): { id: number; nome: string } | { erro: string } => {
+    const r = acharJogador(texto, nosTimes);
+    if (r && 'jogador' in r) return r.jogador;
+    if (r) return { erro: `🤔 Tem mais de um jogador com esse nome nos times: ${r.varios.map((j) => j.nome).join(', ')}. Mande o nome inteiro.` };
+    const fora = acharJogador(texto, todos);
+    if (fora && 'jogador' in fora) return { erro: `🤔 ${fora.jogador.nome} não está nos times. Para pôr alguém de fora, mude a lista e sorteie de novo.` };
+    return { erro: `🤔 ${texto.trim().slice(0, 30)} não está nos times.` };
+  };
+  const feitas: string[] = [];
+  for (const t of trocas.slice(0, MAX_TROCAS)) {
+    const a = achar(t.de);
+    if ('erro' in a) return a;
+    const b = achar(t.por);
+    if ('erro' in b) return b;
+    const ta = elencos.findIndex((e) => e.includes(a.id));
+    const tb = elencos.findIndex((e) => e.includes(b.id));
+    if (ta === tb) return { erro: `🤔 ${a.nome} e ${b.nome} já estão no mesmo time.` };
+    elencos[ta][elencos[ta].indexOf(a.id)] = b.id;
+    elencos[tb][elencos[tb].indexOf(b.id)] = a.id;
+    feitas.push(`${a.nome} ↔ ${b.nome}`);
+  }
+  const times: TimeSorteado[] = elencos.map((ids, i) => {
+    const jogadores = ids.map((id) => porId.get(id)!);
+    return { jogadores, completes: p.completes[i], soma: [...jogadores.map((j) => j.nota), ...p.completes[i]].reduce((x, y) => x + y, 0) };
+  });
+  const aviso = avisoDeDuplas(times, await paresSeparados(db));
+  const nova = montarProposta(p.origem, { telefone: p.quemPropos, nome: p.quemProposNome }, now, { peladaId: p.peladaId, data: p.data, times, ...(aviso ? { aviso } : {}) });
+  return { proposta: nova, feitas };
 }
 
 /** A proposta como vai no `estado.json` (a data em texto). */
