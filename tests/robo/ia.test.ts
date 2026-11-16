@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { perguntar, type ClienteIA, type OpcoesIA } from '@/robo/ia';
+import { ERRO_IA, perguntar, perguntarEmPartes, SISTEMA, TEXTO_IA_FORA, type ClienteIA, type OpcoesIA } from '@/robo/ia';
 import { ErroDeFerramenta, TextoPronto, type Ferramenta } from '@/robo/ferramentas';
 
 const ERRO = '😕 Não consegui responder agora.';
@@ -154,7 +154,6 @@ describe('perguntar (Claude)', () => {
 
   it.each([
     ['RateLimitError', () => new Anthropic.RateLimitError(429, { type: 'error' }, 'muitas', new Headers())],
-    ['AuthenticationError', () => new Anthropic.AuthenticationError(401, { type: 'error' }, 'chave sk-ant-segredo inválida', new Headers())],
     ['InternalServerError', () => new Anthropic.InternalServerError(500, { type: 'error' }, 'boom', new Headers())],
     ['APIConnectionError', () => new Anthropic.APIConnectionError({ message: 'rede' })],
   ])('erro do SDK (%s): texto genérico e a chave nunca no log', async (_n, erro) => {
@@ -163,6 +162,31 @@ describe('perguntar (Claude)', () => {
     expect(await perguntar('x', base(cliente))).toBe(ERRO);
     expect(JSON.stringify(log.mock.calls)).not.toContain('sk-ant-segredo');
     log.mockRestore();
+  });
+
+  it.each([
+    ['chave recusada', () => new Anthropic.AuthenticationError(401, { type: 'error' }, 'chave sk-ant-segredo inválida', new Headers()), 'chave da Anthropic recusada (401)'],
+    ['sem crédito', () => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } }, undefined, new Headers()), 'sem crédito na Anthropic'],
+    ['limite de gasto', () => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'You have reached your specified API usage limits.' } }, undefined, new Headers()), 'limite de gasto da Anthropic'],
+  ])('IA parada (%s): avisa que a conversa está de folga, chama aoParar sem a chave', async (_n, erro, motivoEsperado) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const aoParar = vi.fn();
+    const { cliente } = falso(() => Promise.reject(erro()));
+    expect(await perguntar('x', { ...base(cliente), aoParar })).toBe(TEXTO_IA_FORA);
+    expect(aoParar).toHaveBeenCalledWith(motivoEsperado);
+    expect(JSON.stringify([log.mock.calls, aoParar.mock.calls])).not.toContain('sk-ant-segredo');
+    log.mockRestore();
+  });
+
+  it('aoUsar recebe os tokens de todas as voltas somados', async () => {
+    const comUso = (m: Anthropic.Message, u: Partial<Anthropic.Usage>) => ({ ...m, usage: { ...m.usage, ...u } }) as Anthropic.Message;
+    const aoUsar = vi.fn();
+    const { cliente } = falso(
+      comUso(chamada('lista_da_semana', {}), { input_tokens: 100, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0, output_tokens: 40 }),
+      comUso(texto('ok'), { input_tokens: 150, cache_read_input_tokens: 2000, cache_creation_input_tokens: 10, output_tokens: 20 }),
+    );
+    await perguntar('x', { ...base(cliente), aoUsar });
+    expect(aoUsar).toHaveBeenCalledWith({ entrada: 250, cacheLido: 4000, cacheGravado: 10, saida: 60 });
   });
 
   it('resposta sem texto: texto genérico', async () => {
@@ -376,5 +400,42 @@ describe('perguntar (Claude)', () => {
       expect(descartar).toHaveBeenCalledTimes(1);
       log.mockRestore();
     });
+  });
+});
+
+describe('resenha e mensagens em partes', () => {
+  it('o jeito do robô: entra na resenha em assunto de fora, mas não inventa dado da pelada', () => {
+    expect(SISTEMA).toMatch(/resenha/);
+    expect(SISTEMA).toMatch(/CR7, Messi ou Jonas/);
+    expect(SISTEMA).toMatch(/Nunca invente jogador, número ou data/);
+    expect(SISTEMA).toMatch(/nunca use a palavra "careca"/i);
+  });
+
+  it('a fala sai em uma mensagem por parágrafo; os textos prontos vêm inteiros depois', async () => {
+    const executar = vi.fn(async () => new TextoPronto('✅ Ana confirmado! (pedido por Zeca)', 'acao'));
+    const { cliente } = falso(chamada('confirmar_jogador', { nome: 'Ana' }), texto('Fechou!\n\nAna tá dentro 💪'));
+    const partes = await perguntarEmPartes('confirma a Ana', base(cliente, [ferramenta('confirmar_jogador', executar, { altera: true })]));
+    expect(partes).toEqual(['Fechou!', 'Ana tá dentro 💪', '✅ Ana confirmado! (pedido por Zeca)']);
+    // `perguntar` junta as mesmas partes num texto só (o grupo recebe uma mensagem).
+    const { cliente: c2 } = falso(chamada('confirmar_jogador', { nome: 'Ana' }), texto('Fechou!\n\nAna tá dentro 💪'));
+    expect(await perguntar('confirma a Ana', base(c2, [ferramenta('confirmar_jogador', executar, { altera: true })]))).toBe('Fechou!\n\nAna tá dentro 💪\n\n✅ Ana confirmado! (pedido por Zeca)');
+  });
+
+  it('no máximo 5 mensagens de fala: o resto vai junto na última', async () => {
+    const { cliente } = falso(texto('1\n\n2\n\n3\n\n4\n\n5\n\n6\n\n7'));
+    expect(await perguntarEmPartes('x', base(cliente))).toEqual(['1', '2', '3', '4', '5\n\n6\n\n7']);
+  });
+
+  it('falha: o erro numa mensagem só', async () => {
+    const { cliente } = falso(async () => {
+      throw new Error('caiu');
+    });
+    expect(await perguntarEmPartes('x', base(cliente))).toEqual([ERRO_IA]);
+  });
+
+  it('no privado, a mensagem do usuário pede mensagens curtas, separadas por linha em branco', async () => {
+    const { cliente, pedidos } = falso(texto('a'));
+    await perguntarEmPartes('x', { ...base(cliente), privado: true });
+    expect(JSON.stringify(pedidos[0].messages[0])).toContain('mensagens curtas, uma ideia por mensagem');
   });
 });

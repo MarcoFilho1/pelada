@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
+import { dataDe } from '@/domain/tempo';
 import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
@@ -19,7 +20,7 @@ import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
 import { Freio } from './freio';
-import { criarCliente, perguntar } from './ia';
+import { criarCliente, perguntarEmPartes, type UsoDaIA } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
@@ -241,9 +242,14 @@ async function laco(): Promise<void> {
     await wa.enviar(grupoId, texto);
   };
 
-  /** Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). */
+  /**
+   * Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). Antes de cada
+   * mensagem, "digitando…" por um tempo que cresce com o tamanho (como gente), entre 0,6 e 2,5 s.
+   */
   const enviarNoPrivado = (conversa: string) => async (texto: string) => {
     const wa = await conexao!;
+    await wa.digitando(conversa);
+    await new Promise((ok) => setTimeout(ok, Math.min(2500, 600 + texto.length * 15)));
     await wa.enviar(conversa, texto);
   };
 
@@ -271,6 +277,23 @@ async function laco(): Promise<void> {
         log(`aviso a um organizador não saiu: ${(err as Error).message}`);
       }
     }
+  };
+
+  /** Uma linha por pergunta à IA com os tokens gastos (para saber o consumo de verdade). */
+  const registrarUso = (u: UsoDaIA) =>
+    log(`IA: ${u.entrada + u.cacheLido + u.cacheGravado} tokens de entrada (${u.cacheLido} lidos do cache), ${u.saida} de saída`);
+  // A IA parou de vez (sem crédito, chave recusada): o dono (1º número de ROBO_ADMINS) recebe um aviso por dia.
+  let diaDoAvisoDaIa = '';
+  const avisarIaParada = (motivo: string) => {
+    log(`ATENÇÃO: a IA parou (${motivo}); os comandos seguem funcionando.`);
+    const hoje = dataDe(new Date());
+    if (diaDoAvisoDaIa === hoje || !admins[0]) return;
+    diaDoAvisoDaIa = hoje;
+    // `exceto` = os outros organizadores: o aviso vai só para o dono, que é quem cuida da chave.
+    void avisarOrganizadores(
+      `⚠️ A IA do robô parou: ${motivo}. Os comandos continuam funcionando; as perguntas livres respondem que a conversa está de folga. Confira o crédito e o limite de gasto da chave da Anthropic.`,
+      admins.slice(1),
+    ).catch(() => {});
   };
 
   const tratar = async (m: MensagemRecebida) => {
@@ -305,7 +328,7 @@ async function laco(): Promise<void> {
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
-          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
+          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });
