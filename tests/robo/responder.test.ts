@@ -1131,3 +1131,39 @@ describe('anotar (link temporário)', () => {
     await expect(deOutro.executar({})).rejects.toThrow(TEXTO_SO_ADMIN_ANOTAR);
   });
 });
+
+describe('privado: conversa em mensagens curtas e tudo por linguagem natural', () => {
+  const noPrivado = (texto: string, tel = ADMIN, nome = 'Marco') =>
+    msg(texto, { privado: true, grupoId: `${tel}@s.whatsapp.net`, remetenteTelefone: tel, remetenteNome: nome, mencionaORobo: false });
+
+  it('a resposta da IA em partes sai em várias mensagens, uma por vez; no grupo, numa só', async () => {
+    const c = ctx({ perguntar: vi.fn(async () => ['Opa, Marco!', 'Tá tudo certo pra quarta 💪']) });
+    const r = await responder(noPrivado('e aí, como tá a pelada?'), c);
+    expect(c.enviar).toHaveBeenNthCalledWith(1, 'Opa, Marco!');
+    expect(c.enviar).toHaveBeenNthCalledWith(2, 'Tá tudo certo pra quarta 💪');
+    expect(r?.texto).toBe('Opa, Marco!\n\nTá tudo certo pra quarta 💪');
+    const g = ctx({ perguntar: vi.fn(async () => ['Opa!', 'Tudo certo.']) });
+    await responder(msg('e aí?'), g);
+    expect(g.enviar).toHaveBeenCalledTimes(1);
+    expect(g.enviar).toHaveBeenCalledWith('Opa!\n\nTudo certo.');
+  });
+
+  it('confirmar_times: o voto é de quem está falando (como o "sim")', async () => {
+    const c = ctx();
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), quemPropos: OUTRO_ADMIN, votos: [OUTRO_ADMIN] });
+    const f = ferramentasDoOrganizador(noPrivado('pode confirmar'), c).find((x) => x.nome === 'confirmar_times')!;
+    expect(((await f.executar({})) as TextoPronto).texto).toBe(TEXTO_SALVOS);
+    expect(c.salvar).toHaveBeenCalledWith(expect.any(Date), expect.objectContaining({ votos: [OUTRO_ADMIN, ADMIN] }));
+  });
+
+  it('importar_times: lê os times da própria mensagem (sem a linha do pedido) e vira proposta', async () => {
+    const c = ctx();
+    const f = ferramentasDoOrganizador(noPrivado('importa esses times aí\nTime 1\nAna\n\nTime 2\nBia'), c).find((x) => x.nome === 'importar_times')!;
+    expect(f.sorteio).toBe(true);
+    expect(((await f.executar({})) as TextoPronto).texto).toBe(textoProposta('Marco', 'importado'));
+    expect(c.importar).toHaveBeenCalledWith(expect.any(Date), 'Time 1\nAna\n\nTime 2\nBia');
+    const ruim = ctx({ importar: vi.fn(async () => ({ erro: '🤔 Não deu para importar.' })) });
+    const g = ferramentasDoOrganizador(noPrivado('Time 1\nAnaa'), ruim).find((x) => x.nome === 'importar_times')!;
+    await expect(g.executar({})).rejects.toThrow('Não deu para importar');
+  });
+});

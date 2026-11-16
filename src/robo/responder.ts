@@ -72,7 +72,8 @@ export type ContextoDaResposta = {
   /** Manda no grupo configurado (o anúncio dos times confirmados no privado). */
   anunciarNoGrupo: (texto: string) => Promise<void>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
-  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null; privado: boolean }) => Promise<string>;
+  /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
+  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null; privado: boolean }) => Promise<string | string[]>;
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
@@ -332,17 +333,18 @@ async function respostaTimes(m: MensagemRecebida, c: ContextoDaResposta): Promis
 }
 
 /** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
-async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
-  if (!c.ia) return TEXTO_AJUDA;
-  if (!c.freio.podePerguntar()) return TEXTO_LIMITE;
+async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string[]> {
+  if (!c.ia) return [TEXTO_AJUDA];
+  if (!c.freio.podePerguntar()) return [TEXTO_LIMITE];
   const marca = { entrouOuConfirmou: false };
   const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
   const r = await c.perguntar(texto, { agora: () => m.quando, acoes, quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c), jogador: jogadorDoRemetente(m, c), privado: m.privado === true });
   c.freio.registrarPergunta();
-  if (!marca.entrouOuConfirmou) return r;
+  const partes = Array.isArray(r) ? r : [r];
+  if (!marca.entrouOuConfirmou) return partes;
   // Entrou ou confirmou alguém: a lista atual vai junto, se a resposta ainda não a trouxe.
   const lista = await listaAtual(m, c);
-  return r.includes(lista) ? r : `${r}\n\n${lista}`;
+  return partes.some((p) => p.includes(lista)) ? partes : [...partes, lista];
 }
 
 /** Quem pediu, para o "pedido por" (nunca o telefone). */
@@ -561,6 +563,29 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
       },
     },
     { nome: 'link_do_site', descricao: 'O endereço do site da pelada e da área dos organizadores.', parametros: semParametros, executar: async () => textoDoSite(c.urlSite) },
+    {
+      nome: 'confirmar_times',
+      descricao: 'O voto deste organizador nos times propostos (como responder "sim"). Use só quando ele disser que confirma ou aprova os times. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        return new TextoPronto(await respostaSim(m, c, remetenteEhJonas(m, c)), 'acao');
+      },
+    },
+    {
+      nome: 'importar_times',
+      sorteio: true,
+      descricao: 'Importa os times feitos fora que o organizador colou nesta mensagem (o robô lê a mensagem inteira, linha a linha). Vira uma proposta que vale com 2 dos 3 organizadores. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        // A mensagem inteira, sem a primeira linha se ela só pede para importar (o resto são os times).
+        const linhas = m.texto.split('\n');
+        const corpo = linhas.length > 1 && /importa|times?\b|esses|estes/iu.test(linhas[0]) && !/\d/.test(linhas[0]) ? linhas.slice(1).join('\n') : m.texto;
+        const antes = c.proposta.atual;
+        const texto = await respostaImportar(corpo, m, c);
+        if (c.proposta.atual === antes) throw new ErroDeFerramenta(texto);
+        return new TextoPronto(texto, 'sorteio');
+      },
+    },
   ];
 }
 
@@ -646,6 +671,7 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
 /** O comando já liberado: monta o texto, envia, registra no freio. */
 async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   let r: Omit<Resposta, 'ehListaCompleta'>;
+  let emPartes: string[] | null = null;
   switch (cmd.tipo) {
     case 'lista':
       r = await respostaLista(m, c);
@@ -699,9 +725,13 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
     case 'times':
       r = { texto: await respostaTimes(m, c) };
       break;
-    case 'pergunta':
-      r = { texto: await respostaPergunta(cmd.texto, m, c) };
+    case 'pergunta': {
+      const partes = await respostaPergunta(cmd.texto, m, c);
+      r = { texto: partes.join('\n\n') };
+      // No privado, a resposta sai em mensagens curtas, uma depois da outra (como gente no WhatsApp).
+      if (m.privado && partes.length > 1) emPartes = partes;
       break;
+    }
     case 'recusa':
       r = { texto: cmd.texto };
       break;
@@ -711,7 +741,8 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
   try {
-    await c.enviar(r.texto);
+    if (emPartes) for (const parte of emPartes) await c.enviar(parte);
+    else await c.enviar(r.texto);
   } catch (err) {
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
     return null;

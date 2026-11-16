@@ -19,7 +19,7 @@ import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
 import { Freio } from './freio';
-import { criarCliente, perguntar } from './ia';
+import { criarCliente, perguntarEmPartes } from './ia';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
@@ -241,9 +241,14 @@ async function laco(): Promise<void> {
     await wa.enviar(grupoId, texto);
   };
 
-  /** Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). */
+  /**
+   * Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). Antes de cada
+   * mensagem, "digitando…" por um tempo que cresce com o tamanho (como gente), entre 0,6 e 2,5 s.
+   */
   const enviarNoPrivado = (conversa: string) => async (texto: string) => {
     const wa = await conexao!;
+    await wa.digitando(conversa);
+    await new Promise((ok) => setTimeout(ok, Math.min(2500, 600 + texto.length * 15)));
     await wa.enviar(conversa, texto);
   };
 
@@ -305,7 +310,7 @@ async function laco(): Promise<void> {
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
-          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
+          perguntarEmPartes(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });

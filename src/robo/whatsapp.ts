@@ -12,6 +12,8 @@ export interface WhatsApp {
   enviar(grupoId: string, texto: string): Promise<void>;
   /** A conversa privada de um telefone (com 55), perguntando ao WhatsApp; `null` se o número não tem WhatsApp. */
   conversaDoTelefone(telefone: string): Promise<string | null>;
+  /** Mostra "digitando…" na conversa (melhor esforço: falha não importa). */
+  digitando(conversa: string): Promise<void>;
   fechar(): Promise<void>;
 }
 
@@ -312,6 +314,10 @@ export async function conectar(op: OpcoesConexao): Promise<WhatsApp> {
       await esperarAberto(ESPERA_ENVIO_MS);
       const [r] = (await sock!.onWhatsApp(`${telefone.replace(/\D/g, '')}@s.whatsapp.net`)) ?? [];
       return r?.exists ? r.jid : null;
+    },
+    async digitando(conversa) {
+      if (!aberto) return;
+      await sock!.sendPresenceUpdate('composing', conversa).catch(() => {});
     },
     async fechar() {
       fechando = true;
