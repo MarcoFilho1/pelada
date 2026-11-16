@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  duplasJuntas,
   diferenca,
   diferencaMedia,
   qtdDeTimes,
@@ -221,5 +222,43 @@ describe('sortearDaNoite (a regra do site e do robô)', () => {
     const times = sortearDaNoite(notas(2), 3, criarRng(1))
     expect(times).toHaveLength(2)
     for (const t of times) expect(t.jogadores.length).toBeGreaterThan(0)
+  })
+})
+
+describe('duplas separadas no sorteio da noite', () => {
+  const jogadores = Array.from({ length: 16 }, (_, i) => ({ id: i + 1, nome: `J${i + 1}`, nota: 2 + (i % 5) * 0.5 }))
+  const doMesmoTime = (times: { jogadores: { id: number }[] }[], a: number, b: number) =>
+    times.some((t) => t.jogadores.some((j) => j.id === a) && t.jogadores.some((j) => j.id === b))
+
+  it('a dupla nunca cai no mesmo time (3 e 4 times, com e sem COMPLETE, várias sementes)', () => {
+    for (let semente = 1; semente <= 40; semente++) {
+      for (const [qtd, n] of [[4, 16], [3, 13], [4, 14]] as const) {
+        const times = sortearDaNoite(jogadores.slice(0, n), qtd, criarRng(semente), [[1, 2], [3, 4]])
+        expect(doMesmoTime(times, 1, 2)).toBe(false)
+        expect(doMesmoTime(times, 3, 4)).toBe(false)
+        expect(times.flatMap((t) => t.jogadores)).toHaveLength(n)
+      }
+    }
+  })
+
+  it('dupla de quem não está jogando hoje não atrapalha', () => {
+    const times = sortearDaNoite(jogadores, 4, criarRng(3), [[1, 99]])
+    expect(times.flatMap((t) => t.jogadores)).toHaveLength(16)
+  })
+
+  it('impossível separar (2 times e 3 pessoas que se excluem): sorteia sem a regra e duplasJuntas mostra quem ficou junto', () => {
+    const tres = jogadores.slice(0, 4)
+    const separar = [[1, 2], [2, 3], [1, 3]] as const
+    const times = sortearDaNoite(tres, 3 as never, criarRng(5), separar)
+    expect(times.flatMap((t) => t.jogadores)).toHaveLength(4)
+    const doisTimes = sortearComCompletes(tres, { times: 2, porTime: 2, rng: criarRng(5), separar })
+    expect(doisTimes).toEqual([])
+    const semRegra = sortearComCompletes(tres, { times: 2, porTime: 2, rng: criarRng(5) })
+    expect(duplasJuntas(semRegra, separar).length).toBeGreaterThan(0)
+  })
+
+  it('duplasJuntas: só as duplas que estão no mesmo time', () => {
+    const times = [{ jogadores: [{ id: 1 }, { id: 2 }] }, { jogadores: [{ id: 3 }, { id: 4 }] }]
+    expect(duplasJuntas(times, [[1, 2], [1, 3], [4, 3]])).toEqual([[1, 2], [4, 3]])
   })
 })

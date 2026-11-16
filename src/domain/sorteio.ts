@@ -12,7 +12,9 @@ export const NOTAS_COMPLETE = [2.5, 3, 3.5] as const
 /** `completes` são as notas das vagas COMPLETE; `soma` inclui jogadores e completes. */
 export type TimeSorteado = { jogadores: JogadorNota[]; completes: number[]; soma: number }
 
-type Opcoes = { times?: number; tentativas?: number; rng?: () => number }
+/** Pares de ids que não podem cair no mesmo time ("duplas separadas"). */
+export type Separar = readonly (readonly [number, number])[]
+type Opcoes = { times?: number; tentativas?: number; rng?: () => number; separar?: Separar }
 type OpcoesComplete = Opcoes & { porTime?: number }
 
 const EPS = 1e-9
@@ -23,6 +25,17 @@ const somar = (js: JogadorNota[]) => js.reduce((s, j) => s + j.nota, 0)
 function montar(js: JogadorNota[]): TimeSorteado {
   const jogadores = [...js].sort((a, b) => b.nota - a.nota || a.nome.localeCompare(b.nome))
   return { jogadores, completes: [], soma: somar(jogadores) }
+}
+
+/** Algum par de `separar` está todo neste grupo? */
+const juntaDupla = (grupo: JogadorNota[], separar: Separar) =>
+  separar.some(([a, b]) => grupo.some((j) => j.id === a) && grupo.some((j) => j.id === b))
+
+/** As duplas de `separar` que ficaram no mesmo time (para avisar o organizador). */
+export function duplasJuntas(times: { jogadores: { id: number }[] }[], separar: Separar): [number, number][] {
+  return separar
+    .filter(([a, b]) => times.some((t) => t.jogadores.some((j) => j.id === a) && t.jogadores.some((j) => j.id === b)))
+    .map(([a, b]) => [a, b])
 }
 
 const tamanho = (t: TimeSorteado) => t.jogadores.length + t.completes.length
@@ -72,7 +85,7 @@ function sortearInterno(
   opts: Opcoes,
   exigirReal: boolean,
 ): { times: TimeSorteado[]; custo: number } | null {
-  const { times: pedidos = 4, tentativas = 3000, rng = Math.random } = opts
+  const { times: pedidos = 4, tentativas = 3000, rng = Math.random, separar = [] } = opts
   const nTimes = Math.max(1, Math.floor(pedidos))
   const n = jogadores.length
   const base = Math.floor(n / nTimes)
@@ -99,6 +112,7 @@ function sortearInterno(
       pos += t
     }
     if (exigirReal && grupos.some((g) => !g.some((x) => x.id > 0))) continue
+    if (separar.length && grupos.some((g) => juntaDupla(g, separar))) continue
     const medias = grupos.filter((g) => g.length).map((g) => somar(g) / g.length)
     const custo = Math.max(...medias) - Math.min(...medias)
     if (custo > melhor + tolerancia + EPS) continue
@@ -132,20 +146,22 @@ function combinacoesDeNotas(k: number, de = 0): number[][] {
  * no empate, a mais perto de 3,0; depois o rng. Todo time tem ao menos um jogador de verdade.
  */
 export function sortearComCompletes(jogadores: JogadorNota[], opts: OpcoesComplete = {}): TimeSorteado[] {
-  const { times: pedidos = 4, porTime = 4, tentativas = 3000, rng = Math.random } = opts
+  const { times: pedidos = 4, porTime = 4, tentativas = 3000, rng = Math.random, separar = [] } = opts
   const n = jogadores.length
   const nTimes = Math.min(Math.max(1, Math.floor(pedidos)), n)
   const k = Math.max(0, nTimes * porTime - n)
-  if (n === 0 || k === 0) return sortearTimes(jogadores, { times: nTimes || pedidos, tentativas, rng })
+  if (n === 0 || k === 0) return sortearTimes(jogadores, { times: nTimes || pedidos, tentativas, rng, separar })
 
   const porCombinacao = Math.max(200, Math.floor(tentativas / combinacoesDeNotas(k).length))
   const melhores: { custo: number; desvio: number; notas: number[]; times: TimeSorteado[] }[] = []
   for (const notas of combinacoesDeNotas(k)) {
     const ficticios = notas.map((nota, i) => ({ id: -(i + 1), nome: `COMPLETE ${i + 1}`, nota }))
-    const r = sortearInterno([...jogadores, ...ficticios], { times: nTimes, tentativas: porCombinacao, rng }, true)
+    const r = sortearInterno([...jogadores, ...ficticios], { times: nTimes, tentativas: porCombinacao, rng, separar }, true)
     if (!r) continue
     melhores.push({ custo: r.custo, desvio: notas.reduce((s, x) => s + Math.abs(x - 3), 0), notas, times: r.times })
   }
+  // Nenhuma divisão serviu (só acontece com duplas impossíveis de separar): quem chama decide o que fazer.
+  if (!melhores.length) return []
   const minCusto = Math.min(...melhores.map((m) => m.custo))
   const empate1 = melhores.filter((m) => m.custo <= minCusto + EPS)
   const minDesvio = Math.min(...empate1.map((m) => m.desvio))
@@ -171,7 +187,17 @@ export function qtdDeTimes(v: unknown): QtdDeTimes {
 /**
  * O sorteio da noite, igual no site e no WhatsApp: `qtd` times (nunca mais times que jogadores), equilibrados pela
  * nota, e o time curto ganha COMPLETE até fechar 4. Com 3 times as cores são as 3 primeiras (Azul, Laranja, Verde).
+ * As duplas de `separar` nunca caem no mesmo time; se for impossível separar todas, sorteia sem a regra (quem chama
+ * confere com `duplasJuntas` e avisa o organizador).
  */
-export function sortearDaNoite(jogadores: JogadorNota[], qtd: QtdDeTimes, rng: () => number = Math.random): TimeSorteado[] {
-  return sortearComCompletes(jogadores, { times: Math.min(qtd, CORES.length, jogadores.length), porTime: JOGADORES_POR_TIME, rng })
+export function sortearDaNoite(jogadores: JogadorNota[], qtd: QtdDeTimes, rng: () => number = Math.random, separar: Separar = []): TimeSorteado[] {
+  const opts = { times: Math.min(qtd, CORES.length, jogadores.length), porTime: JOGADORES_POR_TIME, rng }
+  // Só as duplas em que os dois estão jogando hoje importam.
+  const ids = new Set(jogadores.map((j) => j.id))
+  const hoje = separar.filter(([a, b]) => ids.has(a) && ids.has(b))
+  if (hoje.length) {
+    const r = sortearComCompletes(jogadores, { ...opts, separar: hoje })
+    if (r.length) return r
+  }
+  return sortearComCompletes(jogadores, opts)
 }

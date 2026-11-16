@@ -8,6 +8,7 @@ import {
   CORES,
   diferenca,
   diferencaMedia,
+  duplasJuntas,
   JOGADORES_POR_TIME,
   qtdDeTimes,
   sortearDaNoite,
@@ -15,6 +16,7 @@ import {
   type TimeSorteado,
 } from '@/domain/sorteio';
 import { ErroDeValidacao, idValido, mensagemParaUsuario } from '@/server/erros';
+import { paresSeparados } from '@/server/duplas';
 import { criarJogadores, listarJogadores, notaValida } from '@/server/jogadores';
 import {
   adicionarComplete,
@@ -27,7 +29,8 @@ import {
 import { lerSessaoAdmin } from '@/server/sessao';
 
 export type Resposta = { ok: true } | { ok: false; erro: string };
-export type Proposta = { times: TimeSorteado[]; diferenca: number; diferencaMedia: number };
+/** `aviso`: alguma dupla separada não deu para separar (só com duplas impossíveis); a tela mostra. */
+export type Proposta = { times: TimeSorteado[]; diferenca: number; diferencaMedia: number; aviso?: string };
 
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
 /** Bem mais que uma noite cheia; só barra pedido absurdo. */
@@ -58,8 +61,12 @@ export async function sortear(ids: number[], times: number = 4): Promise<({ ok: 
       if (!j) return { ok: false, erro: 'Tem jogador desativado ou que não existe. Recarregue a página.' };
       participantes.push({ id: j.id, nome: j.nome, nota: j.nota });
     }
-    const sorteados = sortearDaNoite(participantes, qtdDeTimes(times));
-    return { ok: true, times: sorteados, diferenca: diferenca(sorteados), diferencaMedia: diferencaMedia(sorteados) };
+    const separar = await paresSeparados(getDb());
+    const sorteados = sortearDaNoite(participantes, qtdDeTimes(times), Math.random, separar);
+    const nome = (id: number) => ativos.get(id)?.nome ?? '?';
+    const juntas = duplasJuntas(sorteados, separar).map(([a, b]) => `${nome(a)} e ${nome(b)}`);
+    const aviso = juntas.length ? `Não deu para separar ${juntas.join(', ')}. Confira os times antes de marcar como definitivos.` : undefined;
+    return { ok: true, times: sorteados, diferenca: diferenca(sorteados), diferencaMedia: diferencaMedia(sorteados), ...(aviso ? { aviso } : {}) };
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }

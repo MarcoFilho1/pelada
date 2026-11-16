@@ -14,12 +14,14 @@ import {
   salvarProposta,
   sortearTimesDaNoite,
   TEXTO_SO_ADMIN,
+  avisoDeDuplas,
   VALIDADE_MS,
   votar,
   VOTOS_NECESSARIOS,
   type TimesPropostos,
 } from '@/robo/sorteio-zap';
 import { timesDaPelada } from '@/server/times';
+import { duplasSeparadas } from '@/db/schema';
 import { createTestDb } from '../helpers/db';
 
 let db: DB;
@@ -209,5 +211,39 @@ describe('paraWhatsApp (textos de erro do site)', () => {
   it('troca o "Recarregue a página." por "Tente de novo."', () => {
     expect(paraWhatsApp('Essa pelada não existe mais. Recarregue a página.')).toBe('⚠️ Essa pelada não existe mais. Tente de novo.');
     expect(paraWhatsApp('Não deu certo.')).toBe('⚠️ Não deu certo.');
+  });
+});
+
+describe('duplas separadas no robô', () => {
+  const idDe = async (nome: string) => (await db.select().from(jogadores)).find((j) => j.nome === nome)!.id;
+
+  it('o sorteio do robô nunca junta a dupla e, sem dupla junta, não tem aviso', async () => {
+    const [a, b] = [await idDe('Ana'), await idDe('Jonas')];
+    await db.insert(duplasSeparadas).values({ jogadorAId: Math.min(a, b), jogadorBId: Math.max(a, b) });
+    for (let i = 0; i < 15; i++) {
+      const r = (await sortearTimesDaNoite(db, QUARTA, rng)) as TimesPropostos;
+      expect(r.times.some((t) => t.jogadores.some((j) => j.id === a) && t.jogadores.some((j) => j.id === b))).toBe(false);
+      expect(r.aviso).toBeUndefined();
+    }
+  });
+
+  it('times importados com a dupla junta: não mexe nos times, só avisa (e o aviso fica fora do texto do grupo)', async () => {
+    const [a, b] = [await idDe('Ana'), await idDe('Beto')];
+    await db.insert(duplasSeparadas).values({ jogadorAId: Math.min(a, b), jogadorBId: Math.max(a, b) });
+    const r = (await importarTimesColados(db, QUARTA, 'Time 1\nAna\nBeto\n\nTime 2\nCaio\nDavi')) as TimesPropostos;
+    expect(r.aviso).toBe('⚠️ Ana e Beto estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.');
+    const p = montarProposta('importado', quem, QUARTA, r);
+    expect(p.aviso).toBe(r.aviso);
+    expect(p.texto).not.toContain('dupla separada');
+    expect(deGuardada(JSON.parse(JSON.stringify(paraGuardar(p))))).toEqual(p);
+  });
+
+  it('avisoDeDuplas: uma linha por dupla junta', () => {
+    const times = [
+      { jogadores: [{ id: 1, nome: 'Luiz', nota: 3 }, { id: 2, nome: 'Jonas', nota: 3 }], completes: [], soma: 6 },
+      { jogadores: [{ id: 3, nome: 'Ana', nota: 3 }], completes: [], soma: 3 },
+    ];
+    expect(avisoDeDuplas(times, [[1, 2]])).toBe('⚠️ Luiz e Jonas estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.');
+    expect(avisoDeDuplas(times, [[1, 3]])).toBeUndefined();
   });
 });
