@@ -7,6 +7,7 @@ import {
   respostaFalta,
   respostaFila,
 } from '@/robo/comandos';
+import { interpretarPrivado } from '@/robo/comandos';
 import { TEXTO_COMO_CADASTRAR } from '@/robo/cadastro-zap';
 import type { ItemLista } from '@/domain/lista';
 import type { EstadoDaSemana } from '@/server/presencas';
@@ -217,5 +218,22 @@ describe('interpretar: cadastrar', () => {
 
   it('"cadastrar" no meio da frase vai para a IA', () => {
     expect(interpretar('pode cadastrar o Caio?').tipo).toBe('pergunta');
+  });
+});
+
+describe('interpretarPrivado', () => {
+  it('notas, nota de alguém e site', () => {
+    expect(interpretarPrivado('notas')).toEqual({ tipo: 'notas' });
+    expect(interpretarPrivado('Nota Ana Paula 3,5')).toEqual({ tipo: 'nota', nome: 'Ana Paula', nota: 3.5 });
+    expect(interpretarPrivado('nota do Pepe: 4')).toEqual({ tipo: 'nota', nome: 'Pepe', nota: 4 });
+    expect(interpretarPrivado('nota Caio pra 2.5')).toEqual({ tipo: 'nota', nome: 'Caio', nota: 2.5 });
+    expect(interpretarPrivado('site')).toEqual({ tipo: 'site' });
+    expect(interpretarPrivado('Link do site?')).toEqual({ tipo: 'site' });
+  });
+
+  it('o resto como no grupo', () => {
+    expect(interpretarPrivado('lista')).toEqual({ tipo: 'lista' });
+    expect(interpretarPrivado('cadastrar Caio - 2,5').tipo).toBe('cadastrar');
+    expect(interpretarPrivado('qual a nota do Pepe?').tipo).toBe('pergunta');
   });
 });

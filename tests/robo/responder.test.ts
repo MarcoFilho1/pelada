@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
-import { TEXTO_AJUDA, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
+import { TEXTO_AJUDA, TEXTO_AJUDA_ORGANIZADOR, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { apelidosDoEnv, calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SORTEIO_NO_PRIVADO, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
@@ -58,6 +58,9 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
     consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
     cadastrar: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Cadastrado: Caio (2,5).', mudou: true })),
+    notas: vi.fn(async () => '📋 Notas (2 jogadores):\nAna 3,0\nBia 2,5'),
+    mudarNota: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Nota de Ana: 3,0 → 3,5.', mudou: true })),
+    urlSite: 'https://pelada.exemplo',
     enviar: vi.fn(async () => {}),
     log: vi.fn(),
     ...over,
@@ -944,5 +947,72 @@ describe('apelidos (ROBO_APELIDOS)', () => {
     const outro = ctx({ apelidos: [{ telefone: ADMIN, nome: 'Marquinho' }] });
     await responder(msg('eu vou'), outro);
     expect(outro.perguntar).toHaveBeenCalledWith('eu vou', expect.objectContaining({ jogador: null }));
+  });
+});
+
+describe('privado dos organizadores', () => {
+  const privado = (texto: string, over: Partial<MensagemRecebida> = {}) =>
+    msg(texto, { grupoId: `${ADMIN}@s.whatsapp.net`, remetenteTelefone: ADMIN, remetenteNome: 'Marco', mencionaORobo: false, privado: true, ...over });
+
+  it('organizador: atende sem marcar, mesmo de madrugada', async () => {
+    const c = ctx();
+    const r = await responder(privado('notas', { quando: t('2026-11-11T02:00:00') }), c);
+    expect(r?.texto).toBe('📋 Notas (2 jogadores):\nAna 3,0\nBia 2,5');
+    expect(c.enviar).toHaveBeenCalledWith(r?.texto);
+  });
+
+  it('quem não é organizador, ou sem telefone (LID), é ignorado sem resposta', async () => {
+    for (const tel of [QUALQUER, null]) {
+      const c = ctx();
+      expect(await responder(privado('notas', { remetenteTelefone: tel }), c)).toBeNull();
+      expect(c.enviar).not.toHaveBeenCalled();
+      expect(c.log).toHaveBeenCalled();
+    }
+  });
+
+  it('nota Fulano 3,5 muda a nota; site dá o link', async () => {
+    const c = ctx();
+    expect((await responder(privado('nota Ana 3,5'), c))?.texto).toBe('✅ Nota de Ana: 3,0 → 3,5.');
+    expect(c.mudarNota).toHaveBeenCalledWith('Ana', 3.5, expect.any(Date));
+    expect((await responder(privado('site'), ctx()))?.texto).toBe('🌐 Site da pelada: https://pelada.exemplo\n🔐 Área dos organizadores: https://pelada.exemplo/admin');
+  });
+
+  it('comandos do grupo valem; a lista no privado nunca vira a "última lista" do grupo', async () => {
+    const c = ctx();
+    const r = await responder(privado('lista'), c);
+    expect(r?.texto).toContain(LISTA);
+    expect(r).toMatchObject({ ehListaCompleta: false, gravar: undefined });
+    expect((await responder(privado('cadastrar Caio - 2,5'), ctx()))?.texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)');
+  });
+
+  it('ajuda traz os comandos de organizador; sortear e sim ainda não valem aqui', async () => {
+    expect((await responder(privado('ajuda'), ctx({ ia: null })))?.texto).toBe(`${TEXTO_AJUDA}\n\n${TEXTO_AJUDA_ORGANIZADOR}`);
+    const c = ctx();
+    expect((await responder(privado('sortear'), c))?.texto).toBe(TEXTO_SORTEIO_NO_PRIVADO);
+    expect((await responder(privado('sim'), c))?.texto).toBe(TEXTO_SORTEIO_NO_PRIVADO);
+    expect(c.propor).not.toHaveBeenCalled();
+    expect(c.confirmar).not.toHaveBeenCalled();
+  });
+
+  it('texto livre: a IA recebe as ferramentas de organizador e sabe que é privado; no grupo, não', async () => {
+    const c = ctx();
+    await responder(privado('qual a nota do Pepe?'), c);
+    const op = (c.perguntar as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(op.privado).toBe(true);
+    expect(op.acoes.map((f: { nome: string }) => f.nome)).toEqual(expect.arrayContaining(['ver_notas', 'mudar_nota', 'link_do_site']));
+    const g = ctx();
+    await responder(msg('qual a nota do Pepe?'), g);
+    const opGrupo = (g.perguntar as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(opGrupo.privado).toBe(false);
+    expect(opGrupo.acoes.map((f: { nome: string }) => f.nome)).not.toContain('ver_notas');
+  });
+
+  it('mudar_nota pela IA: texto pronto quando muda; erro quando não muda ou nota inválida', async () => {
+    const c = ctx();
+    const [, mudar] = ferramentasDoOrganizador(privado('x'), c);
+    expect(((await mudar.executar({ nome: 'Ana', nota: '3.5' })) as TextoPronto).texto).toBe('✅ Nota de Ana: 3,0 → 3,5.');
+    expect(c.mudarNota).toHaveBeenCalledWith('Ana', 3.5, expect.any(Date));
+    const nao = ctx({ mudarNota: vi.fn(async () => ({ texto: '🤔 Zé não está cadastrado.', mudou: false })) });
+    await expect(ferramentasDoOrganizador(privado('x'), nao)[1].executar({ nome: 'Zé', nota: '3' })).rejects.toThrow('Zé não está cadastrado');
   });
 });

@@ -110,7 +110,7 @@ function telefoneDoJid(jid: string | null | undefined): string | null {
 
 /** O mínimo de uma mensagem da Baileys que o robô lê (permite testar sem WhatsApp). */
 export type MensagemDaBaileys = {
-  key: Pick<WAMessageKey, 'remoteJid' | 'fromMe' | 'participant' | 'participantAlt'>;
+  key: Pick<WAMessageKey, 'remoteJid' | 'remoteJidAlt' | 'fromMe' | 'participant' | 'participantAlt'>;
   message?: proto.IMessage | null;
   /** Nome que a pessoa pôs no próprio WhatsApp. */
   pushName?: string | null;
@@ -128,9 +128,13 @@ function conteudo(m: proto.IMessage | null | undefined): proto.IMessage | null {
   return c;
 }
 
+/** Conversa privada: JID de número ou LID (o telefone, então, vem no `remoteJidAlt`). */
+const ehPrivado = (jid: string) => jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid');
+
 /**
  * Mensagem da Baileys → mensagem do robô. `null` para o que nunca interessa: mensagem do próprio robô,
- * conversa que não é grupo (privado, status, transmissão) ou sem texto. A marcação vale só se o JID
+ * conversa que não é grupo nem privado (status, transmissão) ou sem texto. No privado, `privado` vem
+ * marcado, `grupoId` é a conversa (para responder nela) e o telefone sai do JID ou do `remoteJidAlt`. A marcação vale só se o JID
  * ou o LID do robô (sem o aparelho) estiver nas menções; o `@123…` sai do texto.
  */
 export function lerMensagemRecebida(
@@ -138,7 +142,9 @@ export function lerMensagemRecebida(
   robo: { id?: string | null; lid?: string | null },
 ): MensagemRecebida | null {
   const grupoId = msg.key.remoteJid;
-  if (msg.key.fromMe || !grupoId?.endsWith('@g.us')) return null;
+  if (msg.key.fromMe || !grupoId) return null;
+  const privado = ehPrivado(grupoId);
+  if (!privado && !grupoId.endsWith('@g.us')) return null;
   const c = conteudo(msg.message);
   if (!c) return null;
   const texto = c.conversation ?? c.extendedTextMessage?.text ?? c.imageMessage?.caption ?? c.videoMessage?.caption ?? c.documentMessage?.caption;
@@ -159,11 +165,14 @@ export function lerMensagemRecebida(
   return {
     grupoId,
     respondeAoRobo: citado !== null && eu.has(citado),
-    remetenteTelefone: telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant),
+    remetenteTelefone: privado
+      ? (telefoneDoJid(msg.key.remoteJidAlt) ?? telefoneDoJid(grupoId))
+      : (telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant)),
     remetenteNome: msg.pushName?.trim() || null,
     texto: textoLimpo.replace(/\s+/g, ' ').trim(),
     mencionaORobo,
     quando: segundos ? new Date(segundos * 1000) : new Date(),
+    ...(privado ? { privado: true } : {}),
   };
 }
 

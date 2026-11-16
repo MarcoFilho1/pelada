@@ -132,11 +132,27 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     expect(lerMensagemRecebida({ ...base, key, message: { conversation: 'oi' } }, robo)?.remetenteTelefone).toBe('5581990000002');
   });
 
-  it('ignora mensagem do próprio robô, privada, status e sem texto', () => {
+  it('ignora mensagem do próprio robô, status e sem texto', () => {
     const m = texto('@111111111111111', ['111111111111111@lid']);
     expect(lerMensagemRecebida({ ...base, key: { ...base.key, fromMe: true }, message: m }, robo)).toBeNull();
-    expect(lerMensagemRecebida({ ...base, key: { ...base.key, remoteJid: '5581990000001@s.whatsapp.net' }, message: m }, robo)).toBeNull();
     expect(lerMensagemRecebida({ ...base, key: { ...base.key, remoteJid: 'status@broadcast' }, message: m }, robo)).toBeNull();
     expect(lerMensagemRecebida({ ...base, message: null }, robo)).toBeNull();
+  });
+
+  it('privado por número: marcado como privado, telefone do JID, conversa para responder', () => {
+    const r = lerMensagemRecebida({ ...base, key: { remoteJid: '5581990000001@s.whatsapp.net', fromMe: false }, message: { conversation: 'notas' } }, robo);
+    expect(r).toMatchObject({ grupoId: '5581990000001@s.whatsapp.net', remetenteTelefone: '5581990000001', privado: true, texto: 'notas', mencionaORobo: false });
+  });
+
+  it('privado por LID: telefone do remoteJidAlt; sem ele, telefone nulo', () => {
+    const comAlt = lerMensagemRecebida({ ...base, key: { remoteJid: '999@lid', remoteJidAlt: '5581990000002@s.whatsapp.net', fromMe: false }, message: { conversation: 'site' } }, robo);
+    expect(comAlt).toMatchObject({ grupoId: '999@lid', remetenteTelefone: '5581990000002', privado: true });
+    const semAlt = lerMensagemRecebida({ ...base, key: { remoteJid: '999@lid', fromMe: false }, message: { conversation: 'site' } }, robo);
+    expect(semAlt).toMatchObject({ remetenteTelefone: null, privado: true });
+  });
+
+  it('mensagem de grupo não vem marcada como privada', () => {
+    const r = lerMensagemRecebida({ ...base, message: { conversation: 'oi' } }, robo);
+    expect(r?.privado).toBeUndefined();
   });
 });
