@@ -13,6 +13,7 @@ import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { cadastrarJogadores } from '@/server/jogadores';
 import { respostaCadastro } from './cadastro-zap';
+import { mudarNota, textoDasNotas, urlDoSite } from './organizador-zap';
 import { consultar } from './consultas';
 import { ferramentasDeLeitura } from './ferramentas';
 import { fotografar } from './foto';
@@ -216,6 +217,7 @@ async function laco(): Promise<void> {
   const emFila = criarFila();
 
   const { ia, admins } = configDasRespostas(process.env);
+  const urlSite = urlDoSite(process.env);
   // Um cliente da Anthropic para o robô todo; a chave nunca vai para o log.
   const clienteIA = ia ? criarCliente(ia.chave) : null;
   const freio = new Freio(() => new Date());
@@ -234,6 +236,12 @@ async function laco(): Promise<void> {
     const wa = await conexao!;
     if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
     await wa.enviar(grupoId, texto);
+  };
+
+  /** Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). */
+  const enviarNoPrivado = (conversa: string) => async (texto: string) => {
+    const wa = await conexao!;
+    await wa.enviar(conversa, texto);
   };
 
   const tratar = async (m: MensagemRecebida) => {
@@ -255,14 +263,17 @@ async function laco(): Promise<void> {
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
         consultar: (tipo, n) => consultar(db, tipo, n),
         cadastrar: async (pessoas) => respostaCadastro(await cadastrarJogadores(db, pessoas)),
+        notas: () => textoDasNotas(db),
+        mudarNota: (nome, nota) => mudarNota(db, nome, nota),
+        urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
-        perguntar: (texto, { agora, acoes, quem, ehJonas, jogador }) =>
-          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora), ...acoes], agora, quem, ehJonas, jogador }),
-        enviar: enviarNoGrupo,
+        perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
+          perguntar(texto, { chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora), ...acoes], agora, quem, ehJonas, jogador, privado }),
+        enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });
       if (!r) return;
-      log(`respondeu a uma marcação (${r.texto.split('\n')[0].slice(0, 60)})`);
+      log(`respondeu ${m.privado ? 'no privado' : 'a uma marcação'} (${r.texto.split('\n')[0].slice(0, 60)})`);
       if (r.ehListaCompleta && r.gravar && podeGravarLista(new Date(), r.gravar.foto, estado)) {
         estado = aposEnvio(estado, new Date(), r.gravar.tipo, r.gravar.foto);
         gravar(estado);
@@ -274,7 +285,8 @@ async function laco(): Promise<void> {
   const aoReceber = (m: MensagemRecebida) => {
     // Filtro barato antes da fila: só marcação (ou resposta ao robô). A de outro grupo vai ao
     // `responder` só para deixar a linha "marcação ignorada (outro grupo)" no log.
-    if (m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
+    // No privado não precisa marcar: o `responder` atende só os organizadores.
+    if (m.privado || m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).

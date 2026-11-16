@@ -99,6 +99,15 @@ describe('perguntar (Claude)', () => {
     expect(JSON.stringify(pedidos[0].messages[0])).toMatch(/calvinho/);
   });
 
+  it('no privado, a mensagem do usuário diz que é privado com organizador', async () => {
+    const { cliente, pedidos } = falso(texto('a'));
+    await perguntar('notas?', { ...base(cliente), privado: true });
+    expect(JSON.stringify(pedidos[0].messages[0])).toContain('Conversa: privado com um organizador.');
+    const { cliente: c2, pedidos: p2 } = falso(texto('a'));
+    await perguntar('notas?', base(c2));
+    expect(JSON.stringify(p2[0].messages[0])).not.toContain('Conversa: privado');
+  });
+
   it('o nome de quem fala no site (apelido) vai na mensagem do usuário', async () => {
     const { cliente, pedidos } = falso(texto('a'));
     await perguntar('eu vou', { ...base(cliente), quem: 'Marco Filho', jogador: 'Marquinho' });

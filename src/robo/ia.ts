@@ -38,6 +38,8 @@ export type OpcoesIA = {
   quem?: string;
   /** Quem mandou é o Jonas, o "calvinho". */
   ehJonas?: boolean;
+  /** Conversa privada com um organizador (ferramentas de organizador liberadas). */
+  privado?: boolean;
   /** O nome de quem mandou no site, quando difere do WhatsApp (`ROBO_APELIDOS`). */
   jogador?: string | null;
 };
@@ -54,6 +56,7 @@ export const SISTEMA = [
   'Responda só com o que as ferramentas trazem. Nunca invente jogadores, números ou datas; se não souber, diga que não sabe.',
   'Para adicionar, confirmar ou remover alguém da lista, use sempre a ferramenta, com o nome como a pessoa escreveu. Nunca diga que a lista mudou sem a ferramenta ter respondido.',
   'A lista (ver_lista), as mudanças na lista e o sorteio o robô acrescenta sozinho no fim da sua resposta, palavra por palavra: não reescreva esses textos; uma frase curta basta. Outros textos prontos (fila, times, ranking), repita sem mudar nada.',
+  'No privado com um organizador, você também pode mostrar e mudar notas (ver_notas, mudar_nota) e dar o link do site (link_do_site). No grupo, essas ferramentas não existem.',
   'Quando a pessoa fala de si mesma ("eu vou", "me tira"), use o nome dela no site, se vier na mensagem; senão, o nome do WhatsApp.',
   'Para cadastrar jogadores novos (com nota), use cadastrar_jogadores, só quando pedirem para cadastrar ou adicionar pessoas novas, ou mandarem as notas. Se faltar a nota de alguém, pergunte a nota em vez de cadastrar. Nunca cadastre alguém só porque adicionar_jogador disse que não está cadastrado.',
   'Se uma ferramenta der erro, explique em uma frase o que o erro diz. No máximo 3 mudanças na lista e 1 sorteio por mensagem.',
@@ -73,6 +76,7 @@ function mensagemDoUsuario(pergunta: string, op: OpcoesIA, agora: Date): string 
   return [
     `Agora: ${hora} de ${dia}, ${d}/${m}/${a} (horário de Recife).`,
     `Quem está falando: ${quem}${op.jogador ? `, que no site é o jogador ${op.jogador.slice(0, MAX_NOME)}` : ''}${op.ehJonas ? ' (é o Jonas, o calvinho)' : ''}.`,
+    ...(op.privado ? ['Conversa: privado com um organizador.'] : []),
     `Mensagem: ${pergunta.slice(0, MAX_PERGUNTA)}`,
   ].join('\n');
 }

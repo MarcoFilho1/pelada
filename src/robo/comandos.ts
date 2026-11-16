@@ -17,6 +17,10 @@ export type Comando =
   | { tipo: AcaoNaLista; nome: string; nomes: string[]; excedeu: boolean }
   /** Jogadores novos (só organizadores): até `MAX_CADASTROS_POR_MENSAGEM` em `pessoas`; `excedeu` se havia mais. */
   | { tipo: 'cadastrar'; pessoas: PessoaPedida[]; excedeu: boolean }
+  /** Só no privado dos organizadores: as notas, mudar uma nota e o link do site. */
+  | { tipo: 'notas' }
+  | { tipo: 'nota'; nome: string; nota: number }
+  | { tipo: 'site' }
   | { tipo: 'pergunta'; texto: string }
   /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
   | { tipo: 'recusa'; texto: string };
@@ -120,6 +124,25 @@ export function interpretar(textoSemMarcacao: string): Comando {
   return { tipo: 'pergunta', texto: textoSemMarcacao.trim().replace(/\s+/g, ' ') };
 }
 
+const SITE = new Set(['site', 'link', 'link do site', 'o site', 'endereco', 'endereco do site', 'url']);
+
+/**
+ * Privado de organizador: "notas", "nota Fulano 3,5" (também "nota do Fulano: 3.5", "nota Fulano pra 3"),
+ * "site"/"link"; o resto como no grupo.
+ */
+export function interpretarPrivado(texto: string): Comando {
+  const limpo = normalizarNome(texto).replace(/[\s.,;:!?]+$/u, '').trim();
+  if (limpo === 'notas' || limpo === 'ver notas' || limpo === 'nota') return { tipo: 'notas' };
+  if (SITE.has(limpo)) return { tipo: 'site' };
+  const m = /^\s*notas?\s+(?:d[aeo]s?\s+)?(.+?)\s*(?:-|:|=|\bpara\b|\bpra\b|\bvai pra\b)?\s*(\d+(?:[.,]\d+)?)\s*[.!]?\s*$/iu.exec(texto);
+  if (m && m[1].trim()) {
+    const nome = m[1].trim();
+    if (nome.length > TAM_MAX_NOME_PEDIDO) return { tipo: 'recusa', texto: TEXTO_NOME_COMPRIDO };
+    return { tipo: 'nota', nome, nota: Number(m[2].replace(',', '.')) };
+  }
+  return interpretar(texto);
+}
+
 export function respostaFalta(estado: EstadoDaSemana): string {
   const pendentes = estado.principal.filter((i) => !i.confirmado).map((i) => i.nome);
   if (!pendentes.length) return '🙌 Todo mundo da lista já confirmou!';
@@ -143,6 +166,15 @@ export const TEXTO_AJUDA = [
   '👕 times — os times de hoje',
   '🎲 sortear (ou sortear 3 times) — só os organizadores',
   '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3) — só os organizadores',
+].join('\n');
+
+/** No privado, o `ajuda` ganha os comandos de organizador. */
+export const TEXTO_AJUDA_ORGANIZADOR = [
+  '🔐 Aqui no privado, só para organizadores:',
+  '📋 notas — todos os jogadores com a nota',
+  '✏️ nota Fulano 3,5 — muda a nota',
+  '🆕 cadastrar Nome - nota — jogador novo',
+  '🌐 site — o link do site',
 ].join('\n');
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */

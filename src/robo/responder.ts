@@ -10,7 +10,9 @@ import {
   respostaFalta,
   respostaFila,
   TAM_MAX_NOME_PEDIDO,
+  interpretarPrivado,
   TEXTO_AJUDA,
+  TEXTO_AJUDA_ORGANIZADOR,
   TEXTO_AJUDA_PERGUNTA,
   TEXTO_NOME_COMPRIDO,
   type AcaoNaLista,
@@ -18,6 +20,7 @@ import {
   type Consulta,
 } from './comandos';
 import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, pedirNotas, TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO, type PessoaPedida } from './cadastro-zap';
+import { textoDoSite } from './organizador-zap';
 import { ErroDeFerramenta, semParametros, TextoPronto, type Ferramenta, type Parametros } from './ferramentas';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
@@ -37,6 +40,8 @@ export type MensagemRecebida = {
   /** A mensagem cita (responde a) uma mensagem do robô. Só vale para o "sim" do sorteio. */
   respondeAoRobo: boolean;
   quando: Date;
+  /** Conversa privada (não grupo): `grupoId` é a conversa; só os organizadores são atendidos. */
+  privado?: boolean;
 };
 
 export type ContextoDaResposta = {
@@ -60,10 +65,16 @@ export type ContextoDaResposta = {
   propor: (now: Date, telefone: string, times: QtdDeTimes) => Promise<Proposta | { erro: string }>;
   confirmar: (now: Date, telefone: string, proposta: Proposta | null) => Promise<{ ok: string } | { erro: string }>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
-  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null }) => Promise<string>;
+  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null; privado: boolean }) => Promise<string>;
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
+  /** Privado: todos os jogadores ativos com a nota. */
+  notas: (now: Date) => Promise<string>;
+  /** Privado: muda a nota de um jogador achado pelo nome. */
+  mudarNota: (nome: string, nota: number, now: Date) => Promise<{ texto: string; mudou: boolean }>;
+  /** Endereço do site (sem a barra do fim), para o `site` do privado. */
+  urlSite: string;
   /** Cadastra jogadores novos (quem confere se é organizador é o `responder`). */
   cadastrar: (pessoas: PessoaPedida[], now: Date) => Promise<{ texto: string; mudou: boolean }>;
   /** Resolve só com o envio confirmado pelo WhatsApp. */
@@ -236,7 +247,8 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
   if (!c.ia) return TEXTO_AJUDA;
   if (!c.freio.podePerguntar()) return TEXTO_LIMITE;
   const marca = { entrouOuConfirmou: false };
-  const r = await c.perguntar(texto, { agora: () => m.quando, acoes: ferramentasDeAcao(m, c, marca), quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c), jogador: jogadorDoRemetente(m, c) });
+  const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
+  const r = await c.perguntar(texto, { agora: () => m.quando, acoes, quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c), jogador: jogadorDoRemetente(m, c), privado: m.privado === true });
   c.freio.registrarPergunta();
   if (!marca.entrouOuConfirmou) return r;
   // Entrou ou confirmou alguém: a lista atual vai junto, se a resposta ainda não a trouxe.
@@ -415,6 +427,42 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
   ];
 }
 
+const comNomeENota: Parametros = {
+  type: 'object',
+  properties: {
+    nome: { type: 'string', description: 'O nome do jogador como a pessoa escreveu (pode ser só o começo).' },
+    nota: { type: 'string', description: 'A nota nova, de 0 a 5, de 0,5 em 0,5 (ex.: "3.5").' },
+  },
+  required: ['nome', 'nota'],
+  additionalProperties: false,
+};
+
+/** Só no privado de organizador: ver e mudar notas e o link do site. */
+export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaResposta): Ferramenta[] {
+  return [
+    { nome: 'ver_notas', descricao: 'Todos os jogadores ativos com a nota (0 a 5). Só no privado dos organizadores.', parametros: semParametros, executar: () => c.notas(m.quando) },
+    {
+      nome: 'mudar_nota',
+      descricao: 'Muda a nota de um jogador cadastrado. Só no privado dos organizadores. Devolve o texto para a conversa.',
+      parametros: comNomeENota,
+      altera: true,
+      async executar(args) {
+        const nome = lerNome(args);
+        const bruta = (args as { nota?: unknown }).nota;
+        const nota = typeof bruta === 'string' ? Number(bruta.replace(',', '.')) : NaN;
+        if (nome.length > TAM_MAX_NOME_PEDIDO) throw new ErroDeFerramenta(TEXTO_NOME_COMPRIDO);
+        const feito = await c.mudarNota(nome, nota, m.quando);
+        if (!feito.mudou) throw new ErroDeFerramenta(feito.texto);
+        return new TextoPronto(feito.texto, 'acao');
+      },
+    },
+    { nome: 'link_do_site', descricao: 'O endereço do site da pelada e da área dos organizadores.', parametros: semParametros, executar: async () => textoDoSite(c.urlSite) },
+  ];
+}
+
+/** Sorteio e confirmação pelo privado chegam com a regra de 2 de 3 organizadores. */
+export const TEXTO_SORTEIO_NO_PRIVADO = '🔜 Sortear e confirmar times aqui no privado chega na próxima atualização. Por enquanto, *sortear* no grupo.';
+
 /** Linha do log para marcação sem resposta: o motivo e o nome do WhatsApp (nunca o telefone). */
 function ignorada(m: MensagemRecebida, c: ContextoDaResposta, motivo: string): null {
   c.log(`marcação ignorada (${motivo})${m.remetenteNome ? ` de ${m.remetenteNome}` : ''}`);
@@ -441,6 +489,7 @@ async function avisarLimite(m: MensagemRecebida, c: ContextoDaResposta): Promise
  * A IA pode pedir o sorteio pelo mesmo caminho do `sortear` (com a checagem de admin pelo telefone); a confirmação só sai pelo `sim`. Erro ao enviar: registra no log, não tenta de novo.
  */
 export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
+  if (m.privado) return responderNoPrivado(m, c);
   const chamou = m.mencionaORobo || m.respondeAoRobo;
   if (!c.estadoGrupoId || m.grupoId !== c.estadoGrupoId) return chamou ? ignorada(m, c, 'outro grupo') : null;
   const cmd = interpretar(m.texto);
@@ -457,10 +506,41 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     c.log('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
   }
 
+  return responderComando(cmd, m, c);
+}
+
+/**
+ * Privado: só os organizadores (pelo telefone; sem telefone, ignora), sem marcação e a qualquer hora
+ * (o silêncio das 23–08 é do grupo). Valem os comandos do grupo e os de organizador. A lista respondida
+ * aqui nunca vira a "última lista" do grupo.
+ */
+async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
+  if (m.remetenteTelefone === null) return ignorada(m, c, 'privado sem telefone (LID)');
+  if (!ehAdmin(m.remetenteTelefone, c.admins)) {
+    c.log('privado de quem não é organizador ignorado');
+    return null;
+  }
+  if (!c.freio.podeResponder()) return avisarLimite(m, c);
+  const r = await responderComando(interpretarPrivado(m.texto), m, c);
+  return r && { ...r, ehListaCompleta: false, gravar: undefined };
+}
+
+/** O comando já liberado: monta o texto, envia, registra no freio. */
+async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   let r: Omit<Resposta, 'ehListaCompleta'>;
   switch (cmd.tipo) {
     case 'lista':
       r = await respostaLista(m, c);
+      if (m.privado) r = { texto: r.texto };
+      break;
+    case 'notas':
+      r = { texto: await c.notas(m.quando) };
+      break;
+    case 'nota':
+      r = { texto: (await c.mudarNota(cmd.nome, cmd.nota, m.quando)).texto };
+      break;
+    case 'site':
+      r = { texto: textoDoSite(c.urlSite) };
       break;
     case 'falta':
       r = { texto: respostaFalta(await c.lerLista(m.quando)) };
@@ -468,14 +548,16 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     case 'fila':
       r = { texto: respostaFila(await c.lerLista(m.quando)) };
       break;
-    case 'ajuda':
-      r = { texto: c.ia ? `${TEXTO_AJUDA}\n${TEXTO_AJUDA_PERGUNTA}` : TEXTO_AJUDA };
+    case 'ajuda': {
+      const base = c.ia ? `${TEXTO_AJUDA}\n${TEXTO_AJUDA_PERGUNTA}` : TEXTO_AJUDA;
+      r = { texto: m.privado ? `${base}\n\n${TEXTO_AJUDA_ORGANIZADOR}` : base };
       break;
+    }
     case 'sortear':
-      r = { texto: await respostaSortear(m, c, cmd.times) };
+      r = { texto: m.privado ? TEXTO_SORTEIO_NO_PRIVADO : await respostaSortear(m, c, cmd.times) };
       break;
     case 'sim':
-      r = { texto: await respostaSim(m, c, remetenteEhJonas(m, c)) };
+      r = { texto: m.privado ? TEXTO_SORTEIO_NO_PRIVADO : await respostaSim(m, c, remetenteEhJonas(m, c)) };
       break;
     case 'adicionar':
     case 'confirmar':
