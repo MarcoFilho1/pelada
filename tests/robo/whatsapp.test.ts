@@ -155,4 +155,9 @@ describe('lerMensagemRecebida (mensagem da Baileys → mensagem do robô)', () =
     const r = lerMensagemRecebida({ ...base, message: { conversation: 'oi' } }, robo);
     expect(r?.privado).toBeUndefined();
   });
+
+  it('mantém as quebras de linha (o importar lê linha a linha); espaços repetidos e linhas em branco a mais somem', () => {
+    const r = lerMensagemRecebida({ ...base, key: { remoteJid: '5581990000001@s.whatsapp.net', fromMe: false }, message: { conversation: 'importar\n Time 1  \nAna\n\n\n\nTime 2\nBia ' } }, robo);
+    expect(r?.texto).toBe('importar\nTime 1\nAna\n\nTime 2\nBia');
+  });
 });

@@ -10,6 +10,8 @@ export interface WhatsApp {
   gruposChamados(nome: string): Promise<Grupo[]>;
   /** Resolve só quando o servidor do WhatsApp devolveu o ack desta mensagem. */
   enviar(grupoId: string, texto: string): Promise<void>;
+  /** A conversa privada de um telefone (com 55), perguntando ao WhatsApp; `null` se o número não tem WhatsApp. */
+  conversaDoTelefone(telefone: string): Promise<string | null>;
   fechar(): Promise<void>;
 }
 
@@ -169,7 +171,13 @@ export function lerMensagemRecebida(
       ? (telefoneDoJid(msg.key.remoteJidAlt) ?? telefoneDoJid(grupoId))
       : (telefoneDoJid(msg.key.participantAlt) ?? telefoneDoJid(msg.key.participant)),
     remetenteNome: msg.pushName?.trim() || null,
-    texto: textoLimpo.replace(/\s+/g, ' ').trim(),
+    // As quebras de linha ficam (o "importar" lê os times linha a linha); espaços repetidos viram um.
+    texto: textoLimpo
+      .split('\n')
+      .map((l) => l.replace(/\s+/g, ' ').trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
     mencionaORobo,
     quando: segundos ? new Date(segundos * 1000) : new Date(),
     ...(privado ? { privado: true } : {}),
@@ -299,6 +307,11 @@ export async function conectar(op: OpcoesConexao): Promise<WhatsApp> {
       await esperarAberto(ESPERA_ENVIO_MS);
       const id = b.generateMessageIDV2(sock!.user?.id);
       await enviarComConfirmacao(sock!, grupoId, texto, id, ESPERA_ENVIO_MS, (m) => enviadas.set(id, m));
+    },
+    async conversaDoTelefone(telefone) {
+      await esperarAberto(ESPERA_ENVIO_MS);
+      const [r] = (await sock!.onWhatsApp(`${telefone.replace(/\D/g, '')}@s.whatsapp.net`)) ?? [];
+      return r?.exists ? r.jid : null;
     },
     async fechar() {
       fechando = true;

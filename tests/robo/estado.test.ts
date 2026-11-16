@@ -27,6 +27,12 @@ describe('estado do robô', () => {
     expect(lerEstado(arquivo)).toEqual(cheio);
   });
 
+  it('a proposta de times guardada volta igual', () => {
+    const proposta = { origem: 'sorteio' as const, quemPropos: '5581990000001', quemProposNome: 'Marco', criadaEm: '2026-11-11T18:00:00.000Z', peladaId: 1, elencos: [[1], [2]], completes: [[], []], blocos: 'b', texto: 't', votos: ['5581990000001'] };
+    gravarEstado(arquivo, { ...cheio, proposta });
+    expect(lerEstado(arquivo)).toEqual({ ...cheio, proposta });
+  });
+
   it('arquivo inexistente: estado vazio', () => {
     expect(lerEstado(arquivo)).toEqual({ ultimo: null, aberturaEnviada: null, grupoId: null, grupoNome: null });
   });

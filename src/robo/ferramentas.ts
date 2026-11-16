@@ -93,7 +93,8 @@ export function ordenarArtilharia<T extends { nome: string; gols: number; assist
     .sort((a, b) => b.gols - a.gols || b.assistencias - a.assistencias || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
+/** `timesPendentes`: há times propostos esperando votos; enquanto houver, a IA não vê time nenhum. */
+export function ferramentasDeLeitura(db: DB, agora: () => Date, op: { timesPendentes?: () => boolean } = {}): Ferramenta[] {
   const ranking = async (periodoTxt: string | undefined) => {
     const { periodo, linhas } = await rankingDoPeriodoPedido(db, agora(), periodoTxt);
     return { periodo: nomeDoPeriodo(periodo), linhas };
@@ -194,6 +195,7 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date): Ferramenta[] {
       async executar() {
         const p = await peladaDaNoite(db, agora());
         if (!p) return { data: null, ehHoje: false, times: [] };
+        if (op.timesPendentes?.() && p.data === dataDe(agora())) return { data: p.data, ehHoje: true, times: [], aviso: 'Os times de hoje ainda não foram definidos.' };
         const ts = await timesDaPelada(db, p.id);
         return { data: p.data, ehHoje: p.data === dataDe(agora()), times: ts.map((t) => ({ cor: t.cor, jogadores: t.jogadores.map((j) => j.nome) })) };
       },

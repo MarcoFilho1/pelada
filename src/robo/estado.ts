@@ -29,6 +29,7 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
     aberturaEnviada: d.aberturaEnviada ?? null,
     grupoId: d.grupoId ?? null,
     grupoNome: d.grupoNome ?? null,
+    ...(d.proposta ? { proposta: d.proposta } : {}),
   };
 }
 
