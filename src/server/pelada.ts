@@ -106,3 +106,9 @@ export async function definirEstadoManual(db: DB, peladaId: number, estado: Esta
     await tx.update(peladas).set({ estadoManual: estado }).where(eq(peladas.id, peladaId));
   });
 }
+
+/** A pelada pelo id (o link de anotar aponta para uma); `null` se não existe. */
+export async function peladaPorId(db: DB, id: number): Promise<Pelada | null> {
+  const [p] = await db.select().from(peladas).where(eq(peladas.id, id));
+  return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
+}

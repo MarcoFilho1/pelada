@@ -3,13 +3,13 @@
 import type { DB } from '@/db/client';
 import { parametroDoPeriodo } from '@/domain/periodo';
 import type { Periodo } from '@/domain/ranking';
-import { dataDe, nomeDoMes } from '@/domain/tempo';
+import { dataDe, diaMes, nomeDoMes } from '@/domain/tempo';
 import { timesDaPelada } from '@/server/times';
 import type { Consulta } from './comandos';
-import { EMOJI_COR } from './sorteio-zap';
-import { ordenarArtilharia, peladaDaNoite, rankingDoPeriodoPedido } from './ferramentas';
+import { EMOJI_COR, peladaDaSemana } from './sorteio-zap';
+import { ordenarArtilharia, rankingDoPeriodoPedido } from './ferramentas';
 
-export const TEXTO_SEM_TIMES = '👕 Os times de hoje ainda não foram sorteados.';
+export const TEXTO_SEM_TIMES = '👕 Os times da quarta ainda não foram sorteados.';
 
 /** "novembro" (mês atual) ou "geral"; o ano só aparece se um dia o período for um ano. */
 function rotulo(p: Periodo): string {
@@ -25,12 +25,14 @@ function topo(titulo: string, p: Periodo, linhas: { nome: string; valor: number 
 }
 
 async function textoDosTimes(db: DB, now: Date): Promise<string> {
-  const p = await peladaDaNoite(db, now);
-  if (!p || p.data !== dataDe(now)) return TEXTO_SEM_TIMES;
+  // Os times da pelada da semana: na quarta, os de hoje; antes, os já confirmados para a próxima quarta.
+  const p = await peladaDaSemana(db, now);
+  if (!p) return TEXTO_SEM_TIMES;
   const ts = await timesDaPelada(db, p.id);
   if (!ts.length) return TEXTO_SEM_TIMES;
+  const titulo = p.data === dataDe(now) ? '👕 Times de hoje:' : `👕 Times de quarta, ${diaMes(p.data)}:`;
   const blocos = ts.map((t) => [`${EMOJI_COR[t.cor]} ${maiuscula(t.cor)}`, ...t.jogadores.map((j) => `- ${j.nome}`), ...t.completes.map(() => '- COMPLETE')].join('\n'));
-  return `👕 Times de hoje:\n\n${blocos.join('\n\n')}`;
+  return `${titulo}\n\n${blocos.join('\n\n')}`;
 }
 
 export async function consultar(db: DB, tipo: Consulta, now: Date): Promise<string> {

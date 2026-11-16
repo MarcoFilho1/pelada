@@ -322,7 +322,7 @@ async function laco(): Promise<void> {
         notas: () => textoDasNotas(db),
         linkAnotar: async (quem, n) => {
           const r = await criarLinkAnotador(db, quem, n);
-          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 Hoje não tem pelada para anotar.' };
+          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 A lista da próxima quarta ainda não abriu; o link de anotar sai quando ela abrir.' };
         },
         mudarNota: (nome, nota) => mudarNota(db, nome, nota),
         urlSite,

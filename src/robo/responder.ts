@@ -28,7 +28,7 @@ import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from '.
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
-import { ehAdmin, montarProposta, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos } from './sorteio-zap';
+import { daQuarta, ehAdmin, montarProposta, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos } from './sorteio-zap';
 
 export type MensagemRecebida = {
   grupoId: string;
@@ -309,7 +309,7 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
         await avisarOutros(c, texto, [tel]);
         return texto;
       }
-      const anuncio = `🏆 Times da noite:\n\n${proposta.blocos}`;
+      const anuncio = `🏆 Times${proposta.data ? daQuarta(proposta.data) : ' da noite'}:\n\n${proposta.blocos}`;
       if (!m.privado) {
         await avisarOutros(c, `🏆 ${nome} confirmou e os times foram salvos no site e mandados no grupo.`, [tel]);
         return anuncio;

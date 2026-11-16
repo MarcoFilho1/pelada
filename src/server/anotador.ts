@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { linksAnotador, partidas, peladas } from '@/db/schema';
-import { dataDe } from '@/domain/tempo';
+import { proximaQuarta } from '@/domain/tempo';
 
 export { COOKIE_ANOTADOR } from './token';
 
@@ -24,11 +24,12 @@ export function vencimentoDoLink(dataPelada: string): Date {
 export type LinkCriado = { ok: true; chave: string; expiraEm: Date } | { ok: false; motivo: 'sem_pelada_hoje' };
 
 /**
- * Cria o link da pelada de hoje (sem pelada hoje: recusa) e revoga os anteriores dela.
+ * Cria o link da pelada da semana (lista ainda não aberta: recusa) e revoga os anteriores dela.
  * `criadoPor`: o nome de quem pediu, para o registro (nunca o telefone).
  */
 export async function criarLinkAnotador(db: DB, criadoPor: string, now: Date): Promise<LinkCriado> {
-  const [p] = await db.select({ id: peladas.id, data: peladas.data }).from(peladas).where(eq(peladas.data, dataDe(now)));
+  // A pelada da semana (a próxima quarta, ou a de hoje na quarta): o link pode ser gerado antes, para testar.
+  const [p] = await db.select({ id: peladas.id, data: peladas.data }).from(peladas).where(eq(peladas.data, proximaQuarta(now)));
   if (!p) return { ok: false, motivo: 'sem_pelada_hoje' };
   const chave = randomBytes(32).toString('base64url');
   const expiraEm = vencimentoDoLink(p.data);

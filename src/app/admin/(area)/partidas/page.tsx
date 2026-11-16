@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { dataDe, diaMes } from '@/domain/tempo';
 import { filaDeTimes, historicoDaPelada, partidaAoVivo, partidaEmAndamento, partidasAbertasDeOutrasPeladas } from '@/server/partidas';
-import { peladaDoDia } from '@/server/pelada';
+import { peladaDoDia, peladaPorId } from '@/server/pelada';
 import { acessoNaPelada, LINK_VENCIDO, lerAcessoPartidas } from '@/server/sessao';
 import { timesDaPelada } from '@/server/times';
 import { Esquecidas, PartidasAdmin } from './partidas-admin';
@@ -15,10 +15,10 @@ export default async function PartidasPage() {
   const now = new Date();
   const acesso = await lerAcessoPartidas(db, now);
   if (!acesso) redirect('/admin/entrar');
-  const pelada = await peladaDoDia(db, now);
-  // O link de anotar vale só para a pelada dele.
-  if (!acessoNaPelada(acesso, pelada?.id ?? null)) redirect(LINK_VENCIDO);
   const anotador = acesso.tipo === 'anotador';
+  // O anotador vê a pelada do link (pode ter sido gerado antes da quarta); o admin, a do dia.
+  const pelada = anotador ? await peladaPorId(db, acesso.peladaId) : await peladaDoDia(db, now);
+  if (!acessoNaPelada(acesso, pelada?.id ?? null)) redirect(LINK_VENCIDO);
   // Partida que ninguém encerrou noutra pelada: aparece aqui para não se perder (só para o admin).
   const esquecidas = anotador ? [] : (await partidasAbertasDeOutrasPeladas(db, pelada?.id ?? null)).map((p) => ({ ...p, data: diaMes(p.data) }));
 
