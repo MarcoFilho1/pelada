@@ -6,7 +6,7 @@ import type { EstadoDaSemana } from '@/server/presencas';
 
 export type AcaoNaLista = 'adicionar' | 'confirmar' | 'remover';
 export type Consulta = 'artilheiro' | 'garcom' | 'ranking' | 'times';
-type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sim' | 'anotar' | Consulta;
+type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sim' | 'anotar' | 'mandar' | Consulta;
 
 export type Comando =
   | { tipo: Simples }
@@ -57,6 +57,12 @@ const PALAVRAS: Record<string, Simples> = {
   'link pra anotar': 'anotar',
   'link do anotador': 'anotar',
   anotador: 'anotar',
+  mandar: 'mandar',
+  'pode mandar': 'mandar',
+  'mandar no grupo': 'mandar',
+  'manda no grupo': 'mandar',
+  'pode mandar no grupo': 'mandar',
+  'mandar os times': 'mandar',
 };
 
 export const TEXTO_SO_3_OU_4 = '🤔 Só sorteio em 3 ou 4 times.';
@@ -190,6 +196,7 @@ export const TEXTO_AJUDA_PRIVADO = [
   '🎲 sortear (ou sortear 3 times) — proposta de times',
   '📥 importar e os times colados embaixo — times feitos fora',
   '✅ sim — confirma a proposta; valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma)',
+  '📣 mandar — quem propôs manda os times confirmados no grupo',
   '👕 times — a proposta esperando confirmação, ou os times confirmados',
   '📝 anotar — link para anotar as partidas de hoje, sem senha',
   '',

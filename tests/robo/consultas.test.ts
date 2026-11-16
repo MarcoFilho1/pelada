@@ -75,14 +75,22 @@ describe('consultas do robô (artilheiro, garçom, ranking, times)', () => {
 
   it('times: só os da pelada de hoje, com COMPLETE; sem times, avisa', async () => {
     const quarta = new Date('2026-11-11T19:00:00-03:00');
-    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times de hoje ainda não foram sorteados.');
+    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times da quarta ainda não foram sorteados.');
     await novembroJogado(); // pelada de 04/11 tem times, mas não é hoje
-    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times de hoje ainda não foram sorteados.');
+    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times da quarta ainda não foram sorteados.');
     const [p] = await db.insert(peladas).values({ data: '2026-11-11' }).returning({ id: peladas.id });
-    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times de hoje ainda não foram sorteados.');
+    expect(await consultar(db, 'times', quarta)).toBe('👕 Os times da quarta ainda não foram sorteados.');
     await salvarTimesDefinitivos(db, p.id, [[ana, bia, caio], [davi]], [[], [3]]);
     expect(await consultar(db, 'times', quarta)).toBe('👕 Times de hoje:\n\n🔵 Azul\n- Ana\n- Bia\n- Caio\n\n🟠 Laranja\n- Davi\n- COMPLETE');
     await db.update(jogadores).set({ nome: 'Ana Maria' }).where(eq(jogadores.id, ana));
     expect(await consultar(db, 'times', quarta)).toContain('- Ana Maria');
+  });
+
+  it('times antes da quarta: os já confirmados para a próxima quarta, com a data', async () => {
+    const segunda = new Date('2026-11-09T15:00:00-03:00');
+    const [p] = await db.insert(peladas).values({ data: '2026-11-11' }).returning({ id: peladas.id });
+    expect(await consultar(db, 'times', segunda)).toBe('👕 Os times da quarta ainda não foram sorteados.');
+    await salvarTimesDefinitivos(db, p.id, [[ana, bia], [caio, davi]], [[], []]);
+    expect(await consultar(db, 'times', segunda)).toBe('👕 Times de quarta, 11/11:\n\n🔵 Azul\n- Ana\n- Bia\n\n🟠 Laranja\n- Caio\n- Davi');
   });
 });

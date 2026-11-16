@@ -7,6 +7,10 @@ import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
 import {
   TEXTO_IMPORTAR_NO_PRIVADO,
+  PERGUNTA_MANDAR,
+  TEXTO_MANDADOS,
+  TEXTO_MANDAR_NO_PRIVADO,
+  TEXTO_SEM_ANUNCIO,
   TEXTO_PROPOSTA_VENCIDA,
   TEXTO_SALVOS,
   TEXTO_SEM_PROPOSTA,
@@ -17,7 +21,7 @@ import {
 import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
-import { INSTRUCOES_VOTO, montarProposta, TEXTO_SO_ADMIN, type Proposta, type TimesPropostos } from '@/robo/sorteio-zap';
+import { INSTRUCOES_VOTO, montarProposta, TEXTO_SO_ADMIN, type AnuncioPendente, type Proposta, type TimesPropostos } from '@/robo/sorteio-zap';
 import { TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO } from '@/robo/cadastro-zap';
 
 const t = (s: string) => new Date(`${s}-03:00`);
@@ -71,6 +75,7 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     ia: { chave: 'chave-falsa', modelo: 'claude-haiku-5-5' },
     ultimo: null as Envio | null,
     proposta: { atual: null as Proposta | null },
+    anuncio: { atual: null as AnuncioPendente | null },
     lerLista: vi.fn(async () => lista),
     propor: vi.fn(async (): Promise<TimesPropostos | { erro: string }> => TIMES),
     importar: vi.fn(async (): Promise<TimesPropostos | { erro: string }> => TIMES),
@@ -294,7 +299,7 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.avisarOrganizadores).not.toHaveBeenCalled();
   });
 
-  it('no privado: 1º sim de quem sorteou conta e avisa os outros; 2º sim de outro organizador salva, anuncia no grupo e avisa', async () => {
+  it('no privado: 1º sim de quem sorteou conta e avisa os outros; 2º sim de outro organizador salva, NÃO manda no grupo e pergunta a quem sorteou', async () => {
     const c = ctx({}, relogio.agora);
     expect((await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(textoProposta('Marco'));
     expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('✅ Confirmado! Falta 1 organizador confirmar.');
@@ -303,22 +308,64 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.salvar).not.toHaveBeenCalled();
 
     const guardada = c.proposta.atual;
-    expect((await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe(TEXTO_SALVOS);
+    expect((await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe(`${TEXTO_SALVOS}\nMarco decide quando mandar no grupo.`);
     expect(c.salvar).toHaveBeenCalledWith(expect.any(Date), { ...guardada, votos: [ADMIN, OUTRO_ADMIN] });
-    expect(c.anunciarNoGrupo).toHaveBeenCalledWith(`🏆 Times da noite:\n\n${BLOCOS}`);
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(`🏆 Pepe confirmou. ${TEXTO_SALVOS}`, [OUTRO_ADMIN]);
+    expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
+    // Só quem sorteou recebe a pergunta (todos os outros ficam no `exceto`).
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(`🏆 Pepe confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, [OUTRO_ADMIN]);
+    expect(c.anuncio.atual).toMatchObject({ texto: `🏆 Times da noite:\n\n${BLOCOS}`, quemPropos: ADMIN });
     expect(c.proposta.atual).toBeNull();
     expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_PROPOSTA);
   });
 
-  it('2º sim no grupo: a resposta no grupo já é o anúncio (com as notas); os outros recebem aviso no privado', async () => {
+  it('2º sim no grupo: salva, mas o grupo não recebe os times; quem sorteou recebe a pergunta no privado', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sortear', c, ADMIN);
     await passo('sim', c, ADMIN);
     const r = await passo('sim', c, OUTRO_ADMIN, { remetenteNome: 'Pepe' });
-    expect(r?.texto).toBe(`🏆 Times da noite:\n\n${BLOCOS}`);
+    expect(r?.texto).toBe(`${TEXTO_SALVOS}\nZeca decide quando mandar no grupo.`);
+    expect(r?.texto).not.toContain('Azul');
     expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Pepe confirmou e os times foram salvos no site e mandados no grupo.', [OUTRO_ADMIN]);
+  });
+
+  it('quem sorteou dá o 2º sim no privado: a pergunta de mandar vem na resposta; o outro organizador só é avisado', async () => {
+    const c = ctx({ admins: [ADMIN, OUTRO_ADMIN, QUALQUER] }, relogio.agora);
+    await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
+    expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(`${TEXTO_SALVOS}\n${PERGUNTA_MANDAR}`);
+    // Os outros dois (inclusive quem já votou) ficam sabendo; quem sorteou já recebeu a pergunta na resposta.
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Times confirmados e salvos no site. Marco decide quando mandar no grupo.', [ADMIN]);
+  });
+
+  it('mandar: só quem sorteou, só no privado; aí os times vão ao grupo e os outros são avisados', async () => {
+    const c = ctx({}, relogio.agora);
+    await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
+    expect((await passo('mandar', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe('🔐 Só Marco, que propôs os times, manda no grupo.');
+    expect((await passo('mandar', c, ADMIN))?.texto).toBe(TEXTO_MANDAR_NO_PRIVADO);
+    expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
+    expect((await passo('pode mandar', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_MANDADOS);
+    expect(c.anunciarNoGrupo).toHaveBeenCalledWith(`🏆 Times da noite:\n\n${BLOCOS}`);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('📣 Marco mandou os times no grupo.', [ADMIN]);
+    expect(c.anuncio.atual).toBeNull();
+    expect((await passo('mandar', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_ANUNCIO);
+  });
+
+  it('enquanto os times salvos esperam o mandar, "times" no grupo não mostra nada; no privado mostra; um sortear novo descarta', async () => {
+    const c = ctx({ consultar: vi.fn(async () => '👕 Times de quarta, 11/11:') }, relogio.agora);
+    c.anuncio.atual = { texto: '🏆 Times da noite:\n\nX', quemPropos: ADMIN, quemProposNome: 'Marco', peladaId: 1, criadoEm: relogio.agora() };
+    expect((await passo('times', c, QUALQUER))?.texto).toBe(TEXTO_TIMES_INDEFINIDOS);
+    expect((await passo('times', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto).toBe('✅ Times salvos, esperando Marco mandar no grupo:\n\n🏆 Times da noite:\n\nX');
+    await passo('sortear', c, ADMIN);
+    expect(c.anuncio.atual).toBeNull();
+  });
+
+  it('falha ao mandar no grupo: avisa e deixa tentar de novo', async () => {
+    const c = ctx({ anunciarNoGrupo: vi.fn(async () => { throw new Error('caiu'); }) }, relogio.agora);
+    c.anuncio.atual = { texto: 'T', quemPropos: ADMIN, quemProposNome: 'Marco', peladaId: 1, criadoEm: relogio.agora() };
+    expect((await passo('mandar', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe('😕 Não consegui mandar no grupo agora. Tente *mandar* de novo daqui a pouco.');
+    expect(c.anuncio.atual).not.toBeNull();
   });
 
   it('o site recusa ao salvar: a proposta acaba e todos recebem o motivo', async () => {
@@ -824,7 +871,7 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
     const quando = t('2026-11-10T15:40:00');
     const noPrivado = { privado: true, grupoId: `${JONAS}@s.whatsapp.net`, mencionaORobo: false };
     const c = ctx({ calvinho: [JONAS], admins: [JONAS, ADMIN], proposta: { atual: proposta({ criadaEm: quando, votos: [ADMIN] }) } });
-    expect(SALVOS_CALVINHO).toContain((await responder(doJonas('sim', noPrivado), c))!.texto);
+    expect(SALVOS_CALVINHO).toContain((await responder(doJonas('sim', noPrivado), c))!.texto.split('\n')[0]);
     const erro = ctx({ calvinho: [JONAS], admins: [JONAS, ADMIN], proposta: { atual: proposta({ criadaEm: quando, votos: [ADMIN] }) }, salvar: vi.fn(async () => ({ erro: '⚠️ Deu ruim.' })) });
     expect((await responder(doJonas('sim', noPrivado), erro))!.texto).toBe('⚠️ Deu ruim.\nOs times não foram salvos.');
   });
@@ -1153,7 +1200,7 @@ describe('privado: conversa em mensagens curtas e tudo por linguagem natural', (
     const c = ctx();
     c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), quemPropos: OUTRO_ADMIN, votos: [OUTRO_ADMIN] });
     const f = ferramentasDoOrganizador(noPrivado('pode confirmar'), c).find((x) => x.nome === 'confirmar_times')!;
-    expect(((await f.executar({})) as TextoPronto).texto).toBe(TEXTO_SALVOS);
+    expect(((await f.executar({})) as TextoPronto).texto).toBe(`${TEXTO_SALVOS}\nZeca decide quando mandar no grupo.`);
     expect(c.salvar).toHaveBeenCalledWith(expect.any(Date), expect.objectContaining({ votos: [OUTRO_ADMIN, ADMIN] }));
   });
 

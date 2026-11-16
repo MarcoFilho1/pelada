@@ -14,7 +14,10 @@ import {
   salvarProposta,
   sortearTimesDaNoite,
   TEXTO_SO_ADMIN,
+  TEXTO_SEM_PELADA_DA_SEMANA,
   avisoDeDuplas,
+  anuncioDeGuardado,
+  anuncioParaGuardar,
   VALIDADE_MS,
   votar,
   VOTOS_NECESSARIOS,
@@ -82,19 +85,25 @@ describe('sortearTimesDaNoite + montarProposta', () => {
     const antes = await tudo();
     const p = await proposta();
     expect(await tudo()).toBe(antes);
-    expect(p).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, quemProposNome: 'Marco', criadaEm: QUARTA, peladaId, votos: [] });
+    expect(p).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, quemProposNome: 'Marco', criadaEm: QUARTA, peladaId, votos: [], data: '2026-11-11' });
     expect(p.elencos.flat()).toHaveLength(10);
     expect(p.completes).toHaveLength(p.elencos.length);
     expect(p.blocos).toMatch(/^🔵 Azul \(\d+,\d\)\n- \S+ \d,\d/);
     expect(p.blocos).toContain('- COMPLETE ');
     expect(p.blocos).toMatch(/\n\nDiferença: \d+,\d$/);
-    expect(p.texto).toBe(`🎲 Times sorteados por Marco:\n\n${p.blocos}\n\n${INSTRUCOES_VOTO}`);
+    expect(p.texto).toBe(`🎲 Times sorteados por Marco para quarta, 11/11:\n\n${p.blocos}\n\n${INSTRUCOES_VOTO}`);
   });
 
-  it('sem pelada hoje ou com poucos confirmados devolve erro e não cria nada', async () => {
+  it('vale em qualquer dia para a pelada da semana (ex.: na terça, a de quarta)', async () => {
+    const r = (await sortearTimesDaNoite(db, new Date('2026-11-10T15:00:00Z'), rng)) as TimesPropostos;
+    expect(r).toMatchObject({ peladaId, data: '2026-11-11' });
+  });
+
+  it('lista da próxima quarta ainda não aberta, ou poucos confirmados: erro e não cria nada', async () => {
     const antes = await tudo();
-    for (const d of ['2026-11-18T15:00:00Z', '2026-11-12T15:00:00Z', '2026-11-10T15:00:00Z']) {
-      expect(await sortearTimesDaNoite(db, new Date(d), rng)).toEqual({ erro: '📅 Hoje não tem pelada para sortear.' });
+    // Quinta e quarta seguinte: a próxima quarta (18/11) ainda não tem pelada. Quarta depois das 22:30 também já é a seguinte.
+    for (const d of ['2026-11-18T15:00:00Z', '2026-11-12T15:00:00Z', '2026-11-12T01:40:00Z']) {
+      expect(await sortearTimesDaNoite(db, new Date(d), rng)).toEqual({ erro: TEXTO_SEM_PELADA_DA_SEMANA });
     }
     expect(await tudo()).toBe(antes);
     await db.execute(sql`update presencas set status = 'removido' where id > 1`);
@@ -173,7 +182,7 @@ describe('importarTimesColados', () => {
     expect(r.times.map((t) => t.jogadores.map((j) => j.nome))).toEqual([['Ana', 'Beto', 'Caio', 'Davi'], ['Edu', 'Fabio', 'Gil', 'Hugo']]);
     expect(r.times[0].soma).toBe(2 + 3 + 4 + 5);
     const p = montarProposta('importado', quem, QUARTA, r);
-    expect(p.texto.startsWith('📥 Times importados por Marco:\n\n🔵 Azul (14,0)')).toBe(true);
+    expect(p.texto.startsWith('📥 Times importados por Marco para quarta, 11/11:\n\n🔵 Azul (14,0)')).toBe(true);
     // Importado salva sem conferir a lista (os times vieram de fora).
     expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
   });
@@ -192,8 +201,8 @@ describe('importarTimesColados', () => {
     });
   });
 
-  it('sem pelada hoje', async () => {
-    expect(await importarTimesColados(db, new Date('2026-11-12T15:00:00Z'), colado)).toEqual({ erro: '📅 Hoje não tem pelada para importar times.' });
+  it('lista da próxima quarta não aberta', async () => {
+    expect(await importarTimesColados(db, new Date('2026-11-12T15:00:00Z'), colado)).toEqual({ erro: TEXTO_SEM_PELADA_DA_SEMANA });
   });
 });
 
@@ -245,5 +254,14 @@ describe('duplas separadas no robô', () => {
     ];
     expect(avisoDeDuplas(times, [[1, 2]])).toBe('⚠️ Luiz e Jonas estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.');
     expect(avisoDeDuplas(times, [[1, 3]])).toBeUndefined();
+  });
+});
+
+describe('anúncio pendente (estado.json)', () => {
+  it('ida e volta; formato estranho vira null', () => {
+    const a = { texto: 'T', quemPropos: ADMIN, quemProposNome: 'Marco', peladaId: 1, criadoEm: QUARTA };
+    expect(anuncioDeGuardado(JSON.parse(JSON.stringify(anuncioParaGuardar(a))))).toEqual(a);
+    expect(anuncioParaGuardar(null)).toBeNull();
+    for (const ruim of [null, {}, { ...a, criadoEm: 'x' }, { ...a, peladaId: '1' }]) expect(anuncioDeGuardado(ruim)).toBeNull();
   });
 });

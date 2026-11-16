@@ -25,7 +25,7 @@ import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
-import { deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, type Proposta } from './sorteio-zap';
+import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -226,6 +226,8 @@ async function laco(): Promise<void> {
   // A proposta de times volta do estado depois de um reinício (com os votos e a validade).
   const proposta = { atual: deGuardada(estado.proposta) as Proposta | null };
   let propostaGravada = proposta.atual;
+  const anuncio = { atual: anuncioDeGuardado(estado.anuncio) };
+  let anuncioGravado = anuncio.atual;
   const gravar = (novo: typeof estado) => {
     try {
       gravarEstado(arquivoEstado, novo);
@@ -308,6 +310,7 @@ async function laco(): Promise<void> {
         ia,
         ultimo: estado.ultimo,
         proposta,
+        anuncio,
         // Fora da janela só lê (nunca cria a pelada da semana), como o ensaio.
         lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
         propor: (n, times) => sortearTimesDaNoite(db, n, Math.random, times),
@@ -322,19 +325,20 @@ async function laco(): Promise<void> {
         notas: () => textoDasNotas(db),
         linkAnotar: async (quem, n) => {
           const r = await criarLinkAnotador(db, quem, n);
-          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 Hoje não tem pelada para anotar.' };
+          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 A lista da próxima quarta ainda não abriu; o link de anotar sai quando ela abrir.' };
         },
         mudarNota: (nome, nota) => mudarNota(db, nome, nota),
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado }) =>
-          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => proposta.atual !== null && !propostaVencida(proposta.atual, agora()) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
+          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         log,
       });
-      if (proposta.atual !== propostaGravada) {
+      if (proposta.atual !== propostaGravada || anuncio.atual !== anuncioGravado) {
         propostaGravada = proposta.atual;
-        estado = { ...estado, proposta: paraGuardar(proposta.atual) };
+        anuncioGravado = anuncio.atual;
+        estado = { ...estado, proposta: paraGuardar(proposta.atual), anuncio: anuncioParaGuardar(anuncio.atual) };
         gravar(estado);
       }
       if (!r) return;

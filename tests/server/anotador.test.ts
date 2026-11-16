@@ -36,6 +36,14 @@ describe('criarLinkAnotador / validarChaveAnotador', () => {
     expect(JSON.stringify(linhas)).not.toContain(r.chave);
   });
 
+  it('antes da quarta, o link sai para a pelada da semana e vale até as 3h depois dela', async () => {
+    const [p] = await db.insert(peladas).values({ data: '2026-11-18' }).returning();
+    const r = await criarLinkAnotador(db, 'Marco', new Date('2026-11-16T15:00:00-03:00'));
+    if (!r.ok) throw new Error('esperava link');
+    expect(r.expiraEm.toISOString()).toBe('2026-11-19T06:00:00.000Z');
+    expect(await validarChaveAnotador(db, r.chave, new Date('2026-11-16T16:00:00-03:00'))).toMatchObject({ peladaId: p.id });
+  });
+
   it('um link novo revoga o anterior da mesma pelada', async () => {
     await db.insert(peladas).values({ data: '2026-11-18' });
     const a = await criarLinkAnotador(db, 'Marco', QUARTA);

@@ -1,10 +1,10 @@
-import { desc, lte } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { DB } from '@/db/client';
 import { peladas } from '@/db/schema';
 import { previaDosTimes, TAM_MAX_TEXTO_COLADO, type Previa } from '@/domain/importarTimes';
 import { CORES, diferenca, duplasJuntas, formatarNota, sortearDaNoite, type QtdDeTimes, type Separar, type TimeSorteado } from '@/domain/sorteio';
 import { paresSeparados } from '@/server/duplas';
-import { dataDe } from '@/domain/tempo';
+import { diaMes, proximaQuarta } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { listarJogadores } from '@/server/jogadores';
 import { participantesPadrao, salvarTimesDefinitivos } from '@/server/times';
@@ -36,10 +36,16 @@ export type Proposta = {
   votos: string[];
   /** Dupla separada junta no mesmo time: vai só no privado dos organizadores (o grupo não vê a regra). */
   aviso?: string;
+  /** A quarta da pelada ('AAAA-MM-DD'). */
+  data?: string;
 };
 
+/** " de quarta, 18/11" para os títulos (vazio sem data). */
+export const daQuarta = (data?: string) => (data ? ` de quarta, ${diaMes(data)}` : '');
+
 /** O que o banco devolve para montar uma proposta: os times já com nomes e notas. */
-export type TimesPropostos = { peladaId: number; times: TimeSorteado[]; aviso?: string };
+/** `data`: a quarta da pelada ('AAAA-MM-DD'), que vai no título da proposta e do anúncio. */
+export type TimesPropostos = { peladaId: number; data?: string; times: TimeSorteado[]; aviso?: string };
 
 /** "⚠️ Luiz e Jonas estão no mesmo time." para as duplas separadas que ficaram juntas; `undefined` se nenhuma. */
 export function avisoDeDuplas(times: TimeSorteado[], separar: Separar): string | undefined {
@@ -92,7 +98,21 @@ export function blocosDosTimes(times: TimeSorteado[]): string {
 }
 
 export const INSTRUCOES_VOTO =
-  '✅ Responda *sim* para confirmar. Os times valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma). A proposta vale por 60 minutos; *sortear* de novo troca a proposta.';
+  '✅ Responda *sim* para confirmar. Os times valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma); aí eu salvo no site e quem propôs decide quando mandar no grupo. A proposta vale por 60 minutos; *sortear* de novo troca a proposta.';
+
+/** Times confirmados e salvos, esperando quem propôs mandar no grupo (com *mandar*). */
+export type AnuncioPendente = { texto: string; quemPropos: string; quemProposNome: string; peladaId: number; criadoEm: Date };
+export type AnuncioGuardado = Omit<AnuncioPendente, 'criadoEm'> & { criadoEm: string };
+
+export const anuncioParaGuardar = (a: AnuncioPendente | null): AnuncioGuardado | null => (a ? { ...a, criadoEm: a.criadoEm.toISOString() } : null);
+
+export function anuncioDeGuardado(x: unknown): AnuncioPendente | null {
+  if (!x || typeof x !== 'object') return null;
+  const g = x as Partial<AnuncioGuardado>;
+  const criadoEm = new Date(g.criadoEm ?? '');
+  if (typeof g.texto !== 'string' || typeof g.quemPropos !== 'string' || typeof g.quemProposNome !== 'string' || typeof g.peladaId !== 'number' || Number.isNaN(criadoEm.getTime())) return null;
+  return { ...(g as AnuncioGuardado), criadoEm };
+}
 
 /** Monta a proposta (sem votos) a partir dos times já com nomes e notas. */
 export function montarProposta(
@@ -102,7 +122,7 @@ export function montarProposta(
   t: TimesPropostos,
 ): Proposta {
   const blocos = blocosDosTimes(t.times);
-  const titulo = origem === 'sorteio' ? `🎲 Times sorteados por ${quem.nome}:` : `📥 Times importados por ${quem.nome}:`;
+  const titulo = `${origem === 'sorteio' ? '🎲 Times sorteados' : '📥 Times importados'} por ${quem.nome}${t.data ? ` para quarta, ${diaMes(t.data)}` : ''}:`;
   return {
     origem,
     quemPropos: quem.telefone,
@@ -115,6 +135,7 @@ export function montarProposta(
     texto: `${titulo}\n\n${blocos}\n\n${INSTRUCOES_VOTO}`,
     votos: [],
     ...(t.aviso ? { aviso: t.aviso } : {}),
+    ...(t.data ? { data: t.data } : {}),
   };
 }
 
@@ -132,14 +153,16 @@ export function votar(p: Proposta, telefone: string, now: Date): { proposta: Pro
   return { proposta, resultado: faltam(votos) === 0 ? { tipo: 'fechou' } : { tipo: 'contou', faltam: faltam(votos) } };
 }
 
-/** A pelada de hoje (só lê): o `peladaDoDia` do site cria a da quarta e, nos outros dias, devolve a última. */
-async function peladaDeHoje(db: DB, now: Date): Promise<{ id: number } | null> {
-  const hoje = dataDe(now);
-  const [p] = await db.select().from(peladas).where(lte(peladas.data, hoje)).orderBy(desc(peladas.data)).limit(1);
-  return p && p.data === hoje ? p : null;
+/**
+ * A pelada da semana (a próxima quarta; na quarta, a de hoje até o fim do jogo), se a lista dela já abriu. Só lê.
+ * Sortear e importar valem em qualquer dia para ela (pedido do usuário: dá para testar e adiantar os times).
+ */
+export async function peladaDaSemana(db: DB, now: Date): Promise<{ id: number; data: string } | null> {
+  const [p] = await db.select({ id: peladas.id, data: peladas.data }).from(peladas).where(eq(peladas.data, proximaQuarta(now)));
+  return p ?? null;
 }
 
-export const TEXTO_SEM_PELADA_HOJE = '📅 Hoje não tem pelada para sortear.';
+export const TEXTO_SEM_PELADA_DA_SEMANA = '📅 A lista da próxima quarta ainda não abriu. Sortear e importar ficam disponíveis quando ela abrir (segunda).';
 
 /**
  * Sorteia os times da noite (mesma regra do site: `times` times, cada um completado com COMPLETE até 4) sem gravar
@@ -151,14 +174,14 @@ export async function sortearTimesDaNoite(
   rng: () => number = Math.random,
   times: QtdDeTimes = 4,
 ): Promise<TimesPropostos | { erro: string }> {
-  const p = await peladaDeHoje(db, now);
-  if (!p) return { erro: TEXTO_SEM_PELADA_HOJE };
+  const p = await peladaDaSemana(db, now);
+  if (!p) return { erro: TEXTO_SEM_PELADA_DA_SEMANA };
   const participantes = await participantesPadrao(db, p.id, now);
   if (participantes.length < 2) return { erro: '👥 Poucos confirmados para sortear.' };
   const separar = await paresSeparados(db);
   const sorteados = sortearDaNoite(participantes, times, rng, separar);
   const aviso = avisoDeDuplas(sorteados, separar);
-  return { peladaId: p.id, times: sorteados, ...(aviso ? { aviso } : {}) };
+  return { peladaId: p.id, data: p.data, times: sorteados, ...(aviso ? { aviso } : {}) };
 }
 
 /** Texto do "não deu para importar": cada nome com problema e o que fazer. */
@@ -174,8 +197,8 @@ function problemasDaPrevia(previa: Previa): string {
 
 /** Os times colados (o formato do "Importar times" do site), com os nomes casados aos jogadores ativos. Não grava nada. */
 export async function importarTimesColados(db: DB, now: Date, texto: string): Promise<TimesPropostos | { erro: string }> {
-  const p = await peladaDeHoje(db, now);
-  if (!p) return { erro: '📅 Hoje não tem pelada para importar times.' };
+  const p = await peladaDaSemana(db, now);
+  if (!p) return { erro: TEXTO_SEM_PELADA_DA_SEMANA };
   if (texto.length > TAM_MAX_TEXTO_COLADO) return { erro: '🤔 Texto grande demais para importar.' };
   const ativos = (await listarJogadores(db, { incluirInativos: false })).map((j) => ({ id: j.id, nome: j.nome, nota: j.nota }));
   const r = previaDosTimes(texto, ativos);
@@ -187,7 +210,7 @@ export async function importarTimesColados(db: DB, now: Date, texto: string): Pr
   });
   // Times de fora não são mexidos: dupla separada junta só gera o aviso para os organizadores.
   const aviso = avisoDeDuplas(times, await paresSeparados(db));
-  return { peladaId: p.id, times, ...(aviso ? { aviso } : {}) };
+  return { peladaId: p.id, data: p.data, times, ...(aviso ? { aviso } : {}) };
 }
 
 /**
@@ -233,7 +256,8 @@ export function deGuardada(x: unknown): Proposta | null {
     typeof g.texto !== 'string' ||
     !Array.isArray(g.votos) ||
     !g.votos.every((v) => typeof v === 'string') ||
-    (g.aviso !== undefined && typeof g.aviso !== 'string')
+    (g.aviso !== undefined && typeof g.aviso !== 'string') ||
+    (g.data !== undefined && typeof g.data !== 'string')
   ) {
     return null;
   }
