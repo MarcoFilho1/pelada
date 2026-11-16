@@ -41,6 +41,9 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
 
 - Mensagem no privado vinda de um número de `ROBO_ADMINS` é atendida, sem precisar marcar o robô.
   Remetente que só aparece como LID (sem telefone) não é reconhecido: o robô ignora e registra no log.
+  O leitor de mensagens (`lerMensagemRecebida`) hoje descarta tudo que não é grupo; ganha um caminho
+  para o privado. Se o teste ao vivo mostrar privados só com LID, a ligação LID↔telefone que o WhatsApp
+  informa entra já na parte A (sem ela o canal não funciona).
 - Valem todos os comandos do grupo, mais os de organizador:
 
 | Comando | O que faz |
@@ -57,15 +60,16 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
 
 - Texto livre vai para a IA, com as ferramentas do grupo mais as de organizador (notas, mudar nota,
   cadastrar, sortear, importar, link de anotar). A IA nunca dá o voto (o `sim` continua só pelo comando).
-- **Notas só no privado:** nenhuma ferramenta da IA no grupo devolve nota. Quem constrói confere as
-  ferramentas atuais (ex.: `ranking_detalhado`) e tira a nota do que vai ao grupo.
+- As notas já são públicas no site (tela de Ranking), então o privado não esconde nada novo: ele só junta
+  as ferramentas de mexer em nota e cadastro num lugar onde só os organizadores mandam.
 - Freio e limite valem igual. O silêncio das 23h às 8h **não** vale no privado (só responde a quem
   escreveu; ninguém é acordado).
 
 ## Times com 2 de 3 (parte B)
 
-- **Uma proposta pendente por vez**, guardada no estado do robô no Mac (`estado.json`), para sobreviver a
-  reinício. Ela tem: os elencos e os COMPLETE (como a proposta de hoje), a pelada, a origem (sorteio ou
+- **Uma proposta pendente por vez**, guardada no estado do robô no Mac (`estado.json`; o `lerEstado` hoje
+  descarta campos desconhecidos e precisa aceitar o novo), para sobreviver a reinício: depois de reiniciar,
+  a proposta e os votos voltam, respeitando a validade. Ela tem: os elencos e os COMPLETE (como a proposta de hoje), a pelada, a origem (sorteio ou
   importação), quem propôs, a hora e os votos (telefones).
 - Uma proposta nova substitui a anterior e zera os votos. Os outros organizadores recebem um aviso no
   privado.
@@ -78,16 +82,23 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
   "você quis dizer") e pede para mandar de novo corrigido. Lido certinho, vira proposta como a do
   sorteio. Se a proposta juntar uma dupla separada, vai junto um aviso só no privado: "⚠️ Luiz e Jonas
   estão no mesmo time."
-- **Voto:** `sim` de um organizador conta uma vez. Cada voto novo é avisado no privado dos outros
+- **Voto:** `sim` de um organizador (reconhecido pelo telefone; sem telefone, não conta) conta uma vez.
+  O atalho de hoje (responder à mensagem do robô com `sim`, sem marcar) vale para qualquer um dos três
+  organizadores, não só para quem propôs; a ideia de "um só dono da proposta" (`adminTelefone`,
+  `simDeQuemPediu`) vira a lista de votos. Cada voto novo é avisado no privado dos outros
   ("✅ Jonas confirmou. Falta 1."). No segundo voto, o robô:
   1. salva os times pelo caminho do site (`salvarTimesDefinitivos`, com as mesmas recusas, como "a lista
-     mudou desde o sorteio");
+     mudou desde o sorteio" ou partidas já jogadas). Recusado: a proposta acaba e os três recebem o
+     motivo no privado;
   2. avisa os três no privado ("🏆 Times confirmados e salvos no site.");
   3. manda no grupo os times **sem notas** ("🏆 Times da noite:" e os times, no formato do `times`).
-- **Validade:** a proposta vence em 60 minutos ou quando outra a substitui. Voto em proposta vencida:
+- **Validade:** a proposta vence em 60 minutos ou quando outra a substitui (vale também para o sorteio
+  no grupo; hoje são 10 minutos). Voto em proposta vencida:
   "⌛ Essa proposta venceu. Peça *sortear* (ou *importar*) de novo."
-- **Sem vazamento:** `times` no grupo (comando e IA) só lê os times salvos no site. Proposta pendente:
-  "👕 Os times de hoje ainda não foram confirmados." Nenhuma ferramenta do grupo enxerga a proposta.
+- **Sem vazamento:** `times` no grupo (comando e IA) só lê os times salvos no site e nunca a proposta.
+  Sem times salvos, responde "👕 Os times de hoje ainda não foram definidos." (com ou sem proposta, para
+  não dar pista). Com times já salvos e um novo sorteio pendente, mostra os salvos, que seguem valendo até
+  o novo ser confirmado.
 - **Sorteio no grupo** (decisão do usuário de manter): o `sortear` de organizador no grupo mostra a
   proposta no grupo, como hoje, e entra na mesma regra de 2 de 3. Os votos valem com `sim` no grupo ou
   no privado, e ela é a mesma proposta única (substitui a do privado, e vice-versa).
@@ -95,12 +106,16 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
 ## Link temporário de anotar (parte C)
 
 - `anotar` no privado (ou pela IA no privado) cria uma chave aleatória (32 bytes) e responde
-  `…/anotar/<chave>`. O banco guarda só o hash da chave, a pelada, quem pediu e o vencimento: 23:59 do
-  dia da pelada, horário de Recife.
+  `…/anotar/<chave>`. Só no dia da pelada (a pelada de hoje); em outro dia: "📅 Hoje não tem pelada para
+  anotar." O banco guarda só o hash da chave, a pelada, quem pediu e o vencimento: 3h da manhã seguinte,
+  horário de Recife (cobre partidas que passam da meia-noite).
 - Pedir um link novo invalida o anterior da mesma pelada.
 - Quem abre o link ganha um cookie de anotador e cai na tela de partidas da noite. Com esse cookie:
   - **libera:** só as telas de partida (`/admin/partidas` e `/admin/partida/[id]`) e as ações delas
     (iniciar, anotar, desfazer, encerrar), e só para a pelada da chave;
+  - a cada página e ação, o site confere a chave no banco (vencida ou invalidada = sem acesso) e que a
+    partida é da pelada da chave. Hoje o `proxy.ts` e o `exigirAdmin()` das ações só aceitam o login de
+    organizador; os dois ganham o caminho do anotador só para essas rotas e ações;
   - **barra:** o resto da área de organizador e as outras ações (jogadores, notas, sorteio, mensalistas,
     admins), que continuam exigindo login de organizador.
 - Link vencido ou invalidado: página simples "Esse link de anotar venceu. Peça um novo a um
@@ -116,6 +131,7 @@ Adendo a `2026-11-16-robo-cadastrar-design.md`. Pedido do usuário em 16/11/2026
   fica com a de menor diferença que respeita as duplas. Se nem isso der (ex.: 2 times e 3 pessoas que
   se excluem), sorteia sem a regra e avisa só ao organizador.
 - O sorteio do site e o do robô passam as duplas. A proposta e o anúncio não citam a regra.
+- Mover jogador à mão entre os times no site não avisa nem bloqueia (é escolha do organizador).
 
 ## Ordem de entrega
 
@@ -130,7 +146,10 @@ separadas).
 - Os outros organizadores recebem no privado cada proposta nova e cada voto.
 - No grupo os times anunciados vão sem notas. A proposta do `sortear` no grupo continua como hoje
   (com notas), já que o usuário quis manter o sorteio lá.
-- Link de anotar: um válido por pelada, até 23:59.
+- Link de anotar: um válido por pelada, até as 3h da manhã seguinte; só no dia da pelada.
+- `times` no grupo sem times salvos diz "ainda não foram definidos", com ou sem proposta pendente.
+- Proposta recusada pelo site ao salvar (ex.: partidas já jogadas) acaba, e os três recebem o motivo.
+- Voto só conta com telefone reconhecido; LID sozinho não vota.
 - Importação com dupla separada junta: só um aviso no privado, não bloqueia.
 
 ## Riscos
