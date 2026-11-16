@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { ERRO_IA, perguntar, perguntarEmPartes, SISTEMA, type ClienteIA, type OpcoesIA } from '@/robo/ia';
+import { ERRO_IA, perguntar, perguntarEmPartes, SISTEMA, TEXTO_IA_FORA, type ClienteIA, type OpcoesIA } from '@/robo/ia';
 import { ErroDeFerramenta, TextoPronto, type Ferramenta } from '@/robo/ferramentas';
 
 const ERRO = '😕 Não consegui responder agora.';
@@ -154,7 +154,6 @@ describe('perguntar (Claude)', () => {
 
   it.each([
     ['RateLimitError', () => new Anthropic.RateLimitError(429, { type: 'error' }, 'muitas', new Headers())],
-    ['AuthenticationError', () => new Anthropic.AuthenticationError(401, { type: 'error' }, 'chave sk-ant-segredo inválida', new Headers())],
     ['InternalServerError', () => new Anthropic.InternalServerError(500, { type: 'error' }, 'boom', new Headers())],
     ['APIConnectionError', () => new Anthropic.APIConnectionError({ message: 'rede' })],
   ])('erro do SDK (%s): texto genérico e a chave nunca no log', async (_n, erro) => {
@@ -163,6 +162,31 @@ describe('perguntar (Claude)', () => {
     expect(await perguntar('x', base(cliente))).toBe(ERRO);
     expect(JSON.stringify(log.mock.calls)).not.toContain('sk-ant-segredo');
     log.mockRestore();
+  });
+
+  it.each([
+    ['chave recusada', () => new Anthropic.AuthenticationError(401, { type: 'error' }, 'chave sk-ant-segredo inválida', new Headers()), 'chave da Anthropic recusada (401)'],
+    ['sem crédito', () => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } }, undefined, new Headers()), 'sem crédito na Anthropic'],
+    ['limite de gasto', () => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'You have reached your specified API usage limits.' } }, undefined, new Headers()), 'limite de gasto da Anthropic'],
+  ])('IA parada (%s): avisa que a conversa está de folga, chama aoParar sem a chave', async (_n, erro, motivoEsperado) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const aoParar = vi.fn();
+    const { cliente } = falso(() => Promise.reject(erro()));
+    expect(await perguntar('x', { ...base(cliente), aoParar })).toBe(TEXTO_IA_FORA);
+    expect(aoParar).toHaveBeenCalledWith(motivoEsperado);
+    expect(JSON.stringify([log.mock.calls, aoParar.mock.calls])).not.toContain('sk-ant-segredo');
+    log.mockRestore();
+  });
+
+  it('aoUsar recebe os tokens de todas as voltas somados', async () => {
+    const comUso = (m: Anthropic.Message, u: Partial<Anthropic.Usage>) => ({ ...m, usage: { ...m.usage, ...u } }) as Anthropic.Message;
+    const aoUsar = vi.fn();
+    const { cliente } = falso(
+      comUso(chamada('lista_da_semana', {}), { input_tokens: 100, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0, output_tokens: 40 }),
+      comUso(texto('ok'), { input_tokens: 150, cache_read_input_tokens: 2000, cache_creation_input_tokens: 10, output_tokens: 20 }),
+    );
+    await perguntar('x', { ...base(cliente), aoUsar });
+    expect(aoUsar).toHaveBeenCalledWith({ entrada: 250, cacheLido: 4000, cacheGravado: 10, saida: 60 });
   });
 
   it('resposta sem texto: texto genérico', async () => {

@@ -167,7 +167,7 @@ ROBO_ADMINS=5581900000001,5581900000002,5581900000003
 
 - `ANTHROPIC_API_KEY`: a chave que você cria no console da Anthropic (platform.claude.com > API Keys). Ela é como uma senha que gasta seu dinheiro: fica **só** nesse `.env` do robô. Não mande para ninguém e nunca coloque dentro da pasta do projeto.
 - `ROBO_MODELO` (opcional): o modelo da IA. Sem essa linha, o robô usa o `claude-haiku-5-5`, o mais barato e rápido, que basta para o grupo. Só mude se souber o que está fazendo.
-- `ROBO_ADMINS`: os números de quem pode sortear e cadastrar jogadores, com 55 e DDD, só números, separados por vírgula.
+- `ROBO_ADMINS`: os números de quem pode sortear e cadastrar jogadores, com 55 e DDD, só números, separados por vírgula. **O primeiro é o dono**: é quem recebe o aviso no privado se a IA parar (sem crédito ou chave recusada).
 - `ROBO_CALVINHO` (opcional): o número do Jonas, no mesmo formato. Com ele, o robô reconhece o Jonas pelo número; sem ele, reconhece pelo primeiro nome do WhatsApp.
 - `ROBO_URL_SITE` (opcional): o endereço do site que o robô manda no privado (`site`). Sem ele, `https://pelada-black.vercel.app`.
 - `ROBO_APELIDOS` (opcional): para quem tem no WhatsApp um nome diferente do site, `número=Nome no site`, separados por vírgula (ex.: `5581900000001=Marquinho`). Com ele, "@robô eu vou" e "confirmar eu" acham o jogador certo.

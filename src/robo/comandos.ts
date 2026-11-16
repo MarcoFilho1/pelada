@@ -173,25 +173,36 @@ export const TEXTO_AJUDA = [
   '➕ adicionar Nome — põe na lista (ou na fila, se estiver cheia) — até 3 nomes: A, B e C',
   '✅ confirmar Nome — confirma quem está na lista — até 3 nomes: A, B e C',
   '👋 remover Nome — tira da lista ou da fila — até 3 nomes: A, B e C',
+  '🙋 confirmar eu, remover eu — vale para você mesmo',
   '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
-  '👕 times — os times de hoje',
-  '🎲 sortear (ou sortear 3 times) — só os organizadores; vale quando 2 dos 3 confirmarem com sim',
-  '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3) — só os organizadores',
-  '📝 anotar — link para anotar as partidas de hoje, sem senha — só os organizadores',
+  '👕 times — os times de hoje, depois de confirmados',
+  '',
+  '🔐 Só os organizadores:',
+  '🎲 sortear (ou sortear 3 times) — os times valem quando 2 dos 3 organizadores responderem sim',
+  '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3)',
+  '📝 anotar — link para anotar as partidas de hoje, sem senha',
 ].join('\n');
 
-/** No privado, o `ajuda` ganha os comandos de organizador. */
-export const TEXTO_AJUDA_ORGANIZADOR = [
-  '🔐 Aqui no privado, só para organizadores:',
+/** O `ajuda` do privado (só organizadores chegam aqui): sem marcar, com tudo e por linguagem natural. */
+export const TEXTO_AJUDA_PRIVADO = [
+  '🤖 Fala! Aqui no privado não precisa me marcar. Comandos:',
+  '',
+  '🎲 sortear (ou sortear 3 times) — proposta de times',
+  '📥 importar e os times colados embaixo — times feitos fora',
+  '✅ sim — confirma a proposta; valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma)',
+  '👕 times — a proposta esperando confirmação, ou os times confirmados',
+  '📝 anotar — link para anotar as partidas de hoje, sem senha',
+  '',
   '📋 notas — todos os jogadores com a nota',
   '✏️ nota Fulano 3,5 — muda a nota',
-  '🆕 cadastrar Nome - nota — jogador novo',
-  '🎲 sortear — proposta de times (vale com 2 dos 3 organizadores respondendo sim)',
-  '📥 importar + os times colados — times feitos fora, na mesma regra do sim',
-  '👕 times — mostra a proposta esperando confirmação',
+  '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3)',
   '🌐 site — o link do site',
-  '📝 anotar — link para anotar as partidas de hoje',
+  '',
+  '📋 lista · ⏳ falta confirmar · 📝 fila · ➕ adicionar · ✅ confirmar · 👋 remover · ⚽ artilheiro · 🎯 garçom · 🏆 ranking — como no grupo',
 ].join('\n');
 
+/** Com a IA ligada, o `ajuda` do privado lembra que dá para falar normal. */
+export const TEXTO_AJUDA_PRIVADO_IA = '💬 Ou fale normal, por exemplo: "muda a nota do Caio pra 3", "sorteia em 3 times", "pode confirmar os times".';
+
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */
-export const TEXTO_AJUDA_PERGUNTA = '💬 Ou faça uma pergunta, por exemplo: @robô o João está na lista?';
+export const TEXTO_AJUDA_PERGUNTA = '💬 Ou fale normal, por exemplo: @robô o João está na lista? (resenha também vale 😄)';

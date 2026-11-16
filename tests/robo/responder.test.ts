@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
-import { TEXTO_AJUDA, TEXTO_AJUDA_ORGANIZADOR, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
+import { TEXTO_AJUDA, TEXTO_AJUDA_PERGUNTA, TEXTO_AJUDA_PRIVADO, TEXTO_AJUDA_PRIVADO_IA, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
 import {
@@ -687,8 +687,7 @@ describe('responder: comando desconhecido', () => {
   it('ajuda com IA lembra das perguntas livres; sem IA, não', async () => {
     expect((await responder(msg('ajuda'), ctx({ ia: null })))?.texto).toBe(TEXTO_AJUDA);
     const comIa = (await responder(msg('ajuda'), ctx()))?.texto ?? '';
-    expect(comIa.startsWith(TEXTO_AJUDA)).toBe(true);
-    expect(comIa).toContain('pergunta');
+    expect(comIa).toBe(`${TEXTO_AJUDA}\n\n${TEXTO_AJUDA_PERGUNTA}`);
   });
 });
 
@@ -1067,8 +1066,10 @@ describe('privado dos organizadores', () => {
     expect((await responder(privado('cadastrar Caio - 2,5'), ctx()))?.texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)');
   });
 
-  it('ajuda traz os comandos de organizador', async () => {
-    expect((await responder(privado('ajuda'), ctx({ ia: null })))?.texto).toBe(`${TEXTO_AJUDA}\n\n${TEXTO_AJUDA_ORGANIZADOR}`);
+  it('ajuda do privado: sem marcar, todos os comandos de organizador e, com IA, a dica de falar normal', async () => {
+    expect((await responder(privado('ajuda'), ctx({ ia: null })))?.texto).toBe(TEXTO_AJUDA_PRIVADO);
+    expect((await responder(privado('ajuda'), ctx()))?.texto).toBe(`${TEXTO_AJUDA_PRIVADO}\n\n${TEXTO_AJUDA_PRIVADO_IA}`);
+    for (const c of ['sortear', 'importar', 'sim', 'times', 'anotar', 'notas', 'nota Fulano', 'cadastrar', 'site', 'lista']) expect(TEXTO_AJUDA_PRIVADO).toContain(c);
   });
 
   it('texto livre: a IA recebe as ferramentas de organizador e sabe que é privado; no grupo, não', async () => {

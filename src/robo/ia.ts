@@ -18,6 +18,11 @@ const MAX_LINHA_ANTES_DO_SORTEIO = 150;
 export const TEXTO_MAX_MUDANCAS = '⚠️ Só mudo até 3 nomes por mensagem. Mande o resto em outra.';
 export const TEXTO_UM_SORTEIO = 'O sorteio já foi pedido nesta mensagem.';
 export const ERRO_IA = '😕 Não consegui responder agora.';
+/** A IA parou de vez (sem crédito, chave recusada, limite da Anthropic): os comandos seguem valendo. */
+export const TEXTO_IA_FORA = '😴 Minha parte de conversa tá de folga agora, mas os comandos continuam valendo: mande *ajuda* para ver todos.';
+
+/** Tokens de uma pergunta (todas as voltas somadas), para o log. */
+export type UsoDaIA = { entrada: number; cacheLido: number; cacheGravado: number; saida: number };
 
 /** O pedaço do SDK que o robô usa; nos testes, um cliente falso. */
 export type ClienteIA = {
@@ -40,6 +45,10 @@ export type OpcoesIA = {
   ehJonas?: boolean;
   /** Conversa privada com um organizador (ferramentas de organizador liberadas). */
   privado?: boolean;
+  /** Chamado ao fim de cada pergunta com os tokens gastos (também na falha). */
+  aoUsar?: (uso: UsoDaIA) => void;
+  /** A IA parou de vez (sem crédito, chave recusada, limite): `motivo` sem a chave. */
+  aoParar?: (motivo: string) => void;
   /** O nome de quem mandou no site, quando difere do WhatsApp (`ROBO_APELIDOS`). */
   jogador?: string | null;
 };
@@ -133,7 +142,7 @@ function montar(prosa: string, a: Anuncios): string[] {
 /** Na falha, só o que já mudou de verdade: as mudanças na lista e a proposta que o "sim" salva. */
 const restoDaFalha = (a: Anuncios) => juntar([...unicos(a.acoes), a.proposta]);
 
-async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sinal: AbortSignal, anuncios: Anuncios): Promise<string[]> {
+async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sinal: AbortSignal, anuncios: Anuncios, uso: UsoDaIA): Promise<string[]> {
   const tools = op.ferramentas.map(paraTool);
   const agora = (op.agora ?? (() => new Date()))();
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: mensagemDoUsuario(pergunta, op, agora) }];
@@ -152,6 +161,10 @@ async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sin
       },
       { signal: sinal },
     );
+    uso.entrada += r.usage?.input_tokens ?? 0;
+    uso.cacheLido += r.usage?.cache_read_input_tokens ?? 0;
+    uso.cacheGravado += r.usage?.cache_creation_input_tokens ?? 0;
+    uso.saida += r.usage?.output_tokens ?? 0;
     // Recusa ou corte podem deixar um tool_use pela metade: nunca roda as ferramentas dessa volta.
     if (r.stop_reason === 'refusal') throw new Error('o modelo recusou');
     if (r.stop_reason === 'max_tokens') throw new Error('resposta cortada (max_tokens)');
@@ -221,12 +234,20 @@ async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sin
   throw new Error('voltas de ferramenta demais');
 }
 
+/** Falha que não passa sozinha em segundos: sem crédito, chave recusada ou sem permissão, limite de gasto da conta. O 429 passa (é por minuto). */
+export function iaParou(e: unknown): boolean {
+  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return true;
+  return e instanceof Anthropic.APIError && /credit balance|billing|spend limit|usage limit/i.test(e.message);
+}
+
 /** Motivo da falha para o log, sem a chave e sem o corpo da requisição. */
 function motivo(e: unknown, chave: string): string {
   if (e instanceof Anthropic.AuthenticationError) return 'chave da Anthropic recusada (401)';
   if (e instanceof Anthropic.PermissionDeniedError) return 'sem permissão na Anthropic (403)';
   if (e instanceof Anthropic.RateLimitError) return 'limite da Anthropic (429)';
   if (e instanceof Anthropic.APIUserAbortError) return 'prazo estourado';
+  if (e instanceof Anthropic.APIError && /credit balance|billing/i.test(e.message)) return 'sem crédito na Anthropic';
+  if (e instanceof Anthropic.APIError && /spend limit|usage limit/i.test(e.message)) return 'limite de gasto da Anthropic';
   if (e instanceof Anthropic.APIConnectionError) return 'sem conexão com a Anthropic';
   if (e instanceof Anthropic.APIError) return `a Anthropic respondeu HTTP ${e.status ?? '?'}`;
   return e instanceof Error ? e.message.replaceAll(chave, '***') : 'erro';
@@ -246,17 +267,21 @@ export async function perguntarEmPartes(pergunta: string, op: OpcoesIA): Promise
   const controle = new AbortController();
   const prazo = setTimeout(() => controle.abort(), op.prazoMs ?? PRAZO_PADRAO_MS);
   const anuncios: Anuncios = { acoes: [], listas: [], proposta: null };
+  const uso: UsoDaIA = { entrada: 0, cacheLido: 0, cacheGravado: 0, saida: 0 };
   try {
     // O prazo vale para a conversa toda, inclusive ferramenta que trava (ela não enxerga o sinal).
     const estourou = new Promise<never>((_, rej) => controle.signal.addEventListener('abort', () => rej(new Error('prazo estourado'))));
-    const conversa = conversar(pergunta, op, op.cliente ?? criarCliente(op.chave), controle.signal, anuncios);
+    const conversa = conversar(pergunta, op, op.cliente ?? criarCliente(op.chave), controle.signal, anuncios, uso);
     conversa.catch(() => {});
     return await Promise.race([conversa, estourou]);
   } catch (e) {
     console.error('[robo] pergunta livre falhou:', motivo(e, op.chave));
+    const parou = iaParou(e);
+    if (parou) op.aoParar?.(motivo(e, op.chave));
     const resto = restoDaFalha(anuncios);
-    return resto.length ? resto : [ERRO_IA];
+    return resto.length ? resto : [parou ? TEXTO_IA_FORA : ERRO_IA];
   } finally {
     clearTimeout(prazo);
+    op.aoUsar?.(uso);
   }
 }

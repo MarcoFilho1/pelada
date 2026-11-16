@@ -12,8 +12,9 @@ import {
   TAM_MAX_NOME_PEDIDO,
   interpretarPrivado,
   TEXTO_AJUDA,
-  TEXTO_AJUDA_ORGANIZADOR,
   TEXTO_AJUDA_PERGUNTA,
+  TEXTO_AJUDA_PRIVADO,
+  TEXTO_AJUDA_PRIVADO_IA,
   TEXTO_NOME_COMPRIDO,
   type AcaoNaLista,
   type Comando,
@@ -334,7 +335,7 @@ async function respostaTimes(m: MensagemRecebida, c: ContextoDaResposta): Promis
 
 /** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
 async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string[]> {
-  if (!c.ia) return [TEXTO_AJUDA];
+  if (!c.ia) return [m.privado ? TEXTO_AJUDA_PRIVADO : TEXTO_AJUDA];
   if (!c.freio.podePerguntar()) return [TEXTO_LIMITE];
   const marca = { entrouOuConfirmou: false };
   const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
@@ -696,8 +697,8 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       r = { texto: respostaFila(await c.lerLista(m.quando)) };
       break;
     case 'ajuda': {
-      const base = c.ia ? `${TEXTO_AJUDA}\n${TEXTO_AJUDA_PERGUNTA}` : TEXTO_AJUDA;
-      r = { texto: m.privado ? `${base}\n\n${TEXTO_AJUDA_ORGANIZADOR}` : base };
+      const [ajuda, dica] = m.privado ? [TEXTO_AJUDA_PRIVADO, TEXTO_AJUDA_PRIVADO_IA] : [TEXTO_AJUDA, TEXTO_AJUDA_PERGUNTA];
+      r = { texto: c.ia ? `${ajuda}\n\n${dica}` : ajuda };
       break;
     }
     case 'sortear':
