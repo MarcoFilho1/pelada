@@ -5,7 +5,7 @@ import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA, TEXTO_AJUDA_ORGANIZADOR, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SORTEIO_NO_PRIVADO, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, TEXTO_SO_ADMIN_ANOTAR, TEXTO_SORTEIO_NO_PRIVADO, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
@@ -58,6 +58,7 @@ function ctx(over: Partial<ContextoDaResposta> = {}, relogio = () => t('2026-11-
     mexerNaLista: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: 'Pepe entrou na lista.', mudou: true })),
     consultar: vi.fn(async () => '⚽ Artilheiros (novembro):\n1. Pepe 5'),
     cadastrar: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Cadastrado: Caio (2,5).', mudou: true })),
+    linkAnotar: vi.fn(async (): Promise<{ url: string } | { erro: string }> => ({ url: 'https://pelada.exemplo/anotar/CHAVE' })),
     notas: vi.fn(async () => '📋 Notas (2 jogadores):\nAna 3,0\nBia 2,5'),
     mudarNota: vi.fn(async (): Promise<{ texto: string; mudou: boolean }> => ({ texto: '✅ Nota de Ana: 3,0 → 3,5.', mudou: true })),
     urlSite: 'https://pelada.exemplo',
@@ -384,10 +385,10 @@ describe('configDasRespostas (.env)', () => {
 });
 
 describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
-  const nomes = ['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'ver_lista', 'quem_falta_confirmar', 'ver_fila', 'ver_times', 'artilheiros', 'garcons', 'ranking', 'cadastrar_jogadores', 'pedir_sorteio'];
+  const nomes = ['adicionar_jogador', 'confirmar_jogador', 'remover_jogador', 'ver_lista', 'quem_falta_confirmar', 'ver_fila', 'ver_times', 'artilheiros', 'garcons', 'ranking', 'cadastrar_jogadores', 'link_de_anotar', 'pedir_sorteio'];
   const achar = (fs: ReturnType<typeof ferramentasDeAcao>, nome: string) => fs.find((f) => f.nome === nome)!;
 
-  it('as doze ações, com schema estrito e nenhuma que confirme sorteio', () => {
+  it('as treze ações, com schema estrito e nenhuma que confirme sorteio', () => {
     const fs = ferramentasDeAcao(msg('x'), ctx());
     expect(fs.map((f) => f.nome)).toEqual(nomes);
     for (const f of fs) {
@@ -1014,5 +1015,43 @@ describe('privado dos organizadores', () => {
     expect(c.mudarNota).toHaveBeenCalledWith('Ana', 3.5, expect.any(Date));
     const nao = ctx({ mudarNota: vi.fn(async () => ({ texto: '🤔 Zé não está cadastrado.', mudou: false })) });
     await expect(ferramentasDoOrganizador(privado('x'), nao)[1].executar({ nome: 'Zé', nota: '3' })).rejects.toThrow('Zé não está cadastrado');
+  });
+});
+
+describe('anotar (link temporário)', () => {
+  const LINK = '📝 Link para anotar as partidas de hoje:\nhttps://pelada.exemplo/anotar/CHAVE\nAbre direto na tela de partidas, sem senha. Vale até as 3h da manhã; um link novo cancela este.';
+
+  it('organizador no grupo: o link vai para o grupo, com quem pediu', async () => {
+    const c = ctx();
+    const r = await responder(msg('anotar', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), c);
+    expect(c.linkAnotar).toHaveBeenCalledWith('Marco', expect.any(Date));
+    expect(r?.texto).toBe(`${LINK} (pedido por Marco)`);
+    expect((await responder(msg('link de anotar', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), ctx()))?.texto).toBe(`${LINK} (pedido por Marco)`);
+  });
+
+  it('organizador no privado também', async () => {
+    const c = ctx();
+    const r = await responder(msg('anotar', { grupoId: `${ADMIN}@s.whatsapp.net`, remetenteTelefone: ADMIN, remetenteNome: 'Marco', mencionaORobo: false, privado: true }), c);
+    expect(r?.texto).toBe(`${LINK} (pedido por Marco)`);
+  });
+
+  it('quem não é organizador, ou sem telefone, não gera link', async () => {
+    for (const tel of [QUALQUER, null]) {
+      const c = ctx();
+      expect((await responder(msg('anotar', { remetenteTelefone: tel }), c))?.texto).toBe(TEXTO_SO_ADMIN_ANOTAR);
+      expect(c.linkAnotar).not.toHaveBeenCalled();
+    }
+  });
+
+  it('sem pelada hoje: o aviso', async () => {
+    const c = ctx({ linkAnotar: vi.fn(async () => ({ erro: '📅 Hoje não tem pelada para anotar.' })) });
+    expect((await responder(msg('anotar', { remetenteTelefone: ADMIN }), c))?.texto).toBe('📅 Hoje não tem pelada para anotar.');
+  });
+
+  it('pela IA: texto pronto para organizador; erro para os outros', async () => {
+    const doAdmin = ferramentasDeAcao(msg('x', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), ctx()).find((f) => f.nome === 'link_de_anotar')!;
+    expect(((await doAdmin.executar({})) as TextoPronto).texto).toBe(`${LINK} (pedido por Marco)`);
+    const deOutro = ferramentasDeAcao(msg('x'), ctx()).find((f) => f.nome === 'link_de_anotar')!;
+    await expect(deOutro.executar({})).rejects.toThrow(TEXTO_SO_ADMIN_ANOTAR);
   });
 });

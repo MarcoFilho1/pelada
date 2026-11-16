@@ -2,17 +2,30 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { ForaDoAnotador } from '@/components/fora-do-anotador';
 import { NavAdmin } from '@/components/nav-admin';
-import { TelaAdmin, Topo } from '@/components/topo';
-import { lerSessaoAdmin } from '@/server/sessao';
+import { Tela, TelaAdmin, Topo } from '@/components/topo';
+import { lerAcessoPartidas } from '@/server/sessao';
 import { sairDoAdmin } from './actions';
 
 const SAIR = 'flex h-12 items-center text-base font-medium text-apagado transition-colors hover:text-tinta';
 
-// Guarda da área admin (tudo em /admin menos /admin/entrar), conferida no banco.
+// Guarda da área admin (tudo em /admin menos /admin/entrar), conferida no banco. Quem entrou pelo link de
+// anotar passa aqui só nas telas de partida (o proxy barra o resto) e sem o menu do admin; cada página e
+// ação ainda confere o acesso de novo.
 // Também desenha a navegação (menos no anotador, que ocupa a tela inteira): no celular, a barra do
 // topo (marca, "Sair") e as abas das seções; a partir de 1024px, o menu lateral fixo com o "Sair" no pé.
 export default async function AreaAdminLayout({ children }: LayoutProps<'/admin'>) {
-  if (!(await lerSessaoAdmin(getDb()))) redirect('/admin/entrar');
+  const acesso = await lerAcessoPartidas(getDb());
+  if (!acesso) redirect('/admin/entrar');
+  if (acesso.tipo === 'anotador') {
+    return (
+      <Tela>
+        <ForaDoAnotador>
+          <Topo inicio="/admin/partidas" rotulo="Partidas da noite" />
+        </ForaDoAnotador>
+        {children}
+      </Tela>
+    );
+  }
   return (
     <TelaAdmin>
       <ForaDoAnotador>

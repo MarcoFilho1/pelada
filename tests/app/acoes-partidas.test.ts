@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // redirect e `iniciarPartida` são trocados por dublês: aqui só importa o que a ação deixa passar.
 const iniciarPartida = vi.fn(async () => 42);
 vi.mock('@/server/partidas', () => ({ iniciarPartida, quemPodeCompletar: vi.fn() }));
-vi.mock('@/server/sessao', () => ({ lerSessaoAdmin: async () => ({ adminId: 1 }) }));
+vi.mock('@/server/sessao', () => ({
+  lerAcessoPartidas: async () => ({ tipo: 'admin' }),
+  acessoNaPelada: (a: { tipo: string } | null) => a?.tipo === 'admin',
+  destinoSemAcesso: () => '/admin/entrar',
+}));
 vi.mock('@/db/client', () => ({ getDb: () => ({}) }));
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {

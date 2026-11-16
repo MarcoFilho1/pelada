@@ -69,6 +69,8 @@ export type ContextoDaResposta = {
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
+  /** Link temporário de anotar da pelada de hoje (quem confere se é organizador é o `responder`). */
+  linkAnotar: (quem: string, now: Date) => Promise<{ url: string } | { erro: string }>;
   /** Privado: todos os jogadores ativos com a nota. */
   notas: (now: Date) => Promise<string>;
   /** Privado: muda a nota de um jogador achado pelo nome. */
@@ -150,6 +152,7 @@ export const PREFIXOS_CALVINHO: Partial<Record<Comando['tipo'], string[]>> = {
   adicionar: ['🫡 Pode deixar, calvinho!', '😎 Feito, chefe calvinho!', '🫡 Às ordens, calvo!'],
   confirmar: ['🫡 Pode deixar, calvinho!', '😎 O calvinho mandou, eu confirmei!', '🫡 Anotado, calvo!'],
   remover: ['🫡 Feito, calvinho.', '😢 O calvinho mandou tirar, eu tirei.'],
+  anotar: ['📝 O calvinho liberou a caneta!', '📝 Anota direitinho os gols do calvinho, hein:'],
   cadastrar: ['🆕 O calvinho trazendo reforço!', '🆕 Contratações do calvinho chegando:', '🆕 O olheiro calvinho achou mais gente:'],
 };
 export const PREFIXO_NAO_ENTENDI = '🤔 Não entendi, calvinho. Os comandos são esses:';
@@ -178,6 +181,7 @@ function comBrincadeira(cmd: Comando, texto: string, c: ContextoDaResposta): str
     : cmd.tipo === 'sortear' ? c.proposta.atual?.texto === texto
     : cmd.tipo === 'adicionar' || cmd.tipo === 'confirmar' || cmd.tipo === 'remover' ? mudouSemBrincadeira(texto)
     : cmd.tipo === 'cadastrar' ? texto.startsWith('✅ Cadastr')
+    : cmd.tipo === 'anotar' ? texto.startsWith(INICIO_LINK_ANOTAR)
     : true;
   return ok ? `${sortear(variantes)}\n${texto}` : texto;
 }
@@ -409,6 +413,16 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
       },
     },
     {
+      nome: 'link_de_anotar',
+      descricao: 'Gera o link temporário para anotar as partidas de hoje (sem senha), só para os organizadores (o código confere quem mandou). Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        const r = await respostaAnotar(m, c);
+        if (!r.ok) throw new ErroDeFerramenta(r.texto);
+        return new TextoPronto(r.texto, 'acao');
+      },
+    },
+    {
       nome: 'pedir_sorteio',
       descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
       parametros: comTimes,
@@ -460,6 +474,20 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
   ];
 }
 
+export const TEXTO_SO_ADMIN_ANOTAR = '🔐 Só os organizadores podem gerar o link de anotar.';
+const INICIO_LINK_ANOTAR = '📝 Link para anotar as partidas de hoje:';
+
+/** anotar: só organizadores (pelo telefone), no grupo ou no privado; no grupo, todo mundo fica com o link. */
+async function respostaAnotar(m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; ok: boolean }> {
+  if (!m.remetenteTelefone || !ehAdmin(m.remetenteTelefone, c.admins)) return { texto: TEXTO_SO_ADMIN_ANOTAR, ok: false };
+  const r = await c.linkAnotar(quemPediu(m), m.quando);
+  if ('erro' in r) return { texto: r.erro, ok: false };
+  return {
+    texto: `${INICIO_LINK_ANOTAR}\n${r.url}\nAbre direto na tela de partidas, sem senha. Vale até as 3h da manhã; um link novo cancela este. (pedido por ${quemPediu(m)})`,
+    ok: true,
+  };
+}
+
 /** Sorteio e confirmação pelo privado chegam com a regra de 2 de 3 organizadores. */
 export const TEXTO_SORTEIO_NO_PRIVADO = '🔜 Sortear e confirmar times aqui no privado chega na próxima atualização. Por enquanto, *sortear* no grupo.';
 
@@ -502,7 +530,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
   const p = c.proposta.atual;
   const simDeQuemPediu = cmd.tipo === 'sim' && p !== null && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, [p.adminTelefone]);
   if (!simDeQuemPediu && !c.freio.podeResponder()) return avisarLimite(m, c);
-  if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim' || cmd.tipo === 'cadastrar') && m.remetenteTelefone === null) {
+  if ((cmd.tipo === 'sortear' || cmd.tipo === 'sim' || cmd.tipo === 'cadastrar' || cmd.tipo === 'anotar') && m.remetenteTelefone === null) {
     c.log('marcação de remetente sem telefone (LID): não dá para saber se é organizador');
   }
 
@@ -535,6 +563,9 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       break;
     case 'notas':
       r = { texto: await c.notas(m.quando) };
+      break;
+    case 'anotar':
+      r = { texto: (await respostaAnotar(m, c)).texto };
       break;
     case 'nota':
       r = { texto: (await c.mudarNota(cmd.nome, cmd.nota, m.quando)).texto };

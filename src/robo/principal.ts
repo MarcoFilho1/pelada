@@ -11,6 +11,7 @@ import { getDb } from '@/db/client';
 import { estadoDaSemana, estadoDaSemanaSemCriar } from '@/server/presencas';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
+import { criarLinkAnotador } from '@/server/anotador';
 import { cadastrarJogadores } from '@/server/jogadores';
 import { respostaCadastro } from './cadastro-zap';
 import { mudarNota, textoDasNotas, urlDoSite } from './organizador-zap';
@@ -264,6 +265,10 @@ async function laco(): Promise<void> {
         consultar: (tipo, n) => consultar(db, tipo, n),
         cadastrar: async (pessoas) => respostaCadastro(await cadastrarJogadores(db, pessoas)),
         notas: () => textoDasNotas(db),
+        linkAnotar: async (quem, n) => {
+          const r = await criarLinkAnotador(db, quem, n);
+          return r.ok ? { url: `${urlSite}/anotar/${r.chave}` } : { erro: '📅 Hoje não tem pelada para anotar.' };
+        },
         mudarNota: (nome, nota) => mudarNota(db, nome, nota),
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).

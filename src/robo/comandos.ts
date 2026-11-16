@@ -6,7 +6,7 @@ import type { EstadoDaSemana } from '@/server/presencas';
 
 export type AcaoNaLista = 'adicionar' | 'confirmar' | 'remover';
 export type Consulta = 'artilheiro' | 'garcom' | 'ranking' | 'times';
-type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sim' | Consulta;
+type Simples = 'lista' | 'falta' | 'fila' | 'ajuda' | 'sim' | 'anotar' | Consulta;
 
 export type Comando =
   | { tipo: Simples }
@@ -48,6 +48,13 @@ const PALAVRAS: Record<string, Simples> = {
   garcons: 'garcom',
   ranking: 'ranking',
   times: 'times',
+  anotar: 'anotar',
+  'link anotar': 'anotar',
+  'link de anotar': 'anotar',
+  'link para anotar': 'anotar',
+  'link pra anotar': 'anotar',
+  'link do anotador': 'anotar',
+  anotador: 'anotar',
 };
 
 export const TEXTO_SO_3_OU_4 = '🤔 Só sorteio em 3 ou 4 times.';
@@ -166,6 +173,7 @@ export const TEXTO_AJUDA = [
   '👕 times — os times de hoje',
   '🎲 sortear (ou sortear 3 times) — só os organizadores',
   '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3) — só os organizadores',
+  '📝 anotar — link para anotar as partidas de hoje, sem senha — só os organizadores',
 ].join('\n');
 
 /** No privado, o `ajuda` ganha os comandos de organizador. */
@@ -175,6 +183,7 @@ export const TEXTO_AJUDA_ORGANIZADOR = [
   '✏️ nota Fulano 3,5 — muda a nota',
   '🆕 cadastrar Nome - nota — jogador novo',
   '🌐 site — o link do site',
+  '📝 anotar — link para anotar as partidas de hoje',
 ].join('\n');
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */

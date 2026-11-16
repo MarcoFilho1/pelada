@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 import { TEXTO } from '@/components/pilula';
 import { getDb } from '@/db/client';
 import { idValido } from '@/server/erros';
-import { lerSessaoAdmin } from '@/server/sessao';
+import { peladaDaPartida } from '@/server/anotador';
+import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
 import { Anotador } from './Anotador';
 import { lerEstado } from './estado';
 
@@ -12,8 +13,10 @@ export const metadata: Metadata = { title: 'Anotador · Pelada' };
 
 export default async function PartidaPage({ params }: PageProps<'/admin/partida/[id]'>) {
   const db = getDb();
-  if (!(await lerSessaoAdmin(db))) redirect('/admin/entrar');
   const id = Number((await params).id);
+  const acesso = await lerAcessoPartidas(db);
+  // Admin: qualquer partida; anotador: só as da pelada do link.
+  if (acesso?.tipo !== 'admin' && !acessoNaPelada(acesso, idValido(id) ? await peladaDaPartida(db, id) : null)) redirect(destinoSemAcesso(acesso));
   const estado = idValido(id) ? await lerEstado(db, id) : null;
 
   if (!estado) {

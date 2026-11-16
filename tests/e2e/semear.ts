@@ -9,6 +9,7 @@ import * as schema from '../../src/db/schema';
 import { semearAdmin } from '../../src/db/seed';
 import { dataDe, mesDe, proximaQuarta } from '../../src/domain/tempo';
 import { encerrarPartida, iniciarPartida, registrarLance } from '../../src/server/partidas';
+import { hashDaChave } from '../../src/server/anotador';
 import { salvarTimesDefinitivos, timesDaPelada } from '../../src/server/times';
 import { E2E } from './ambiente';
 
@@ -41,6 +42,13 @@ async function main() {
   for (const data of datas) {
     const [pelada] = await db.insert(schema.peladas).values({ data, estadoManual: 'aberta' }).returning({ id: schema.peladas.id });
     if (data === hoje || data === amanha) await salvarTimesDefinitivos(db, pelada.id, elencos);
+    if (data === hoje) {
+      const expiraEm = new Date(agora.getTime() + 2 * 24 * 3_600_000);
+      await db.insert(schema.linksAnotador).values([
+        { peladaId: pelada.id, chaveHash: hashDaChave(E2E.linkAnotar), criadoPor: 'e2e', expiraEm },
+        { peladaId: pelada.id, chaveHash: hashDaChave(E2E.linkRevogado), criadoPor: 'e2e', expiraEm, revogadoEm: agora },
+      ]);
+    }
   }
 
   // Histórico para o ranking: duas partidas encerradas numa quarta de duas semanas atrás.

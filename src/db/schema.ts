@@ -168,3 +168,17 @@ export const lances = pgTable('lances', {
   tipo: tipoLanceEnum('tipo').notNull(),
   criadoEm: timestamptz('criado_em').notNull().defaultNow(),
 });
+
+// Link temporário de anotar (o robô gera): abre só as telas de partida da pelada, sem login de admin.
+// Guarda só o hash da chave; um link novo da mesma pelada revoga os anteriores.
+export const linksAnotador = pgTable('links_anotador', {
+  id: serial('id').primaryKey(),
+  peladaId: integer('pelada_id')
+    .notNull()
+    .references(() => peladas.id, { onDelete: 'cascade' }),
+  chaveHash: text('chave_hash').notNull().unique(),
+  criadoPor: text('criado_por').notNull(),
+  criadoEm: timestamptz('criado_em').notNull().defaultNow(),
+  expiraEm: timestamptz('expira_em').notNull(),
+  revogadoEm: timestamptz('revogado_em'),
+});

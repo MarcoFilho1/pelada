@@ -29,6 +29,8 @@ type Props = {
   historico: Jogada[];
   /** Partidas abertas de peladas anteriores ('DD/MM'): ninguém encerrou. */
   esquecidas: Esquecida[];
+  /** Entrou pelo link de anotar: sem os atalhos para as telas de organizador. */
+  anotador?: boolean;
 };
 
 type Esquecida = { id: number; data: string; corA: Cor; corB: Cor; placar: Placar };
@@ -56,21 +58,29 @@ export function PartidasAdmin(p: Props) {
         ) : !p.hoje ? (
           <Aviso>Partida só se inicia no dia da pelada.</Aviso>
         ) : p.cancelada ? (
-          <Aviso>
-            A pelada de hoje foi cancelada. Para jogar, tire o cancelamento em{' '}
-            <Link href="/admin/pelada" className="font-medium text-tinta underline underline-offset-4">
-              Pelada
-            </Link>
-            .
-          </Aviso>
+          p.anotador ? (
+            <Aviso>A pelada de hoje foi cancelada. Para jogar, um organizador precisa tirar o cancelamento.</Aviso>
+          ) : (
+            <Aviso>
+              A pelada de hoje foi cancelada. Para jogar, tire o cancelamento em{' '}
+              <Link href="/admin/pelada" className="font-medium text-tinta underline underline-offset-4">
+                Pelada
+              </Link>
+              .
+            </Aviso>
+          )
         ) : p.times.length < 2 ? (
-          <Aviso>
-            Primeiro defina os times no{' '}
-            <Link href="/admin/sorteio" className="font-medium text-tinta underline underline-offset-4">
-              Sorteio
-            </Link>
-            .
-          </Aviso>
+          p.anotador ? (
+            <Aviso>Os times de hoje ainda não foram definidos. Assim que um organizador confirmar, as partidas aparecem aqui.</Aviso>
+          ) : (
+            <Aviso>
+              Primeiro defina os times no{' '}
+              <Link href="/admin/sorteio" className="font-medium text-tinta underline underline-offset-4">
+                Sorteio
+              </Link>
+              .
+            </Aviso>
+          )
         ) : (
           <ProximaPartida key={p.fila.join(',')} {...p} />
         )}
