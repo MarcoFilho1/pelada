@@ -1,4 +1,4 @@
-import type { PropostaGuardada } from './sorteio-zap';
+import type { AnuncioGuardado, PropostaGuardada } from './sorteio-zap';
 import { aberturaLista, dataDe, inicioJogo, prazoMensalista } from '@/domain/tempo';
 import { haMudanca, mudancas, type FotoDaLista } from './foto';
 
@@ -16,6 +16,8 @@ export type EstadoDoRobo = {
   grupoNome?: string | null;
   /** Times propostos esperando os votos dos organizadores (sobrevive a reinício). */
   proposta?: PropostaGuardada | null;
+  /** Times confirmados esperando quem propôs mandar no grupo. */
+  anuncio?: AnuncioGuardado | null;
 };
 
 const MEIA_HORA_MS = 30 * 60 * 1000;

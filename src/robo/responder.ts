@@ -28,7 +28,7 @@ import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from '.
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
-import { daQuarta, ehAdmin, montarProposta, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos } from './sorteio-zap';
+import { daQuarta, ehAdmin, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos } from './sorteio-zap';
 
 export type MensagemRecebida = {
   grupoId: string;
@@ -61,6 +61,8 @@ export type ContextoDaResposta = {
   ultimo: Envio | null;
   /** Os times propostos esperando os votos (uma proposta só; a nova substitui a antiga). */
   proposta: { atual: Proposta | null };
+  /** Times já salvos esperando quem propôs mandar no grupo (*mandar*); uma proposta nova descarta. */
+  anuncio: { atual: AnuncioPendente | null };
   lerLista: (now: Date) => Promise<EstadoDaSemana>;
   /** `times`: 3 ou 4 (o padrão). */
   propor: (now: Date, times: QtdDeTimes) => Promise<TimesPropostos | { erro: string }>;
@@ -240,10 +242,19 @@ export const TEXTO_SO_ADMIN_CONFIRMA = '🔐 Só os organizadores confirmam os t
 export const TEXTO_SEM_PROPOSTA = '🤔 Não tem times esperando confirmação.';
 export const TEXTO_PROPOSTA_VENCIDA = '⌛ Essa proposta venceu. Peça *sortear* (ou *importar*) de novo.';
 export const TEXTO_TIMES_INDEFINIDOS = '👕 Os times de hoje ainda não foram definidos.';
-export const TEXTO_SALVOS = '🏆 Times confirmados e salvos no site. Já mandei no grupo.';
+export const TEXTO_SALVOS = '🏆 Times confirmados e salvos no site (a tela de partidas já libera).';
+export const PERGUNTA_MANDAR = '📣 Quer que eu mande os times no grupo? Responda *mandar* quando quiser.';
+export const TEXTO_SEM_ANUNCIO = '🤔 Não tem times confirmados esperando para ir ao grupo.';
+export const TEXTO_MANDADOS = '📣 Mandei os times no grupo!';
+export const TEXTO_MANDAR_NO_PRIVADO = '📣 Mandar os times no grupo é pelo privado do robô.';
 
-/** Tem proposta esperando votos (e ainda valendo)? Enquanto tiver, o grupo não vê time nenhum. */
+/** Tem proposta esperando votos (e ainda valendo)? */
 export const temPropostaPendente = (c: ContextoDaResposta, now: Date) => c.proposta.atual !== null && !propostaVencida(c.proposta.atual, now);
+/** Enquanto houver proposta esperando votos ou times salvos esperando o *mandar*, o grupo não vê time nenhum. */
+export const timesEmSegredo = (c: ContextoDaResposta, now: Date) => temPropostaPendente(c, now) || c.anuncio.atual !== null;
+
+/** Só para quem propôs: os outros organizadores ficam de fora do `avisarOrganizadores`. */
+const menosQuemPropos = (c: ContextoDaResposta, quemPropos: string) => c.admins.filter((a) => !ehAdmin(quemPropos, [a]));
 
 /** Aviso no privado dos outros organizadores: falha de envio não derruba a resposta (fica no log). */
 async function avisarOutros(c: ContextoDaResposta, texto: string, exceto: string[]): Promise<void> {
@@ -259,6 +270,8 @@ async function proporTimes(origem: Proposta['origem'], r: TimesPropostos | { err
   if ('erro' in r) return r.erro;
   const p = montarProposta(origem, { telefone: tel, nome: quemPediu(m) }, m.quando, r);
   c.proposta.atual = p;
+  // Uma proposta nova descarta times salvos que ainda não foram para o grupo (eles seriam trocados).
+  c.anuncio.atual = null;
   // O aviso de dupla separada junta vai só no privado: no grupo a regra não aparece.
   const comAviso = p.aviso ? `${p.texto}\n\n${p.aviso}` : p.texto;
   await avisarOutros(c, comAviso, [tel]);
@@ -309,30 +322,59 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
         await avisarOutros(c, texto, [tel]);
         return texto;
       }
-      const anuncio = `🏆 Times${proposta.data ? daQuarta(proposta.data) : ' da noite'}:\n\n${proposta.blocos}`;
-      if (!m.privado) {
-        await avisarOutros(c, `🏆 ${nome} confirmou e os times foram salvos no site e mandados no grupo.`, [tel]);
-        return anuncio;
+      // Nada vai ao grupo sozinho (pedido do usuário): quem propôs decide quando, com *mandar*.
+      c.anuncio.atual = {
+        texto: `🏆 Times${proposta.data ? daQuarta(proposta.data) : ' da noite'}:\n\n${proposta.blocos}`,
+        quemPropos: proposta.quemPropos,
+        quemProposNome: proposta.quemProposNome,
+        peladaId: proposta.peladaId,
+        criadoEm: m.quando,
+      };
+      const votouQuemPropos = ehAdmin(tel, [proposta.quemPropos]);
+      const outros = menosQuemPropos(c, proposta.quemPropos).filter((a) => !ehAdmin(tel, [a]));
+      if (!votouQuemPropos) await avisarOutros(c, `🏆 ${nome} confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, menosQuemPropos(c, proposta.quemPropos));
+      if (outros.length) {
+        await avisarOutros(c, `🏆 Times confirmados e salvos no site. ${proposta.quemProposNome} decide quando mandar no grupo.`, c.admins.filter((a) => !outros.includes(a)));
       }
-      try {
-        await c.anunciarNoGrupo(anuncio);
-      } catch (err) {
-        c.log(`anúncio dos times no grupo não saiu: ${(err as Error).message}`);
-      }
-      await avisarOutros(c, `🏆 ${nome} confirmou. ${TEXTO_SALVOS}`, [tel]);
-      return jonas ? SALVOS_CALVINHO[Math.floor((c.rng ?? Math.random)() * SALVOS_CALVINHO.length)] : TEXTO_SALVOS;
+      const salvos = jonas && m.privado ? SALVOS_CALVINHO[Math.floor((c.rng ?? Math.random)() * SALVOS_CALVINHO.length)] : TEXTO_SALVOS;
+      if (!votouQuemPropos) return `${salvos}\n${proposta.quemProposNome} decide quando mandar no grupo.`;
+      return m.privado ? `${salvos}\n${PERGUNTA_MANDAR}` : `${salvos}\nMande *mandar* no meu privado para eu postar os times aqui.`;
     }
   }
 }
 
-/** "times": com proposta pendente, o grupo não vê nada; no privado, o organizador vê a proposta e os votos. */
+/**
+ * "times": com proposta esperando votos ou times salvos esperando o *mandar*, o grupo não vê nada; no privado,
+ * o organizador vê a proposta (e os votos) ou os times salvos.
+ */
 async function respostaTimes(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   const p = c.proposta.atual;
-  if (p && temPropostaPendente(c, m.quando)) {
+  if (timesEmSegredo(c, m.quando)) {
     if (!m.privado) return TEXTO_TIMES_INDEFINIDOS;
-    return `⏳ Times esperando confirmação (${p.votos.length} de 2):\n\n${p.texto}`;
+    if (p && temPropostaPendente(c, m.quando)) return `⏳ Times esperando confirmação (${p.votos.length} de 2):\n\n${p.texto}`;
+    const a = c.anuncio.atual!;
+    return `✅ Times salvos, esperando ${a.quemProposNome} mandar no grupo:\n\n${a.texto}`;
   }
   return c.consultar('times', m.quando);
+}
+
+/** *mandar*: só quem propôs os times salvos, no privado; aí sim os times vão ao grupo. */
+async function respostaMandar(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+  const tel = m.remetenteTelefone;
+  if (!tel || !ehAdmin(tel, c.admins)) return TEXTO_SO_ADMIN_CONFIRMA;
+  if (!m.privado) return TEXTO_MANDAR_NO_PRIVADO;
+  const a = c.anuncio.atual;
+  if (!a) return TEXTO_SEM_ANUNCIO;
+  if (!ehAdmin(tel, [a.quemPropos])) return `🔐 Só ${a.quemProposNome}, que propôs os times, manda no grupo.`;
+  try {
+    await c.anunciarNoGrupo(a.texto);
+  } catch (err) {
+    c.log(`anúncio dos times no grupo não saiu: ${(err as Error).message}`);
+    return '😕 Não consegui mandar no grupo agora. Tente *mandar* de novo daqui a pouco.';
+  }
+  c.anuncio.atual = null;
+  await avisarOutros(c, `📣 ${a.quemProposNome} mandou os times no grupo.`, [tel]);
+  return TEXTO_MANDADOS;
 }
 
 /** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
@@ -575,6 +617,14 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
       },
     },
     {
+      nome: 'mandar_times_no_grupo',
+      descricao: 'Manda no grupo os times já confirmados e salvos. Só quem propôs os times pode; use quando ele pedir para mandar/postar no grupo. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        return new TextoPronto(await respostaMandar(m, c), 'acao');
+      },
+    },
+    {
       nome: 'importar_times',
       sorteio: true,
       descricao: 'Importa os times feitos fora que o organizador colou nesta mensagem (o robô lê a mensagem inteira, linha a linha). Vira uma proposta que vale com 2 dos 3 organizadores. Devolve o texto para a conversa.',
@@ -708,6 +758,9 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       break;
     case 'importar':
       r = { texto: await respostaImportar(cmd.texto, m, c) };
+      break;
+    case 'mandar':
+      r = { texto: await respostaMandar(m, c) };
       break;
     case 'sim':
       r = { texto: await respostaSim(m, c, remetenteEhJonas(m, c)) };

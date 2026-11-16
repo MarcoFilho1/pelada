@@ -16,6 +16,8 @@ import {
   TEXTO_SO_ADMIN,
   TEXTO_SEM_PELADA_DA_SEMANA,
   avisoDeDuplas,
+  anuncioDeGuardado,
+  anuncioParaGuardar,
   VALIDADE_MS,
   votar,
   VOTOS_NECESSARIOS,
@@ -252,5 +254,14 @@ describe('duplas separadas no robô', () => {
     ];
     expect(avisoDeDuplas(times, [[1, 2]])).toBe('⚠️ Luiz e Jonas estão no mesmo time (dupla separada).\nSó vocês, organizadores, veem este aviso.');
     expect(avisoDeDuplas(times, [[1, 3]])).toBeUndefined();
+  });
+});
+
+describe('anúncio pendente (estado.json)', () => {
+  it('ida e volta; formato estranho vira null', () => {
+    const a = { texto: 'T', quemPropos: ADMIN, quemProposNome: 'Marco', peladaId: 1, criadoEm: QUARTA };
+    expect(anuncioDeGuardado(JSON.parse(JSON.stringify(anuncioParaGuardar(a))))).toEqual(a);
+    expect(anuncioParaGuardar(null)).toBeNull();
+    for (const ruim of [null, {}, { ...a, criadoEm: 'x' }, { ...a, peladaId: '1' }]) expect(anuncioDeGuardado(ruim)).toBeNull();
   });
 });

@@ -98,7 +98,21 @@ export function blocosDosTimes(times: TimeSorteado[]): string {
 }
 
 export const INSTRUCOES_VOTO =
-  '✅ Responda *sim* para confirmar. Os times valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma). A proposta vale por 60 minutos; *sortear* de novo troca a proposta.';
+  '✅ Responda *sim* para confirmar. Os times valem quando 2 dos 3 organizadores confirmarem (quem propôs também confirma); aí eu salvo no site e quem propôs decide quando mandar no grupo. A proposta vale por 60 minutos; *sortear* de novo troca a proposta.';
+
+/** Times confirmados e salvos, esperando quem propôs mandar no grupo (com *mandar*). */
+export type AnuncioPendente = { texto: string; quemPropos: string; quemProposNome: string; peladaId: number; criadoEm: Date };
+export type AnuncioGuardado = Omit<AnuncioPendente, 'criadoEm'> & { criadoEm: string };
+
+export const anuncioParaGuardar = (a: AnuncioPendente | null): AnuncioGuardado | null => (a ? { ...a, criadoEm: a.criadoEm.toISOString() } : null);
+
+export function anuncioDeGuardado(x: unknown): AnuncioPendente | null {
+  if (!x || typeof x !== 'object') return null;
+  const g = x as Partial<AnuncioGuardado>;
+  const criadoEm = new Date(g.criadoEm ?? '');
+  if (typeof g.texto !== 'string' || typeof g.quemPropos !== 'string' || typeof g.quemProposNome !== 'string' || typeof g.peladaId !== 'number' || Number.isNaN(criadoEm.getTime())) return null;
+  return { ...(g as AnuncioGuardado), criadoEm };
+}
 
 /** Monta a proposta (sem votos) a partir dos times já com nomes e notas. */
 export function montarProposta(
