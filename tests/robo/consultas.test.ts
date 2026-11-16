@@ -36,9 +36,9 @@ beforeEach(async () => {
 
 describe('consultas do robô (artilheiro, garçom, ranking, times)', () => {
   it('sem partidas: frases curtas', async () => {
-    expect(await consultar(db, 'artilheiro', NOVEMBRO)).toBe('Ninguém fez gol ainda.');
-    expect(await consultar(db, 'garcom', NOVEMBRO)).toBe('Ninguém deu assistência ainda.');
-    expect(await consultar(db, 'ranking', NOVEMBRO)).toBe('Ainda não tem partida no ranking.');
+    expect(await consultar(db, 'artilheiro', NOVEMBRO)).toBe('⚽ Ninguém fez gol ainda.');
+    expect(await consultar(db, 'garcom', NOVEMBRO)).toBe('🎯 Ninguém deu assistência ainda.');
+    expect(await consultar(db, 'ranking', NOVEMBRO)).toBe('🏆 Ainda não tem partida no ranking.');
   });
 
   it('mês atual com partida: os 3 primeiros em gols e em assistências', async () => {

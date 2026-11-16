@@ -17,7 +17,7 @@ import {
   type Comando,
   type Consulta,
 } from './comandos';
-import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO, type PessoaPedida } from './cadastro-zap';
+import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, pedirNotas, TEXTO_MAX_CADASTROS, TEXTO_SO_ADMIN_CADASTRO, type PessoaPedida } from './cadastro-zap';
 import { ErroDeFerramenta, semParametros, TextoPronto, type Ferramenta, type Parametros } from './ferramentas';
 import { fotografar, haMudanca, mudancas, type FotoDaLista } from './foto';
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
@@ -45,6 +45,8 @@ export type ContextoDaResposta = {
   admins: string[];
   /** Números (do `ROBO_CALVINHO`) do Jonas, o "calvinho" do grupo; ausente ou vazio: só o nome do WhatsApp vale. */
   calvinho?: string[];
+  /** `ROBO_APELIDOS`: telefone → nome do jogador no site, para quem tem outro nome no WhatsApp ("eu vou"). */
+  apelidos?: { telefone: string; nome: string }[];
   /** Sorteio das brincadeiras; nos testes, fixo. */
   rng?: () => number;
   /** `null`: perguntas livres desligadas (sem `ANTHROPIC_API_KEY` no `.env`). */
@@ -58,7 +60,7 @@ export type ContextoDaResposta = {
   propor: (now: Date, telefone: string, times: QtdDeTimes) => Promise<Proposta | { erro: string }>;
   confirmar: (now: Date, telefone: string, proposta: Proposta | null) => Promise<{ ok: string } | { erro: string }>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
-  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean }) => Promise<string>;
+  perguntar: (texto: string, op: { agora: () => Date; acoes: Ferramenta[]; quem: string; ehJonas: boolean; jogador: string | null }) => Promise<string>;
   /** adicionar/confirmar/remover pelo nome, com as regras do jogador no site. */
   mexerNaLista: (acao: AcaoNaLista, nome: string, now: Date) => Promise<{ texto: string; mudou: boolean }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
@@ -87,6 +89,29 @@ export function configDasRespostas(env: Record<string, string | undefined>): { i
   return { ia: chave ? { chave, modelo } : null, admins };
 }
 
+/** Lê `ROBO_APELIDOS` (opcional): "5581999999999=Marquinho,5581888888888=Zé" (números só no `.env`, nunca no repositório). */
+export function apelidosDoEnv(env: Record<string, string | undefined>): { telefone: string; nome: string }[] {
+  return (env.ROBO_APELIDOS ?? '')
+    .split(',')
+    .map((par) => par.split('='))
+    .filter((par) => par.length === 2 && par[0].trim() && par[1].trim())
+    .map(([telefone, nome]) => ({ telefone: telefone.trim(), nome: nome.trim() }));
+}
+
+/** O jogador de quem mandou, pelo `ROBO_APELIDOS`; `null` sem telefone ou sem apelido. */
+function jogadorDoRemetente(m: MensagemRecebida, c: ContextoDaResposta): string | null {
+  if (!m.remetenteTelefone) return null;
+  return c.apelidos?.find((a) => ehAdmin(m.remetenteTelefone!, [a.telefone]))?.nome ?? null;
+}
+
+const EU = new Set(['eu', 'me', 'mim']);
+
+/** "confirmar eu": o jogador do apelido, ou o nome do WhatsApp. */
+function nomeDoPedido(nome: string, m: MensagemRecebida, c: ContextoDaResposta): string {
+  if (!EU.has(normalizarNome(nome))) return nome;
+  return jogadorDoRemetente(m, c) ?? (m.remetenteNome?.trim() || nome);
+}
+
 /** Lê `ROBO_CALVINHO` (opcional): o número do Jonas, o "calvinho" do grupo, como o `ROBO_ADMINS`. */
 export function calvinhoDoEnv(env: Record<string, string | undefined>): string[] {
   return (env.ROBO_CALVINHO ?? '')
@@ -95,20 +120,32 @@ export function calvinhoDoEnv(env: Record<string, string | undefined>): string[]
     .filter(Boolean);
 }
 
-/** Apelido carinhoso do Jonas no grupo: brincadeira, não ofensa. */
+/** Apelido carinhoso do Jonas no grupo: brincadeira, não ofensa (nunca "careca"). */
 export const PREFIXOS_CALVINHO: Partial<Record<Comando['tipo'], string[]>> = {
-  lista: ['😎 Pra você, calvinho, a lista brilhando igual sua cabeça:', '📋 Aqui, calvo! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
-  falta: ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
-  fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:'],
-  times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:'],
-  artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:'],
-  garcom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:'],
-  ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:'],
-  ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
-  sortear: ['🍀 Sorteando com a sorte do calvinho:'],
+  lista: [
+    '😎 Pra você, calvinho, a lista brilhando igual sua cabeça:',
+    '📋 Aqui, calvo! Lista fresquinha:',
+    '✨ Saindo a lista pro meu calvinho favorito:',
+    '🔦 Nem precisei de lanterna, a cabeça do calvinho iluminou a lista:',
+  ],
+  falta: ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:', '👀 O calvinho tá de olho, hein? Ainda faltam:'],
+  fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:', '🧐 O calvinho conferindo quem tá esperando:'],
+  times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:', '👕 Calvinho, confere se caiu no time bom:'],
+  artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:', '⚽ Calvinho, cabeçada não conta se escorregar, viu? Os artilheiros:'],
+  garcom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:', '🎯 Calvinho, aprende com eles a tocar a bola:'],
+  ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:', '🏆 Calvinho, segura a emoção. O ranking:'],
+  ajuda: ['🤖 Fala, calvinho! Os comandos são esses:', '🤖 Às ordens, calvo! É só pedir:'],
+  sortear: ['🍀 Sorteando com a sorte do calvinho:', '🎩 O calvinho pediu, eu sorteio:', '🍀 Esfreguei a cabeça do calvinho pra dar sorte:'],
+  adicionar: ['🫡 Pode deixar, calvinho!', '😎 Feito, chefe calvinho!', '🫡 Às ordens, calvo!'],
+  confirmar: ['🫡 Pode deixar, calvinho!', '😎 O calvinho mandou, eu confirmei!', '🫡 Anotado, calvo!'],
+  remover: ['🫡 Feito, calvinho.', '😢 O calvinho mandou tirar, eu tirei.'],
+  cadastrar: ['🆕 O calvinho trazendo reforço!', '🆕 Contratações do calvinho chegando:', '🆕 O olheiro calvinho achou mais gente:'],
 };
 export const PREFIXO_NAO_ENTENDI = '🤔 Não entendi, calvinho. Os comandos são esses:';
-export const SALVO_CALVINHO = '🏆 Times definitivos salvos! Valeu, calvinho 😎';
+export const SALVOS_CALVINHO = ['🏆 Times definitivos salvos! Valeu, calvinho 😎', '🏆 Salvo! Times escolhidos a dedo pelo calvinho ✨', '🏆 Times definitivos salvos! Agora é só brilhar, calvo 💡'];
+
+/** Mudança feita pelo Jonas em outra pessoa: só quando mudou e o texto já não brinca com ele (ação nele mesmo). */
+const mudouSemBrincadeira = (texto: string) => /^[✅📝👋]/u.test(texto) && !/calv/iu.test(texto.split('\n\n')[0]);
 
 /** Quem mandou é o Jonas? Pelo telefone, se o número está configurado e veio; senão, pelo primeiro nome do WhatsApp. */
 function remetenteEhJonas(m: MensagemRecebida, c: ContextoDaResposta): boolean {
@@ -128,6 +165,8 @@ function comBrincadeira(cmd: Comando, texto: string, c: ContextoDaResposta): str
     : cmd.tipo === 'times' ? texto.startsWith('👕 Times de hoje:')
     : cmd.tipo === 'artilheiro' || cmd.tipo === 'garcom' || cmd.tipo === 'ranking' ? /^[⚽🎯🏆] \S+ \(/u.test(texto)
     : cmd.tipo === 'sortear' ? c.proposta.atual?.texto === texto
+    : cmd.tipo === 'adicionar' || cmd.tipo === 'confirmar' || cmd.tipo === 'remover' ? mudouSemBrincadeira(texto)
+    : cmd.tipo === 'cadastrar' ? texto.startsWith('✅ Cadastr')
     : true;
   return ok ? `${sortear(variantes)}\n${texto}` : texto;
 }
@@ -188,7 +227,7 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
   if ('ok' in r || m.quando.getTime() - guardada.criadaEm.getTime() >= VALIDADE_MS) {
     if (c.proposta.atual === guardada) c.proposta.atual = null;
   }
-  if ('ok' in r) return jonas ? SALVO_CALVINHO : r.ok;
+  if ('ok' in r) return jonas ? SALVOS_CALVINHO[Math.floor((c.rng ?? Math.random)() * SALVOS_CALVINHO.length)] : r.ok;
   return r.erro;
 }
 
@@ -196,36 +235,61 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
 async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   if (!c.ia) return TEXTO_AJUDA;
   if (!c.freio.podePerguntar()) return TEXTO_LIMITE;
-  const r = await c.perguntar(texto, { agora: () => m.quando, acoes: ferramentasDeAcao(m, c), quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c) });
+  const marca = { entrouOuConfirmou: false };
+  const r = await c.perguntar(texto, { agora: () => m.quando, acoes: ferramentasDeAcao(m, c, marca), quem: quemPediu(m), ehJonas: remetenteEhJonas(m, c), jogador: jogadorDoRemetente(m, c) });
   c.freio.registrarPergunta();
-  return r;
+  if (!marca.entrouOuConfirmou) return r;
+  // Entrou ou confirmou alguém: a lista atual vai junto, se a resposta ainda não a trouxe.
+  const lista = await listaAtual(m, c);
+  return r.includes(lista) ? r : `${r}\n\n${lista}`;
 }
 
 /** Quem pediu, para o "pedido por" (nunca o telefone). */
 const quemPediu = (m: MensagemRecebida) => m.remetenteNome?.trim() || 'alguém';
 
-/** adicionar/confirmar/remover: qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu. */
-async function respostaNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
-  const feito = await c.mexerNaLista(acao, nome, m.quando);
-  return feito.mudou ? `${feito.texto} (pedido por ${quemPediu(m)})` : feito.texto;
+/** Quem entra ou confirma quer conferir a lista: depois dessas mudanças, a lista atual vai junto. */
+const MOSTRA_LISTA: readonly AcaoNaLista[] = ['adicionar', 'confirmar'];
+
+/** A lista atual, como o "Copiar lista" do site, para ir depois de uma entrada ou confirmação. */
+async function listaAtual(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+  const lista = await c.lerLista(m.quando);
+  return textoWhatsApp(lista, lista.data);
 }
 
-/** Vários nomes: cada um pelo caminho de um só (teto de tamanho por nome), numa única mensagem. */
-async function respostaVariosNomes(acao: AcaoNaLista, nomes: string[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+/** adicionar/confirmar/remover: qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu. */
+async function mudarNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean }> {
+  const feito = await c.mexerNaLista(acao, nomeDoPedido(nome, m, c), m.quando);
+  return feito.mudou ? { texto: `${feito.texto} (pedido por ${quemPediu(m)})`, mudou: true } : feito;
+}
+
+/** Um ou vários nomes (cada um pelo caminho de um só, com teto de tamanho), numa única mensagem; depois de entrar ou confirmar, a lista. */
+async function respostaNaLista(acao: AcaoNaLista, nomes: string[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   const linhas: string[] = [];
+  let mudou = false;
   for (const nome of nomes) {
-    linhas.push(nome.length > TAM_MAX_NOME_PEDIDO ? TEXTO_NOME_COMPRIDO : await respostaNaLista(acao, nome, m, c));
+    if (nome.length > TAM_MAX_NOME_PEDIDO) {
+      linhas.push(TEXTO_NOME_COMPRIDO);
+      continue;
+    }
+    const feito = await mudarNaLista(acao, nome, m, c);
+    linhas.push(feito.texto);
+    mudou ||= feito.mudou;
   }
   if (excedeu) linhas.push(TEXTO_MAX_MUDANCAS);
-  return linhas.join('\n');
+  const texto = linhas.join('\n');
+  return mudou && MOSTRA_LISTA.includes(acao) ? `${texto}\n\n${await listaAtual(m, c)}` : texto;
 }
 
 /** cadastrar: só organizadores, pelo telefone (como o sorteio); o cadastro mostra quem pediu. */
 async function respostaCadastrar(pessoas: PessoaPedida[], excedeu: boolean, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean }> {
   if (!m.remetenteTelefone || !ehAdmin(m.remetenteTelefone, c.admins)) return { texto: TEXTO_SO_ADMIN_CADASTRO, mudou: false };
-  const feito = await c.cadastrar(pessoas, m.quando);
-  const linhas = feito.texto.split('\n');
+  // Sem nota ninguém é cadastrado: o robô pede a nota de quem veio sem ela.
+  const comNota = pessoas.filter((p) => p.nota !== null);
+  const semNota = pessoas.filter((p) => p.nota === null).map((p) => p.nome);
+  const feito = comNota.length ? await c.cadastrar(comNota, m.quando) : { texto: '', mudou: false };
+  const linhas = feito.texto ? feito.texto.split('\n') : [];
   if (feito.mudou) linhas[0] = `${linhas[0]} (pedido por ${quemPediu(m)})`;
+  if (semNota.length) linhas.push(pedirNotas(semNota));
   if (excedeu) linhas.push(TEXTO_MAX_CADASTROS);
   return { texto: linhas.join('\n'), mudou: feito.mudou };
 }
@@ -235,7 +299,7 @@ const comPessoas: Parametros = {
   properties: {
     pessoas: {
       type: 'string',
-      description: 'Cada pessoa como "Nome - nota", separadas por vírgula, ex.: "Caio - 2.5, Pedro - 3". Nota de 0 a 5, de 0,5 em 0,5; sem nota, fica 3,0.',
+      description: 'Cada pessoa como "Nome - nota", separadas por vírgula, ex.: "Caio - 2.5, Pedro - 3". Nota de 0 a 5, de 0,5 em 0,5.',
     },
   },
   required: ['pessoas'],
@@ -268,7 +332,7 @@ function lerNome(args: unknown): string {
  * telefone (para o sorteio) vêm da mensagem do WhatsApp, nunca do que o modelo escreve.
  * Nenhuma confirma sorteio: o "sim" continua só pelo comando.
  */
-export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): Ferramenta[] {
+export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, marca: { entrouOuConfirmou: boolean } = { entrouOuConfirmou: false }): Ferramenta[] {
   const naLista = (acao: AcaoNaLista, nome: string, descricao: string): Ferramenta => ({
     nome,
     descricao,
@@ -277,10 +341,11 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
     async executar(args) {
       const pedido = lerNome(args);
       if (pedido.length > TAM_MAX_NOME_PEDIDO) throw new ErroDeFerramenta(TEXTO_NOME_COMPRIDO);
-      const feito = await c.mexerNaLista(acao, pedido, m.quando);
+      const feito = await mudarNaLista(acao, pedido, m, c);
       // Não mudou (não achou, já estava, recusa do site): o modelo recebe o texto como erro e explica.
       if (!feito.mudou) throw new ErroDeFerramenta(feito.texto);
-      return new TextoPronto(`${feito.texto} (pedido por ${quemPediu(m)})`, 'acao');
+      if (MOSTRA_LISTA.includes(acao)) marca.entrouOuConfirmou = true;
+      return new TextoPronto(feito.texto, 'acao');
     },
   });
   const consulta = (tipo: Consulta, nome: string, descricao: string): Ferramenta => ({
@@ -317,7 +382,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta): F
     consulta('ranking', 'ranking', 'Os 5 primeiros em pontos no mês (ou no geral).'),
     {
       nome: 'cadastrar_jogadores',
-      descricao: `Cadastra jogadores NOVOS no site, com nota, só para os organizadores (o código confere quem mandou). Até ${MAX_CADASTROS_POR_MENSAGEM} por vez. Não põe ninguém na lista. Devolve o texto para o grupo.`,
+      descricao: `Cadastra jogadores NOVOS no site, com nota, só para os organizadores (o código confere quem mandou). Até ${MAX_CADASTROS_POR_MENSAGEM} por vez. Toda pessoa precisa de nota: se a mensagem não trouxer, pergunte em vez de chamar. Não põe ninguém na lista. Devolve o texto para o grupo.`,
       parametros: comPessoas,
       altera: true,
       async executar(args) {
@@ -415,7 +480,7 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
     case 'adicionar':
     case 'confirmar':
     case 'remover':
-      r = { texto: 'nomes' in cmd ? await respostaVariosNomes(cmd.tipo, cmd.nomes, cmd.excedeu, m, c) : await respostaNaLista(cmd.tipo, cmd.nome, m, c) };
+      r = { texto: 'nomes' in cmd ? await respostaNaLista(cmd.tipo, cmd.nomes, cmd.excedeu, m, c) : await respostaNaLista(cmd.tipo, [cmd.nome], false, m, c) };
       break;
     case 'cadastrar':
       r = { texto: (await respostaCadastrar(cmd.pessoas, cmd.excedeu, m, c)).texto };

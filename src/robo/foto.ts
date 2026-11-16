@@ -110,7 +110,7 @@ export function linhasDoCabecalho(m: Mudancas): string[] {
   add('⬇️ Foram para a fila', m.foramParaFila);
   add('📝 Entraram na fila', m.entraramNaFila);
   add('⌛ Perderam o prazo', m.perderamPrazo);
-  if (m.manual === 'fechou') linhas.push('🔒 O admin fechou a lista.');
-  if (m.manual === 'reabriu') linhas.push('🔓 O admin reabriu a lista.');
+  if (m.manual === 'fechou') linhas.push('🔒 Um organizador fechou a lista.');
+  if (m.manual === 'reabriu') linhas.push('🔓 Um organizador reabriu a lista.');
   return linhas;
 }

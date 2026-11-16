@@ -15,7 +15,8 @@ cadastrar gente nova é chato; o robô deve cadastrar pelo grupo.
 
 ## Decisões do Claude (o usuário pode mudar)
 
-- Sem nota: 3,0, como no site. Vários nomes antes de uma nota ("Caio, Pedro e João - 2.5") dividem a nota.
+- Sem nota (pedido do usuário): ninguém sem nota é cadastrado; o robô pede a nota de quem veio sem ela
+  ("✍️ Faltou a nota de Pedro e João…") e cadastra os outros. Vários nomes antes de uma nota ("Caio, Pedro e João - 2.5") dividem a nota.
 - "Caio Pedro" sem vírgula é um nome só (nomes compostos como "Mateus Borges").
 - Nome todo em minúsculas ganha iniciais maiúsculas ("joão da silva" → "João da Silva").
 - Até 10 pessoas por mensagem; o resto é avisado.
@@ -24,3 +25,16 @@ cadastrar gente nova é chato; o robô deve cadastrar pelo grupo.
 - A resposta mostra os nomes com a nota e "(pedido por <nome do WhatsApp>)". O PIN não aparece no grupo.
 - Cadastrar não põe ninguém na lista (para isso, `adicionar`). A IA nunca cadastra só porque o
   `adicionar` disse que a pessoa não está cadastrada.
+
+## Ajustes do mesmo dia (pedidos do usuário)
+
+- **Lista depois de entrar ou confirmar:** o pessoal confirmava e logo pedia a lista para conferir. Agora,
+  quando `adicionar` ou `confirmar` muda algo (comando ou IA), a resposta traz a lista atual no formato do
+  "Copiar lista", uma vez só por mensagem. `remover` não traz (decisão do Claude).
+- **Apelido por número (`ROBO_APELIDOS` no `.env`):** "número=Nome no site". O dono aparece no WhatsApp como
+  "Marco Filho", mas no site é "Marquinho"; "@robô eu vou" falhava. A IA recebe o nome do site de quem fala, e
+  "confirmar eu"/"adicionar eu"/"remover eu" usam esse nome (sem apelido, o nome do WhatsApp).
+- **Mensagens revisadas:** "admin" virou "organizador" no que vai ao grupo; consultas vazias ganharam emoji;
+  o aviso de jogador não cadastrado ensina o `cadastrar`; os avisos de limite dizem o que fazer.
+- **Calvinho em todos os comandos do Jonas:** variantes novas para cada comando, inclusive `adicionar`,
+  `confirmar`, `remover` (quando ele mexe em outra pessoa), `cadastrar`, `sortear` e o `sim`. Erros seguem sérios.

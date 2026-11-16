@@ -5,7 +5,7 @@ import type { Envio, EstadoDoRobo } from '@/robo/agenda';
 import { TEXTO_AJUDA, TEXTO_SO_3_OU_4, type AcaoNaLista } from '@/robo/comandos';
 import { fotografar } from '@/robo/foto';
 import { Freio, LIMITE_PERGUNTAS, LIMITE_RESPOSTAS, TEXTO_LIMITE } from '@/robo/freio';
-import { calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVO_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
 import { TEXTO_SO_ADMIN, type Proposta } from '@/robo/sorteio-zap';
@@ -32,6 +32,8 @@ const lista: EstadoDaSemana = {
   estadoManual: null,
   foraDoPrazo: [],
 };
+
+const LISTA = textoWhatsApp(lista, lista.data);
 
 function msg(texto: string, over: Partial<MensagemRecebida> = {}): MensagemRecebida {
   return { grupoId: GRUPO, remetenteTelefone: QUALQUER, remetenteNome: 'Zeca', texto, mencionaORobo: true, respondeAoRobo: false, quando: t('2026-11-10T15:40:00'), ...over };
@@ -532,9 +534,11 @@ describe('responder: mexer na lista pelo nome', () => {
     const c = ctx();
     const r = await responder(msg(texto), c);
     expect(c.mexerNaLista).toHaveBeenCalledWith(acao, nome, t('2026-11-10T15:40:00'));
-    expect(r).toMatchObject({ texto: 'Pepe entrou na lista. (pedido por Zeca)', ehListaCompleta: false });
+    // Depois de entrar ou confirmar, a lista atual vai junto; depois de remover, não.
+    const esperado = acao === 'remover' ? 'Pepe entrou na lista. (pedido por Zeca)' : `Pepe entrou na lista. (pedido por Zeca)\n\n${LISTA}`;
+    expect(r).toMatchObject({ texto: esperado, ehListaCompleta: false });
     expect(r?.gravar).toBeUndefined();
-    expect(c.enviar).toHaveBeenCalledWith('Pepe entrou na lista. (pedido por Zeca)');
+    expect(c.enviar).toHaveBeenCalledWith(esperado);
   });
 
   it('sem nome no WhatsApp: "pedido por alguém"; nunca o telefone', async () => {
@@ -686,14 +690,14 @@ describe('responder: marcação ignorada (log) e aviso do limite', () => {
 describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
   const JONAS = '5581990000007'; // fictício
   const PREFIXOS: Record<string, string[]> = {
-    lista: ['😎 Pra você, calvinho, a lista brilhando igual sua cabeça:', '📋 Aqui, calvo! Lista fresquinha:', '✨ Saindo a lista pro meu calvinho favorito:'],
-    'falta confirmar': ['🕵️ Fiscalizando pro calvinho:', '⏳ O calvinho quer saber quem tá enrolando:'],
-    fila: ['📝 O calvinho de olho na fila:', '📝 Fila pro meu calvo favorito:'],
-    times: ['👕 Se prepara, calvinho, os times são esses:', '👕 Já passa o protetor, calvo! Os times de hoje:'],
-    artilheiro: ['⚽ Os goleadores pro calvinho conferir:', '⚽ Olha quem tá balançando a rede, calvo:'],
-    garçom: ['🎯 Os garçons da pelada, calvinho:', '🎯 Quem mais deu passe, calvo:'],
-    ranking: ['🏆 O ranking pro meu calvinho favorito:', '🏆 Será que o calvo tá no pódio? Confere:'],
-    ajuda: ['🤖 Fala, calvinho! Os comandos são esses:'],
+    lista: PREFIXOS_CALVINHO.lista!,
+    'falta confirmar': PREFIXOS_CALVINHO.falta!,
+    fila: PREFIXOS_CALVINHO.fila!,
+    times: PREFIXOS_CALVINHO.times!,
+    artilheiro: PREFIXOS_CALVINHO.artilheiro!,
+    garçom: PREFIXOS_CALVINHO.garcom!,
+    ranking: PREFIXOS_CALVINHO.ranking!,
+    ajuda: PREFIXOS_CALVINHO.ajuda!,
   };
   const doJonas = (texto: string, over: Partial<MensagemRecebida> = {}) => msg(texto, { remetenteTelefone: JONAS, remetenteNome: 'Jonas', ...over });
   const consultaTimes = async () => '👕 Times de hoje:\n\n🔵 Azul\n- Ana';
@@ -736,7 +740,7 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
 
   it('sim: texto salvo do calvinho; erro continua sério', async () => {
     const c = ctx({ calvinho: [JONAS], admins: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) } });
-    expect((await responder(doJonas('sim'), c))!.texto).toBe('🏆 Times definitivos salvos! Valeu, calvinho 😎');
+    expect(SALVOS_CALVINHO).toContain((await responder(doJonas('sim'), c))!.texto);
     const erro = ctx({ calvinho: [JONAS], proposta: { atual: proposta({ adminTelefone: JONAS }) }, confirmar: vi.fn(async () => ({ erro: '⌛ A proposta expirou. Peça *sortear* de novo.' })) });
     expect((await responder(doJonas('sim'), erro))!.texto).toBe('⌛ A proposta expirou. Peça *sortear* de novo.');
   });
@@ -748,9 +752,20 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
     expect((await responder(doJonas('o João está na lista?'), comIa))!.texto).toBe('O João está na lista.');
   });
 
-  it('adicionar/confirmar/remover: sem linha extra (a brincadeira do objeto vem do texto da lista)', async () => {
-    const c = ctx({ calvinho: [JONAS], rng: () => 0 });
-    expect((await responder(doJonas('confirmar Pepe'), c))!.texto).toBe('Pepe entrou na lista. (pedido por Jonas)');
+  it('adicionar/confirmar/remover em outra pessoa: linha do calvinho antes; nele mesmo, a brincadeira já vem do texto', async () => {
+    const outro = ctx({ calvinho: [JONAS], rng: () => 0, mexerNaLista: vi.fn(async () => ({ texto: '✅ Pepe confirmado!', mudou: true })) });
+    expect((await responder(doJonas('confirmar Pepe'), outro))!.texto).toBe(`${PREFIXOS_CALVINHO.confirmar![0]}\n✅ Pepe confirmado! (pedido por Jonas)\n\n${LISTA}`);
+    const saiu = ctx({ calvinho: [JONAS], rng: () => 0, mexerNaLista: vi.fn(async () => ({ texto: '👋 Pepe saiu da lista.', mudou: true })) });
+    expect((await responder(doJonas('remover Pepe'), saiu))!.texto).toBe(`${PREFIXOS_CALVINHO.remover![0]}\n👋 Pepe saiu da lista. (pedido por Jonas)`);
+    const ele = ctx({ calvinho: [JONAS], rng: () => 0, mexerNaLista: vi.fn(async () => ({ texto: '✅ Calvinho confirmado! Os refletores agradecem a ajuda 💡', mudou: true })) });
+    expect((await responder(doJonas('confirmar Jonas'), ele))!.texto.startsWith('✅ Calvinho confirmado!')).toBe(true);
+    const nada = ctx({ calvinho: [JONAS], rng: () => 0, mexerNaLista: vi.fn(async () => ({ texto: '🤔 Zé não está na lista.', mudou: false })) });
+    expect((await responder(doJonas('confirmar Zé'), nada))!.texto).toBe('🤔 Zé não está na lista.');
+  });
+
+  it('cadastrar e salvar o sorteio também brincam', async () => {
+    const c = ctx({ calvinho: [JONAS], admins: [JONAS], rng: () => 0 });
+    expect((await responder(doJonas('cadastrar Caio - 2,5'), c))!.texto).toBe(`${PREFIXOS_CALVINHO.cadastrar![0]}\n✅ Cadastrado: Caio (2,5). (pedido por Jonas)`);
   });
 
   it('erro de consulta ou "sem times" fica sério', async () => {
@@ -764,7 +779,7 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
   });
 
   it('nenhuma variante do Jonas usa a palavra "careca"', () => {
-    const todas = [...Object.values(PREFIXOS_CALVINHO).flat(), PREFIXO_NAO_ENTENDI, SALVO_CALVINHO, ...Object.values(CALVINHO).flat()];
+    const todas = [...Object.values(PREFIXOS_CALVINHO).flat(), PREFIXO_NAO_ENTENDI, ...SALVOS_CALVINHO, ...Object.values(CALVINHO).flat()];
     expect(todas.length).toBeGreaterThan(25);
     for (const v of todas) expect(v!.toLowerCase()).not.toContain('careca');
   });
@@ -776,7 +791,7 @@ describe('responder: vários nomes numa mensagem', () => {
       mexerNaLista: vi.fn(async (_a: AcaoNaLista, nome: string) => (nome === 'Zé' ? { texto: '🤔 Zé não está na lista.', mudou: false } : { texto: `✅ ${nome} confirmado!`, mudou: true })),
     });
     const r = await responder(msg('confirmar Ana, Zé e Beto'), c);
-    const esperado = '✅ Ana confirmado! (pedido por Zeca)\n🤔 Zé não está na lista.\n✅ Beto confirmado! (pedido por Zeca)';
+    const esperado = `✅ Ana confirmado! (pedido por Zeca)\n🤔 Zé não está na lista.\n✅ Beto confirmado! (pedido por Zeca)\n\n${LISTA}`;
     expect(r?.texto).toBe(esperado);
     expect(c.mexerNaLista).toHaveBeenCalledTimes(3);
     expect(c.enviar).toHaveBeenCalledTimes(1);
@@ -786,14 +801,14 @@ describe('responder: vários nomes numa mensagem', () => {
     const c = ctx();
     const r = await responder(msg('adicionar A1, B2, C3 e D4'), c);
     expect(c.mexerNaLista).toHaveBeenCalledTimes(3);
-    expect(r?.texto?.split('\n')).toHaveLength(4);
-    expect(r?.texto?.endsWith('\nSó mudo até 3 nomes por mensagem.')).toBe(true);
+    expect(r?.texto?.split('\n\n')[0].split('\n')).toHaveLength(4);
+    expect(r?.texto).toContain('\n⚠️ Só mudo até 3 nomes por mensagem. Mande o resto em outra.\n\n');
   });
   it('nome comprido no meio: só aquela linha recusa', async () => {
     const c = ctx();
     const r = await responder(msg(`adicionar Ana, ${'x'.repeat(41)}`), c);
     expect(c.mexerNaLista).toHaveBeenCalledTimes(1);
-    expect(r?.texto).toBe('Pepe entrou na lista. (pedido por Zeca)\n🤔 Nome muito comprido.');
+    expect(r?.texto).toBe(`Pepe entrou na lista. (pedido por Zeca)\n🤔 Nome muito comprido.\n\n${LISTA}`);
   });
 });
 
@@ -802,7 +817,7 @@ describe('responder: nome repetido na mesma mensagem', () => {
     let n = 0;
     const c = ctx({ mexerNaLista: vi.fn(async () => (n++ === 0 ? { texto: '✅ Ana entrou na lista!', mudou: true } : { texto: '👍 Ana já está na lista.', mudou: false })) });
     const r = await responder(msg('adicionar Ana, Ana'), c);
-    expect(r?.texto).toBe('✅ Ana entrou na lista! (pedido por Zeca)\n👍 Ana já está na lista.');
+    expect(r?.texto).toBe(`✅ Ana entrou na lista! (pedido por Zeca)\n👍 Ana já está na lista.\n\n${LISTA}`);
   });
 });
 
@@ -851,5 +866,83 @@ describe('cadastrar', () => {
     await expect(deOutro.executar({ pessoas: 'Caio - 2.5' })).rejects.toThrow(TEXTO_SO_ADMIN_CADASTRO);
     expect(outroCtx.cadastrar).not.toHaveBeenCalled();
     await expect(doAdmin.executar({ pessoas: '' })).rejects.toBeInstanceOf(ErroDeFerramenta);
+  });
+});
+
+describe('cadastrar sem nota', () => {
+  it('ninguém com nota: não cadastra e pede a nota', async () => {
+    const c = ctx();
+    const r = await responder(msg('cadastrar Pedro, João', { remetenteTelefone: ADMIN }), c);
+    expect(c.cadastrar).not.toHaveBeenCalled();
+    expect(r?.texto).toBe('✍️ Faltou a nota de Pedro e João. Mande de novo com a nota, assim: *cadastrar Pedro - 2,5, João - 3*');
+  });
+
+  it('parte com nota: cadastra essa parte e pede a nota do resto', async () => {
+    const c = ctx();
+    const r = await responder(msg('cadastrar Caio - 2,5, Pedro', { remetenteTelefone: ADMIN, remetenteNome: 'Marco' }), c);
+    expect(c.cadastrar).toHaveBeenCalledWith([{ nome: 'Caio', nota: 2.5 }], expect.any(Date));
+    expect(r?.texto).toBe('✅ Cadastrado: Caio (2,5). (pedido por Marco)\n✍️ Faltou a nota de Pedro. Mande de novo com a nota, assim: *cadastrar Pedro - 2,5*');
+  });
+
+  it('pela IA, sem nota: erro para o modelo pedir a nota', async () => {
+    const c = ctx();
+    const f = ferramentasDeAcao(msg('x', { remetenteTelefone: ADMIN }), c).find((x) => x.nome === 'cadastrar_jogadores')!;
+    await expect(f.executar({ pessoas: 'Pedro' })).rejects.toThrow('Faltou a nota de Pedro');
+    expect(c.cadastrar).not.toHaveBeenCalled();
+  });
+});
+
+describe('lista depois de entrar ou confirmar pela IA', () => {
+  it('a ferramenta marca; a resposta da IA ganha a lista atual', async () => {
+    const c = ctx({
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        const r = await op.acoes.find((f) => f.nome === 'confirmar_jogador')!.executar({ nome: 'Ana' });
+        return `Beleza!\n${(r as TextoPronto).texto}`;
+      }),
+    });
+    const r = await responder(msg('eu vou'), c);
+    expect(r?.texto).toBe(`Beleza!\nPepe entrou na lista. (pedido por Zeca)\n\n${LISTA}`);
+  });
+
+  it('sem mudança, ou só remoção: sem lista extra; lista já na resposta: não repete', async () => {
+    const remover = ctx({
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito.';
+      }),
+    });
+    expect((await responder(msg('me tira'), remover))?.texto).toBe('Feito.');
+    const comLista = ctx({
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'adicionar_jogador')!.executar({ nome: 'Ana' });
+        return `Feito.\n\n${LISTA}`;
+      }),
+    });
+    expect((await responder(msg('bota a Ana'), comLista))?.texto).toBe(`Feito.\n\n${LISTA}`);
+  });
+});
+
+describe('apelidos (ROBO_APELIDOS)', () => {
+  it('lê "telefone=Nome" separados por vírgula, ignorando pares quebrados', () => {
+    expect(apelidosDoEnv({ ROBO_APELIDOS: ' 5581990000001 = Marquinho , quebrado, =Zé' })).toEqual([{ telefone: '5581990000001', nome: 'Marquinho' }]);
+    expect(apelidosDoEnv({})).toEqual([]);
+  });
+
+  it('"confirmar eu" usa o jogador do apelido; sem apelido, o nome do WhatsApp', async () => {
+    const c = ctx({ apelidos: [{ telefone: ADMIN, nome: 'Marquinho' }] });
+    await responder(msg('confirmar eu', { remetenteTelefone: ADMIN, remetenteNome: 'Marco Filho' }), c);
+    expect(c.mexerNaLista).toHaveBeenCalledWith('confirmar', 'Marquinho', expect.any(Date));
+    const sem = ctx();
+    await responder(msg('confirmar eu', { remetenteNome: 'Zeca' }), sem);
+    expect(sem.mexerNaLista).toHaveBeenCalledWith('confirmar', 'Zeca', expect.any(Date));
+  });
+
+  it('a IA recebe o nome do jogador de quem fala', async () => {
+    const c = ctx({ apelidos: [{ telefone: ADMIN, nome: 'Marquinho' }] });
+    await responder(msg('eu vou', { remetenteTelefone: ADMIN, remetenteNome: 'Marco Filho' }), c);
+    expect(c.perguntar).toHaveBeenCalledWith('eu vou', expect.objectContaining({ quem: 'Marco Filho', jogador: 'Marquinho' }));
+    const outro = ctx({ apelidos: [{ telefone: ADMIN, nome: 'Marquinho' }] });
+    await responder(msg('eu vou'), outro);
+    expect(outro.perguntar).toHaveBeenCalledWith('eu vou', expect.objectContaining({ jogador: null }));
   });
 });

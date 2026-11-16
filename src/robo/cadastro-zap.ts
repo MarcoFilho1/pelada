@@ -3,11 +3,10 @@
 import type { ResultadoDoCadastro } from '@/server/jogadores';
 import { juntarNomes } from './foto';
 
-/** `nota` como foi escrita (ainda sem validar); `null` = sem nota (fica 3,0, como no site). */
+/** `nota` como foi escrita (ainda sem validar); `null` = veio sem nota (o robô pede a nota antes de cadastrar). */
 export type PessoaPedida = { nome: string; nota: number | null };
 
 export const MAX_CADASTROS_POR_MENSAGEM = 10;
-export const NOTA_PADRAO = 3;
 export const TEXTO_COMO_CADASTRAR = '🤔 Mande assim: cadastrar Caio - 2,5, João - 3';
 export const TEXTO_SO_ADMIN_CADASTRO = '🔐 Só os organizadores podem cadastrar jogadores pelo WhatsApp.';
 export const TEXTO_MAX_CADASTROS = `Só cadastro até ${MAX_CADASTROS_POR_MENSAGEM} pessoas por mensagem.`;
@@ -60,6 +59,15 @@ export function lerCadastro(texto: string): PessoaPedida[] {
   }
   for (const nome of separar(s.slice(desde))) pessoas.push({ nome: arrumarNome(nome), nota: null });
   return pessoas;
+}
+
+/** Quem veio sem nota não é cadastrado: o robô pede a nota de cada um. */
+export function pedirNotas(nomes: string[]): string {
+  const exemplo = nomes
+    .slice(0, 2)
+    .map((n, i) => `${n} - ${i === 0 ? '2,5' : '3'}`)
+    .join(', ');
+  return `✍️ Faltou a nota de ${juntarNomes(nomes)}. Mande de novo com a nota, assim: *cadastrar ${exemplo}*`;
 }
 
 const notaZap = (n: number) => n.toFixed(1).replace('.', ',');

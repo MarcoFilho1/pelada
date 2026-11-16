@@ -43,7 +43,7 @@ Regras de convivência:
 - Quando uma rodada de 30 min cai num horário fixo (12:00, 14:00), sai uma mensagem só, com o texto do
   horário fixo e o cabeçalho das mudanças.
 - **Pelada cancelada** pelo admin: uma mensagem "A pelada de quarta, 11/11 foi cancelada." e o robô
-  para até a semana seguinte. Lista **fechada à mão**: entra no cabeçalho ("O admin fechou a lista.").
+  para até a semana seguinte. Lista **fechada à mão**: entra no cabeçalho ("Um organizador fechou a lista.").
 - A primeira mensagem da semana é sempre a de "lista aberta" (ou, se o robô só ligar depois, a
   primeira que ele mandar, sem cabeçalho de mudanças: "Lista de quarta, 11/11:" + a lista).
 

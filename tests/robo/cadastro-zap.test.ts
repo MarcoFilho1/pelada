@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrumarNome, lerCadastro, respostaCadastro, TEXTO_COMO_CADASTRAR } from '@/robo/cadastro-zap';
+import { arrumarNome, lerCadastro, pedirNotas, respostaCadastro, TEXTO_COMO_CADASTRAR } from '@/robo/cadastro-zap';
 
 describe('lerCadastro', () => {
   it('aceita nota com ponto ou vírgula', () => {
@@ -100,5 +100,12 @@ describe('respostaCadastro', () => {
   it('ninguém cadastrado: não mudou', () => {
     expect(respostaCadastro({ ...vazio, jaExistiam: ['Pedro', 'Caio'] })).toEqual({ texto: '👍 Já estavam cadastrados: Pedro e Caio.', mudou: false });
     expect(respostaCadastro(vazio)).toEqual({ texto: TEXTO_COMO_CADASTRAR, mudou: false });
+  });
+});
+
+describe('pedirNotas', () => {
+  it('um nome e vários (exemplo com até dois)', () => {
+    expect(pedirNotas(['Pedro'])).toBe('✍️ Faltou a nota de Pedro. Mande de novo com a nota, assim: *cadastrar Pedro - 2,5*');
+    expect(pedirNotas(['Pedro', 'João', 'Lucas'])).toBe('✍️ Faltou a nota de Pedro, João e Lucas. Mande de novo com a nota, assim: *cadastrar Pedro - 2,5, João - 3*');
   });
 });

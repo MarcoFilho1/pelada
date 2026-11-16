@@ -125,9 +125,9 @@ describe('mudancas', () => {
     const aberta = foto({});
     const fechada = foto({ estadoManual: 'fechada' });
     expect(mudancas(aberta, fechada).manual).toBe('fechou');
-    expect(linhasDoCabecalho(mudancas(aberta, fechada))).toEqual(['🔒 O admin fechou a lista.']);
+    expect(linhasDoCabecalho(mudancas(aberta, fechada))).toEqual(['🔒 Um organizador fechou a lista.']);
     expect(mudancas(fechada, aberta).manual).toBe('reabriu');
-    expect(linhasDoCabecalho(mudancas(fechada, aberta))).toEqual(['🔓 O admin reabriu a lista.']);
+    expect(linhasDoCabecalho(mudancas(fechada, aberta))).toEqual(['🔓 Um organizador reabriu a lista.']);
     expect(mudancas(fechada, foto({ estadoManual: 'aberta' })).manual).toBe('reabriu');
     expect(haMudanca(mudancas(fechada, fechada))).toBe(false);
   });
@@ -156,7 +156,7 @@ describe('mudancas', () => {
       '⬇️ Foram para a fila: F.',
       '📝 Entraram na fila: E.',
       '⌛ Perderam o prazo: H.',
-      '🔒 O admin fechou a lista.',
+      '🔒 Um organizador fechou a lista.',
     ]);
   });
 });

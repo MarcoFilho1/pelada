@@ -38,15 +38,15 @@ export async function consultar(db: DB, tipo: Consulta, now: Date): Promise<stri
   const { periodo, linhas } = await rankingDoPeriodoPedido(db, now);
   if (tipo === 'artilheiro') {
     const top = ordenarArtilharia(linhas).slice(0, 3);
-    return top.length ? topo('⚽ Artilheiros', periodo, top.map((l) => ({ nome: l.nome, valor: l.gols }))) : 'Ninguém fez gol ainda.';
+    return top.length ? topo('⚽ Artilheiros', periodo, top.map((l) => ({ nome: l.nome, valor: l.gols }))) : '⚽ Ninguém fez gol ainda.';
   }
   if (tipo === 'garcom') {
     const top = linhas
       .filter((l) => l.assistencias > 0)
       .sort((a, b) => b.assistencias - a.assistencias || b.gols - a.gols || a.nome.localeCompare(b.nome, 'pt-BR'))
       .slice(0, 3);
-    return top.length ? topo('🎯 Garçons', periodo, top.map((l) => ({ nome: l.nome, valor: l.assistencias }))) : 'Ninguém deu assistência ainda.';
+    return top.length ? topo('🎯 Garçons', periodo, top.map((l) => ({ nome: l.nome, valor: l.assistencias }))) : '🎯 Ninguém deu assistência ainda.';
   }
   const top = linhas.slice(0, 5);
-  return top.length ? topo('🏆 Ranking', periodo, top.map((l) => ({ nome: l.nome, valor: l.pontos }))) : 'Ainda não tem partida no ranking.';
+  return top.length ? topo('🏆 Ranking', periodo, top.map((l) => ({ nome: l.nome, valor: l.pontos }))) : '🏆 Ainda não tem partida no ranking.';
 }
