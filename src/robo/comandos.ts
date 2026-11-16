@@ -1,5 +1,6 @@
 import { normalizarNome } from '@/domain/nome';
 import type { QtdDeTimes } from '@/domain/sorteio';
+import { lerCadastro, MAX_CADASTROS_POR_MENSAGEM, TEXTO_COMO_CADASTRAR, type PessoaPedida } from '@/robo/cadastro-zap';
 import { juntarNomes } from '@/robo/foto';
 import type { EstadoDaSemana } from '@/server/presencas';
 
@@ -14,6 +15,8 @@ export type Comando =
   | { tipo: AcaoNaLista; nome: string }
   /** Vários nomes numa só mensagem: até `MAX_NOMES_POR_MENSAGEM` em `nomes`; `excedeu` se havia mais. */
   | { tipo: AcaoNaLista; nome: string; nomes: string[]; excedeu: boolean }
+  /** Jogadores novos (só organizadores): até `MAX_CADASTROS_POR_MENSAGEM` em `pessoas`; `excedeu` se havia mais. */
+  | { tipo: 'cadastrar'; pessoas: PessoaPedida[]; excedeu: boolean }
   | { tipo: 'pergunta'; texto: string }
   /** Comando reconhecido mas recusado antes de chegar ao site; `texto` é a resposta. */
   | { tipo: 'recusa'; texto: string };
@@ -91,6 +94,17 @@ function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | '
   return { tipo, nome: todos[0] };
 }
 
+const CADASTRAR = new Set(['cadastrar', 'cadastra', 'cadastre', 'cadastro']);
+
+/** "cadastrar Caio - 2,5 João - 3" (ou várias linhas) → pessoas; sem ninguém, o jeito de mandar. */
+function comandoDeCadastro(texto: string): Extract<Comando, { tipo: 'cadastrar' | 'recusa' }> | null {
+  const m = /^\s*(\S+)(?:\s+([\s\S]*))?$/u.exec(texto);
+  if (!m || !CADASTRAR.has(normalizarNome(m[1]).replace(/[.,:;!?]+$/u, ''))) return null;
+  const pessoas = lerCadastro(m[2] ?? '');
+  if (!pessoas.length) return { tipo: 'recusa', texto: TEXTO_COMO_CADASTRAR };
+  return { tipo: 'cadastrar', pessoas: pessoas.slice(0, MAX_CADASTROS_POR_MENSAGEM), excedeu: pessoas.length > MAX_CADASTROS_POR_MENSAGEM };
+}
+
 /** Texto da mensagem sem a marcação → comando. Sobra de texto depois do comando é pergunta livre. */
 export function interpretar(textoSemMarcacao: string): Comando {
   const limpo = normalizarNome(textoSemMarcacao).replace(/[\s.,;:!?]+$/u, '').trim();
@@ -99,6 +113,8 @@ export function interpretar(textoSemMarcacao: string): Comando {
   if (tipo) return { tipo };
   const sortear = comandoDeSortear(limpo);
   if (sortear) return sortear;
+  const cadastro = comandoDeCadastro(textoSemMarcacao);
+  if (cadastro) return cadastro;
   const deLista = comandoDeLista(textoSemMarcacao);
   if (deLista) return deLista;
   return { tipo: 'pergunta', texto: textoSemMarcacao.trim().replace(/\s+/g, ' ') };
@@ -126,6 +142,7 @@ export const TEXTO_AJUDA = [
   '⚽ artilheiro · 🎯 garçom · 🏆 ranking — os primeiros do mês',
   '👕 times — os times de hoje',
   '🎲 sortear (ou sortear 3 times) — só os organizadores',
+  '🆕 cadastrar Nome - nota — jogador novo (ex.: Caio - 2,5, João - 3) — só os organizadores',
 ].join('\n');
 
 /** Com as perguntas livres ligadas, o `ajuda` lembra delas. */

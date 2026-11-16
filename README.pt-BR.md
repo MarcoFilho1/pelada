@@ -114,7 +114,7 @@ Um número de WhatsApp sobrando entra no grupo como robô. Ele lê a lista do me
 - **Quarta 14:00:** o prazo, quem perdeu a vaga e quem subiu.
 - Silêncio das 23:00 às 08:00. O que mudar de madrugada sai junto às 08:00.
 
-**Responde quando é marcado.** `@robô lista`, `falta confirmar`, `fila`, `artilheiro`, `garçom`, `ranking`, `times`. Qualquer pessoa do grupo pode `adicionar`, `confirmar` ou `remover` até três jogadores cadastrados pelo nome, e toda mudança mostra quem pediu. Os organizadores (pelo número) podem `sortear` 3 ou 4 times; o robô mostra a proposta e salva quando a mesma pessoa responde `sim`.
+**Responde quando é marcado.** `@robô lista`, `falta confirmar`, `fila`, `artilheiro`, `garçom`, `ranking`, `times`. Qualquer pessoa do grupo pode `adicionar`, `confirmar` ou `remover` até três jogadores cadastrados pelo nome, e toda mudança mostra quem pediu. Os organizadores (pelo número) podem `sortear` 3 ou 4 times; o robô mostra a proposta e salva quando a mesma pessoa responde `sim`. Também podem `cadastrar` jogadores novos com a nota, vários numa mensagem só, como `cadastrar Caio - 2,5 João - 3` (vale ponto ou vírgula).
 
 **Entende português do dia a dia (opcional).** Com uma chave da API da Anthropic, o que não é comando vai para o Claude Haiku, que responde perguntas sobre a lista e o ranking e transforma pedidos como "bota o Bruno e o Diogo na lista" nas mesmas ações dos comandos. Quem está pedindo o robô confere pelo próprio WhatsApp, nunca pelo modelo, e há limites por dia e por mensagem.
 

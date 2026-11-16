@@ -66,7 +66,7 @@ function onde(estado: EstadoDaSemana, jogadorId: number): { lugar: 'lista' | 'fi
 async function adicionar(db: DB, texto: string, now: Date, rng: () => number): Promise<ResultadoNaLista> {
   const ativos = await listarJogadores(db, { incluirInativos: false });
   const achado = acharJogador(texto, ativos);
-  if (!achado) return { texto: naoAchei(texto, sugerirNome(texto, ativos), `🤔 ${eco(texto)} não está cadastrado. Peça para um admin cadastrar no site.`), mudou: false };
+  if (!achado) return { texto: naoAchei(texto, sugerirNome(texto, ativos), `🤔 ${eco(texto)} não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.`), mudou: false };
   if ('varios' in achado) return { texto: textoVarios(achado.varios), mudou: false };
   const j = achado.jogador;
   try {

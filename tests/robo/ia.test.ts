@@ -99,6 +99,12 @@ describe('perguntar (Claude)', () => {
     expect(JSON.stringify(pedidos[0].messages[0])).toMatch(/calvinho/);
   });
 
+  it('o nome de quem fala no site (apelido) vai na mensagem do usuário', async () => {
+    const { cliente, pedidos } = falso(texto('a'));
+    await perguntar('eu vou', { ...base(cliente), quem: 'Marco Filho', jogador: 'Marquinho' });
+    expect(JSON.stringify(pedidos[0].messages[0])).toContain('Quem está falando: Marco Filho, que no site é o jogador Marquinho.');
+  });
+
   it('uma volta de ferramenta: input como objeto, resultado como tool_result e conteúdo do assistente preservado', async () => {
     const executar = vi.fn(async () => ({ lista: ['Ana'] }));
     const pensamento = { type: 'thinking', thinking: '', signature: 'sig' };
@@ -266,10 +272,10 @@ describe('perguntar (Claude)', () => {
     expect(executar).toHaveBeenCalledTimes(3);
     const res = resultadosDe(pedidos[1], 2);
     expect(res.slice(3)).toEqual([
-      { type: 'tool_result', tool_use_id: 'r3', is_error: true, content: 'Só mudo até 3 nomes por mensagem.' },
-      { type: 'tool_result', tool_use_id: 'r4', is_error: true, content: 'Só mudo até 3 nomes por mensagem.' },
+      { type: 'tool_result', tool_use_id: 'r3', is_error: true, content: '⚠️ Só mudo até 3 nomes por mensagem. Mande o resto em outra.' },
+      { type: 'tool_result', tool_use_id: 'r4', is_error: true, content: '⚠️ Só mudo até 3 nomes por mensagem. Mande o resto em outra.' },
     ]);
-    expect(resultadosDe(pedidos[2], 4)).toEqual([{ type: 'tool_result', tool_use_id: 'r9', is_error: true, content: 'Só mudo até 3 nomes por mensagem.' }]);
+    expect(resultadosDe(pedidos[2], 4)).toEqual([{ type: 'tool_result', tool_use_id: 'r9', is_error: true, content: '⚠️ Só mudo até 3 nomes por mensagem. Mande o resto em outra.' }]);
     expect(r).toBe('Feito!\n\n👋 A saiu da lista. (pedido por Zeca)\n\n👋 B saiu da lista. (pedido por Zeca)\n\n👋 C saiu da lista. (pedido por Zeca)');
   });
 

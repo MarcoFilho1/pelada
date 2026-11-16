@@ -85,8 +85,8 @@ describe('adicionar', () => {
 
   it('não cadastrado ou desativado: pede para um admin cadastrar', async () => {
     await criar(['Velho'], { ativo: false });
-    expect(await mexerNaLista(db, 'adicionar', 'Zé', TERCA)).toEqual({ texto: '🤔 Zé não está cadastrado. Peça para um admin cadastrar no site.', mudou: false });
-    expect((await mexerNaLista(db, 'adicionar', 'Velho', TERCA)).texto).toBe('🤔 Velho não está cadastrado. Peça para um admin cadastrar no site.');
+    expect(await mexerNaLista(db, 'adicionar', 'Zé', TERCA)).toEqual({ texto: '🤔 Zé não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.', mudou: false });
+    expect((await mexerNaLista(db, 'adicionar', 'Velho', TERCA)).texto).toBe('🤔 Velho não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.');
   });
 
   it('quem já está na lista ou na fila', async () => {
@@ -108,7 +108,7 @@ describe('adicionar', () => {
   it('nome digitado comprido aparece cortado em 30 caracteres na resposta', async () => {
     const digitado = 'Fulano de Tal da Silva Sauro Neto';
     expect(digitado.length).toBeGreaterThan(30);
-    expect((await mexerNaLista(db, 'adicionar', digitado, TERCA)).texto).toBe(`🤔 ${digitado.slice(0, 30)}… não está cadastrado. Peça para um admin cadastrar no site.`);
+    expect((await mexerNaLista(db, 'adicionar', digitado, TERCA)).texto).toBe(`🤔 ${digitado.slice(0, 30)}… não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.`);
     expect((await mexerNaLista(db, 'remover', digitado, TERCA)).texto).toBe(`🤔 ${digitado.slice(0, 30)}… não está na lista.`);
   });
 
@@ -268,7 +268,7 @@ describe('sugestão de nome parecido', () => {
   });
   it('nada parecido, curto demais ou empate: texto de sempre', async () => {
     await criar(['Gabriel', 'Gabriela', 'Pedro']);
-    expect((await mexerNaLista(db, 'adicionar', 'Zézinho', TERCA)).texto).toBe('🤔 Zézinho não está cadastrado. Peça para um admin cadastrar no site.');
+    expect((await mexerNaLista(db, 'adicionar', 'Zézinho', TERCA)).texto).toBe('🤔 Zézinho não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.');
     expect((await mexerNaLista(db, 'adicionar', 'Xa', TERCA)).texto).toContain('não está');
     // "gabrie" é começo de dois: ambíguo (não é sugestão)
     expect((await mexerNaLista(db, 'adicionar', 'gabrie', TERCA)).texto).toContain('mais de um');
@@ -286,7 +286,7 @@ describe('sugestão de nome parecido', () => {
   });
   it('texto curto (menos de 5 letras) só sugere com 1 de diferença', async () => {
     await criar(['Ana', 'Beto']);
-    expect((await mexerNaLista(db, 'adicionar', 'bia', TERCA)).texto).toBe('🤔 bia não está cadastrado. Peça para um admin cadastrar no site.');
+    expect((await mexerNaLista(db, 'adicionar', 'bia', TERCA)).texto).toBe('🤔 bia não está cadastrado. Um organizador pode cadastrar: *cadastrar Nome - nota*.');
     expect((await mexerNaLista(db, 'adicionar', 'anx', TERCA)).texto).toBe('🤔 Não achei "anx". Você quis dizer Ana?');
   });
   it('sobrenome sozinho pode sugerir o nome completo', async () => {

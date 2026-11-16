@@ -28,6 +28,53 @@ export async function criarJogadores(db: DB, nomes: string[]): Promise<{ criados
   return { criados, ignorados };
 }
 
+export type ResultadoDoCadastro = {
+  criados: { id: number; nome: string; nota: number }[];
+  /** Já havia jogador com o nome (Joao = João, até inativo), ou o nome veio repetido. */
+  jaExistiam: string[];
+  notaInvalida: { nome: string; nota: number }[];
+  /** Quantos nomes passaram de `TAM_MAX_NOME` (não são repetidos de volta). */
+  nomeComprido: string[];
+};
+
+/**
+ * Cria jogadores com a nota pedida (`null` = 3,0) e PIN padrão, como o cadastro do site.
+ * Nada é cadastrado com nota inválida, nome grande demais ou nome já existente.
+ */
+export async function cadastrarJogadores(db: DB, pessoas: { nome: string; nota: number | null }[]): Promise<ResultadoDoCadastro> {
+  const r: ResultadoDoCadastro = { criados: [], jaExistiam: [], notaInvalida: [], nomeComprido: [] };
+  const existentes = await db.select({ nome: jogadores.nome }).from(jogadores);
+  const usados = new Set(existentes.map((j) => normalizarNome(j.nome)));
+  for (const p of pessoas) {
+    const nome = p.nome.trim().replace(/\s+/g, ' ');
+    if (!nome) continue;
+    if (nome.length > TAM_MAX_NOME) {
+      r.nomeComprido.push(nome);
+      continue;
+    }
+    const nota = p.nota ?? 3;
+    if (!notaValida(nota)) {
+      r.notaInvalida.push({ nome, nota });
+      continue;
+    }
+    const chave = normalizarNome(nome);
+    if (usados.has(chave)) {
+      r.jaExistiam.push(nome);
+      continue;
+    }
+    usados.add(chave);
+    // O índice único em lower(nome) segura dois cadastros simultâneos do mesmo nome.
+    const [novo] = await db
+      .insert(jogadores)
+      .values({ nome, nota: nota.toFixed(1) })
+      .onConflictDoNothing()
+      .returning({ id: jogadores.id, nome: jogadores.nome });
+    if (novo) r.criados.push({ ...novo, nota });
+    else r.jaExistiam.push(nome);
+  }
+  return r;
+}
+
 /** Nota válida: de 0 a 5, de meio em meio ponto. */
 export function notaValida(nota: number): boolean {
   return Number.isFinite(nota) && nota >= 0 && nota <= 5 && Number.isInteger(nota * 2);

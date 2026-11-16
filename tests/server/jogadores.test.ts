@@ -6,6 +6,7 @@ import { entrarJogador, trocarPin, validarSessaoJogador } from '@/server/auth';
 import { ErroDeValidacao } from '@/server/erros';
 import {
   atualizarJogador,
+  cadastrarJogadores,
   criarJogadores,
   listarJogadores,
   NomeEmUsoError,
@@ -168,5 +169,43 @@ describe('listarJogadores', () => {
     const [{ id }] = await db.insert(jogadores).values({ nome: 'Caio' }).returning();
     await trocarPin(db, id, '7788');
     expect((await listarJogadores(db, { incluirInativos: false }))[0].pinPadrao).toBe(false);
+  });
+});
+
+describe('cadastrarJogadores', () => {
+  it('cria com a nota pedida, 3,0 sem nota, e PIN padrão', async () => {
+    const r = await cadastrarJogadores(db, [
+      { nome: 'Caio', nota: 2.5 },
+      { nome: ' Pedro  Lima ', nota: null },
+    ]);
+    expect(r.criados.map((c) => [c.nome, c.nota])).toEqual([
+      ['Caio', 2.5],
+      ['Pedro Lima', 3],
+    ]);
+    const caio = await ler(r.criados[0].id);
+    expect(caio.nota).toBe('2.5');
+    expect(caio.pinHash).toBeNull();
+    expect((await ler(r.criados[1].id)).nota).toBe('3.0');
+  });
+
+  it('não cria nome existente (sem acento, até inativo), repetido, nota inválida ou nome grande', async () => {
+    const { criados } = await criarJogadores(db, ['João']);
+    await atualizarJogador(db, criados[0].id, { ativo: false });
+    const r = await cadastrarJogadores(db, [
+      { nome: 'joao', nota: 3 },
+      { nome: 'Caio', nota: 2 },
+      { nome: 'CAIO', nota: 2 },
+      { nome: 'Lucas', nota: 2.3 },
+      { nome: 'Bia', nota: 6 },
+      { nome: 'x'.repeat(61), nota: 3 },
+    ]);
+    expect(r.criados.map((c) => c.nome)).toEqual(['Caio']);
+    expect(r.jaExistiam).toEqual(['joao', 'CAIO']);
+    expect(r.notaInvalida).toEqual([
+      { nome: 'Lucas', nota: 2.3 },
+      { nome: 'Bia', nota: 6 },
+    ]);
+    expect(r.nomeComprido).toHaveLength(1);
+    expect(await listarJogadores(db, { incluirInativos: true })).toHaveLength(2);
   });
 });

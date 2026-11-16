@@ -7,6 +7,7 @@ import {
   respostaFalta,
   respostaFila,
 } from '@/robo/comandos';
+import { TEXTO_COMO_CADASTRAR } from '@/robo/cadastro-zap';
 import type { ItemLista } from '@/domain/lista';
 import type { EstadoDaSemana } from '@/server/presencas';
 
@@ -186,5 +187,35 @@ describe('TEXTO_AJUDA', () => {
 
   it('avisa que aceita até 3 nomes', () => {
     expect(TEXTO_AJUDA.match(/até 3 nomes: A, B e C/g)).toHaveLength(3);
+  });
+});
+
+describe('interpretar: cadastrar', () => {
+  it('um ou vários, com ponto ou vírgula', () => {
+    expect(interpretar('cadastrar Caio - 2.5')).toEqual({ tipo: 'cadastrar', pessoas: [{ nome: 'Caio', nota: 2.5 }], excedeu: false });
+    expect(interpretar('Cadastra Caio - 2,5 Joao - 2.5')).toEqual({
+      tipo: 'cadastrar',
+      pessoas: [
+        { nome: 'Caio', nota: 2.5 },
+        { nome: 'Joao', nota: 2.5 },
+      ],
+      excedeu: false,
+    });
+    expect(interpretar('cadastrar:\nCaio 2,5\nJoão 3').tipo).toBe('cadastrar');
+  });
+
+  it('sem ninguém: o jeito de mandar', () => {
+    expect(interpretar('cadastrar')).toEqual({ tipo: 'recusa', texto: TEXTO_COMO_CADASTRAR });
+  });
+
+  it('mais de 10: corta e avisa', () => {
+    const muitos = Array.from({ length: 12 }, (_, i) => `J${'a'.repeat(i + 1)} - 3`).join(' ');
+    const c = interpretar(`cadastrar ${muitos}`);
+    expect(c).toMatchObject({ tipo: 'cadastrar', excedeu: true });
+    expect(c.tipo === 'cadastrar' && c.pessoas).toHaveLength(10);
+  });
+
+  it('"cadastrar" no meio da frase vai para a IA', () => {
+    expect(interpretar('pode cadastrar o Caio?').tipo).toBe('pergunta');
   });
 });
