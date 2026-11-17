@@ -8,7 +8,8 @@ import { paresSeparados } from '@/server/duplas';
 import { diaMes, proximaQuarta } from '@/domain/tempo';
 import { mensagemParaUsuario } from '@/server/erros';
 import { listarJogadores } from '@/server/jogadores';
-import { participantesPadrao, salvarTimesDefinitivos } from '@/server/times';
+import { participantesPadrao, pendentesDaLista, salvarTimesDefinitivos } from '@/server/times';
+import { juntarNomes } from './foto';
 
 export const TEXTO_SO_ADMIN = '🔐 Só os organizadores podem sortear pelo WhatsApp.';
 
@@ -39,6 +40,10 @@ export type Proposta = {
   aviso?: string;
   /** A quarta da pelada ('AAAA-MM-DD'). */
   data?: string;
+  /** Sorteada também com quem ainda não confirmou (o organizador escolheu): o "salvar" confere a lista assim. */
+  comPendentes?: true;
+  /** Quem está na lista sem confirmar e ficou fora do sorteio (vai numa linha da proposta). */
+  deFora?: string[];
 };
 
 /** " de quarta, 18/11" para os títulos (vazio sem data). */
@@ -46,7 +51,7 @@ export const daQuarta = (data?: string) => (data ? ` de quarta, ${diaMes(data)}`
 
 /** O que o banco devolve para montar uma proposta: os times já com nomes e notas. */
 /** `data`: a quarta da pelada ('AAAA-MM-DD'), que vai no título da proposta e do anúncio. */
-export type TimesPropostos = { peladaId: number; data?: string; times: TimeSorteado[]; aviso?: string };
+export type TimesPropostos = { peladaId: number; data?: string; times: TimeSorteado[]; aviso?: string; comPendentes?: true; deFora?: string[] };
 
 /** "⚠️ Luiz e Jonas estão no mesmo time." para as duplas separadas que ficaram juntas; `undefined` se nenhuma. */
 export function avisoDeDuplas(times: TimeSorteado[], separar: Separar): string | undefined {
@@ -98,6 +103,13 @@ export function blocosDosTimes(times: TimeSorteado[]): string {
   return `${blocos.join('\n\n')}\n\nDiferença: ${formatarNota(diferenca(times))}`;
 }
 
+/** Linha da proposta quando algum time tem COMPLETE (sem ela, o COMPLETE parece um nome errado). */
+export const TEXTO_COMPLETE = '➕ COMPLETE é vaga sem jogador (faltou gente para fechar 4 por time). Dá para pôr alguém no lugar pelo site.';
+
+/** Linha da proposta com quem está na lista sem confirmar e ficou fora do sorteio. */
+export const textoDeFora = (nomes: string[]) =>
+  `⏳ Fora do sorteio por não ${nomes.length > 1 ? 'terem' : 'ter'} confirmado: ${juntarNomes(nomes)}.`;
+
 export const INSTRUCOES_VOTO =
   '✅ Gostou? Responda *sim* para aprovar: aí eu mando para os outros organizadores, e os times valem quando mais um deles confirmar. Não gostou? *sortear* de novo troca a proposta. Vale por 60 minutos.';
 
@@ -133,10 +145,18 @@ export function montarProposta(
     elencos: t.times.map((x) => x.jogadores.map((j) => j.id)),
     completes: t.times.map((x) => x.completes),
     blocos,
-    texto: `${titulo}\n\n${blocos}\n\n${INSTRUCOES_VOTO}`,
+    texto: [
+      titulo,
+      blocos,
+      ...(t.deFora?.length ? [textoDeFora(t.deFora)] : []),
+      ...(t.times.some((x) => x.completes.length) ? [TEXTO_COMPLETE] : []),
+      INSTRUCOES_VOTO,
+    ].join('\n\n'),
     votos: [],
     ...(t.aviso ? { aviso: t.aviso } : {}),
     ...(t.data ? { data: t.data } : {}),
+    ...(t.comPendentes ? { comPendentes: true as const } : {}),
+    ...(t.deFora?.length ? { deFora: t.deFora } : {}),
   };
 }
 
@@ -174,15 +194,24 @@ export async function sortearTimesDaNoite(
   now: Date,
   rng: () => number = Math.random,
   times: QtdDeTimes = 4,
+  incluirPendentes = false,
 ): Promise<TimesPropostos | { erro: string }> {
   const p = await peladaDaSemana(db, now);
   if (!p) return { erro: TEXTO_SEM_PELADA_DA_SEMANA };
-  const participantes = await participantesPadrao(db, p.id, now);
+  const participantes = await participantesPadrao(db, p.id, now, incluirPendentes);
   if (participantes.length < 2) return { erro: '👥 Poucos confirmados para sortear.' };
+  const deFora = incluirPendentes ? [] : await pendentesDaLista(db, p.id, now);
   const separar = await paresSeparados(db);
   const sorteados = sortearDaNoite(participantes, times, rng, separar);
   const aviso = avisoDeDuplas(sorteados, separar);
-  return { peladaId: p.id, data: p.data, times: sorteados, ...(aviso ? { aviso } : {}) };
+  return {
+    peladaId: p.id,
+    data: p.data,
+    times: sorteados,
+    ...(aviso ? { aviso } : {}),
+    ...(incluirPendentes ? { comPendentes: true as const } : {}),
+    ...(deFora.length ? { deFora } : {}),
+  };
 }
 
 /** Texto do "não deu para importar": cada nome com problema e o que fazer. */
@@ -221,7 +250,7 @@ export async function importarTimesColados(db: DB, now: Date, texto: string): Pr
 export async function salvarProposta(db: DB, now: Date, proposta: Proposta): Promise<{ ok: true } | { erro: string }> {
   try {
     if (proposta.origem === 'sorteio') {
-      const hoje = new Set((await participantesPadrao(db, proposta.peladaId, now)).map((j) => j.id));
+      const hoje = new Set((await participantesPadrao(db, proposta.peladaId, now, proposta.comPendentes === true)).map((j) => j.id));
       const propostos = proposta.elencos.flat();
       if (hoje.size !== propostos.length || !propostos.every((id) => hoje.has(id))) {
         return { erro: '🔄 A lista mudou desde o sorteio. Peça *sortear* de novo.' };
@@ -279,7 +308,14 @@ export async function trocarNaProposta(
     return { jogadores, completes: p.completes[i], soma: [...jogadores.map((j) => j.nota), ...p.completes[i]].reduce((x, y) => x + y, 0) };
   });
   const aviso = avisoDeDuplas(times, await paresSeparados(db));
-  const nova = montarProposta(p.origem, { telefone: p.quemPropos, nome: p.quemProposNome }, now, { peladaId: p.peladaId, data: p.data, times, ...(aviso ? { aviso } : {}) });
+  const nova = montarProposta(p.origem, { telefone: p.quemPropos, nome: p.quemProposNome }, now, {
+    peladaId: p.peladaId,
+    data: p.data,
+    times,
+    ...(aviso ? { aviso } : {}),
+    ...(p.comPendentes ? { comPendentes: true as const } : {}),
+    ...(p.deFora?.length ? { deFora: p.deFora } : {}),
+  });
   return { proposta: nova, feitas };
 }
 
@@ -307,7 +343,9 @@ export function deGuardada(x: unknown): Proposta | null {
     !Array.isArray(g.votos) ||
     !g.votos.every((v) => typeof v === 'string') ||
     (g.aviso !== undefined && typeof g.aviso !== 'string') ||
-    (g.data !== undefined && typeof g.data !== 'string')
+    (g.data !== undefined && typeof g.data !== 'string') ||
+    (g.comPendentes !== undefined && g.comPendentes !== true) ||
+    (g.deFora !== undefined && !(Array.isArray(g.deFora) && g.deFora.every((n) => typeof n === 'string')))
   ) {
     return null;
   }

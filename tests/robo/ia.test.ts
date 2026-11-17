@@ -423,6 +423,20 @@ describe('resenha e mensagens em partes', () => {
     expect(await perguntar('confirma a Ana', base(c2, [ferramenta('confirmar_jogador', executar, { altera: true })]))).toBe('Fechou!\n\nAna tá dentro 💪\n\n✅ Ana confirmado! (pedido por Zeca)');
   });
 
+  it('a lista repetida na fala sai inteira numa mensagem só, no lugar dela (antes saía picotada por parágrafo)', async () => {
+    const listaTexto = '🔄 Status: sem nenhuma atualização.\n\nPelada 18/11 - 20:30-22:30\n\n 1. Caio (M) ✅\n 2. Davi (D) ⏳\n\nInteressados pra diarista\n 1. Bia';
+    const verLista = ferramenta('ver_lista', async () => new TextoPronto(listaTexto, 'lista'));
+    const { cliente } = falso(chamada('ver_lista', {}), texto(`Beleza, segue a lista:\n\n${listaTexto}\n\nQuer sortear?`));
+    expect(await perguntarEmPartes('lista?', base(cliente, [verLista]))).toEqual(['Beleza, segue a lista:', listaTexto, 'Quer sortear?']);
+  });
+
+  it('o ranking (texto pronto de consulta) vai inteiro mesmo quando a fala só diz "esse é o ranking"', async () => {
+    const ranking = '🏆 Ranking (novembro):\n🥇 Gabriel 1\n🥈 Gianluca 1';
+    const f = ferramenta('ranking', async () => new TextoPronto(ranking, 'lista'));
+    const { cliente } = falso(chamada('ranking', {}), texto('Esse é o ranking de novembro, todo mundo com 1 ponto.'));
+    expect(await perguntarEmPartes('ranking?', base(cliente, [f]))).toEqual(['Esse é o ranking de novembro, todo mundo com 1 ponto.', ranking]);
+  });
+
   it('no máximo 5 mensagens de fala: o resto vai junto na última', async () => {
     const { cliente } = falso(texto('1\n\n2\n\n3\n\n4\n\n5\n\n6\n\n7'));
     expect(await perguntarEmPartes('x', base(cliente))).toEqual(['1', '2', '3', '4', '5\n\n6\n\n7']);

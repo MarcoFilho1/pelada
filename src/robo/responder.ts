@@ -66,16 +66,18 @@ export type ContextoDaResposta = {
   /** Times já salvos esperando quem propôs mandar no grupo (*mandar*); uma proposta nova descarta. */
   anuncio: { atual: AnuncioPendente | null };
   lerLista: (now: Date) => Promise<EstadoDaSemana>;
-  /** `times`: 3 ou 4 (o padrão). */
-  propor: (now: Date, times: QtdDeTimes) => Promise<TimesPropostos | { erro: string }>;
+  /** `times`: 3 ou 4 (o padrão). `incluirPendentes`: também quem está na lista e não confirmou. */
+  propor: (now: Date, times: QtdDeTimes, incluirPendentes?: boolean) => Promise<TimesPropostos | { erro: string }>;
   /** Os times colados (formato do "Importar times" do site), lidos sem gravar. */
   importar: (now: Date, texto: string) => Promise<TimesPropostos | { erro: string }>;
   /** Grava a proposta confirmada como times definitivos, pelo caminho do site. */
   salvar: (now: Date, proposta: Proposta) => Promise<{ ok: true } | { erro: string }>;
   /** Manda um texto no privado de cada organizador, menos os telefones de `exceto`. */
   avisarOrganizadores: (texto: string, exceto: string[]) => Promise<void>;
-  /** Manda no grupo configurado (o anúncio dos times confirmados no privado). */
+  /** Manda no grupo configurado (o anúncio dos times confirmados no privado, a lista pedida no privado). */
   anunciarNoGrupo: (texto: string) => Promise<void>;
+  /** A lista mandada no grupo pelo privado vira a "última lista" do grupo (a próxima mostra o que mudou desde ela). */
+  listaMandadaNoGrupo?: (gravar: NonNullable<Resposta['gravar']>) => void;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
   perguntar: (
@@ -91,7 +93,7 @@ export type ContextoDaResposta = {
   /** Troca jogadores de time numa proposta, sem gravar nada. */
   trocarNosTimes?: (p: Proposta, trocas: TrocaNosTimes[], now: Date) => Promise<{ proposta: Proposta; feitas: string[] } | { erro: string }>;
   consultar: (tipo: Consulta, now: Date) => Promise<string>;
-  /** Link temporário de anotar da pelada de hoje (quem confere se é organizador é o `responder`). */
+  /** Link temporário de anotar da pelada da semana (quem confere se é organizador é o `responder`). */
   linkAnotar: (quem: string, now: Date) => Promise<{ url: string; data?: string } | { erro: string }>;
   /** Privado: todos os jogadores ativos com a nota. */
   notas: (now: Date) => Promise<string>;
@@ -295,11 +297,27 @@ function textoParaConfirmar(p: Proposta): string {
   return `✅ ${p.quemProposNome} aprovou estes times. Responda *sim* para confirmar: com o seu, eles ficam salvos no site.\n\n${corpo}`;
 }
 
-async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta, times: QtdDeTimes): Promise<string> {
+async function respostaSortear(m: MensagemRecebida, c: ContextoDaResposta, times: QtdDeTimes, incluirPendentes = false): Promise<string> {
   const tel = m.remetenteTelefone;
   if (!tel || !ehAdmin(tel, c.admins)) return TEXTO_SO_ADMIN;
-  return proporTimes('sorteio', await c.propor(m.quando, times), tel, m, c);
+  return proporTimes('sorteio', await c.propor(m.quando, times, incluirPendentes), tel, m, c);
 }
+
+/** O que a IA recebe quando pede o sorteio sem dizer o que fazer com quem não confirmou: ela pergunta antes. */
+export const perguntaPendentes = (nomes: string[]) =>
+  `⏳ ${juntarNomes(nomes)} ${nomes.length > 1 ? 'estão' : 'está'} na lista e ainda não ${nomes.length > 1 ? 'confirmaram' : 'confirmou'}. ` +
+  'Nada foi sorteado: pergunte ao organizador se o sorteio é com ou sem quem não confirmou e, com a resposta, chame pedir_sorteio de novo com quem_nao_confirmou.';
+
+/** "Mandar a lista no grupo" pelo privado: a lista de sempre (com o que mudou desde a última do grupo). */
+async function respostaMandarLista(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
+  const tel = m.remetenteTelefone;
+  if (!tel || !ehAdmin(tel, c.admins)) return TEXTO_SO_ADMIN_CONFIRMA;
+  const r = await respostaLista(m, c);
+  await c.anunciarNoGrupo(r.texto);
+  if (r.gravar) c.listaMandadaNoGrupo?.(r.gravar);
+  return TEXTO_LISTA_MANDADA;
+}
+export const TEXTO_LISTA_MANDADA = '📣 Mandei a lista no grupo.';
 
 /** importar + times colados: só organizadores e só no privado (no grupo, os times vazariam antes dos votos). */
 async function respostaImportar(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
@@ -504,10 +522,17 @@ const comNome: Parametros = {
   additionalProperties: false,
 };
 
-/** Opcional, como o `periodo` do ranking: omitido, 4 times. Qualquer outro valor também vira 4. */
-const comTimes: Parametros = {
+/** Opcionais, como o `periodo` do ranking: omitido, 4 times. Qualquer outro valor também vira 4. */
+const comTimesEPendentes: Parametros = {
   type: 'object',
-  properties: { times: { type: 'integer', enum: [3, 4], description: 'Quantos times: 3 ou 4. Omitido: 4. Use 3 só quando pedirem 3 times.' } },
+  properties: {
+    times: { type: 'integer', enum: [3, 4], description: 'Quantos times: 3 ou 4. Omitido: 4. Use 3 só quando pedirem 3 times.' },
+    quem_nao_confirmou: {
+      type: 'string',
+      enum: ['incluir', 'deixar_de_fora'],
+      description: 'Quem está na lista e não confirmou: "incluir" no sorteio ou "deixar_de_fora". Só passe depois que o organizador responder; omitido, o robô diz se tem alguém assim para você perguntar.',
+    },
+  },
   additionalProperties: false,
 };
 
@@ -539,11 +564,12 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
       return new TextoPronto(feito.texto, 'acao');
     },
   });
+  // O texto da consulta vai inteiro no fim da resposta, pelo robô (a IA dizia "aqui está o ranking" e não mandava).
   const consulta = (tipo: Consulta, nome: string, descricao: string): Ferramenta => ({
     nome,
     descricao,
     parametros: semParametros,
-    executar: () => c.consultar(tipo, m.quando),
+    executar: async () => new TextoPronto(await c.consultar(tipo, m.quando), 'lista'),
   });
   return [
     naLista('adicionar', 'adicionar_jogador', 'Põe um jogador já cadastrado na lista da semana (ou na fila, se a lista estiver cheia). Devolve o texto para o grupo.'),
@@ -551,7 +577,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
     naLista('remover', 'remover_jogador', 'Tira um jogador da lista ou da fila ("não vou"). Devolve o texto para o grupo.'),
     {
       nome: 'ver_lista',
-      descricao: 'A lista completa da semana, pronta para o grupo (com o que mudou desde a última). Repita o texto sem mudar nada.',
+      descricao: 'Mostra a lista completa da semana nesta conversa (com o que mudou desde a última do grupo). O robô manda o texto sozinho. Não manda nada no grupo.',
       parametros: semParametros,
       executar: async () => new TextoPronto((await respostaLista(m, c)).texto, 'lista'),
     },
@@ -559,19 +585,19 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
       nome: 'quem_falta_confirmar',
       descricao: 'Quem da lista ainda não confirmou.',
       parametros: semParametros,
-      executar: async () => respostaFalta(await c.lerLista(m.quando)),
+      executar: async () => new TextoPronto(respostaFalta(await c.lerLista(m.quando)), 'lista'),
     },
     {
       nome: 'ver_fila',
       descricao: 'A fila de espera da semana.',
       parametros: semParametros,
-      executar: async () => respostaFila(await c.lerLista(m.quando)),
+      executar: async () => new TextoPronto(respostaFila(await c.lerLista(m.quando)), 'lista'),
     },
     {
       nome: 'ver_times',
-      descricao: 'Os times definitivos da pelada de hoje, se já foram confirmados e salvos. Repita o texto sem mudar nada.',
+      descricao: 'Os times definitivos da pelada da semana, se já foram confirmados e salvos. O robô manda o texto sozinho.',
       parametros: semParametros,
-      executar: () => respostaTimes(m, c),
+      executar: async () => new TextoPronto(await respostaTimes(m, c), 'lista'),
     },
     consulta('artilheiro', 'artilheiros', 'Os 3 que mais fizeram gols no mês (ou no geral, se o mês não teve partida).'),
     consulta('garcom', 'garcons', 'Os 3 com mais assistências no mês (ou no geral).'),
@@ -594,7 +620,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
     },
     {
       nome: 'link_de_anotar',
-      descricao: 'Gera o link temporário para anotar as partidas de hoje (sem senha), só para os organizadores (o código confere quem mandou). Devolve o texto para a conversa.',
+      descricao: 'Gera o link temporário para anotar as partidas da pelada da semana (sem senha), só para os organizadores (o código confere quem mandou). Pode ser pedido em qualquer dia. Devolve o texto para a conversa.',
       parametros: semParametros,
       async executar() {
         const r = await respostaAnotar(m, c);
@@ -604,12 +630,20 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
     },
     {
       nome: 'pedir_sorteio',
-      descricao: 'Sorteia os times de hoje sem salvar, só para os organizadores (o código confere quem mandou). Quem pediu confirma respondendo "sim".',
-      parametros: comTimes,
+      descricao:
+        'Sorteia os times da pelada da semana (a próxima quarta) sem salvar, em qualquer dia, só para os organizadores (o código confere quem mandou). Entram os confirmados; quem está na lista sem confirmar só entra com quem_nao_confirmou "incluir". Quem pediu aprova respondendo "sim".',
+      parametros: comTimesEPendentes,
       sorteio: true,
       async executar(args) {
+        const a = (args ?? {}) as { times?: unknown; quem_nao_confirmou?: unknown };
+        const escolha = a.quem_nao_confirmou === 'incluir' || a.quem_nao_confirmou === 'deixar_de_fora' ? a.quem_nao_confirmou : null;
+        // Sem escolha e com gente sem confirmar: não sorteia, a IA pergunta antes (sortear sem avisar deixava gente de fora).
+        if (!escolha && ehAdmin(m.remetenteTelefone ?? '', c.admins)) {
+          const pendentes = (await c.lerLista(m.quando)).principal.filter((i) => !i.confirmado).map((i) => i.nome);
+          if (pendentes.length) throw new ErroDeFerramenta(perguntaPendentes(pendentes));
+        }
         const antes = c.proposta.atual;
-        const texto = await respostaSortear(m, c, qtdDeTimes((args as { times?: unknown } | null)?.times));
+        const texto = await respostaSortear(m, c, qtdDeTimes(a.times), escolha === 'incluir');
         const nova = c.proposta.atual;
         // Recusa (não é admin) ou erro do sorteio: nada guardado, o modelo explica.
         if (!nova || nova === antes) throw new ErroDeFerramenta(texto);
@@ -634,7 +668,12 @@ const comNomeENota: Parametros = {
 /** Só no privado de organizador: ver e mudar notas e o link do site. */
 export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaResposta): Ferramenta[] {
   return [
-    { nome: 'ver_notas', descricao: 'Todos os jogadores ativos com a nota (0 a 5). Só no privado dos organizadores.', parametros: semParametros, executar: () => c.notas(m.quando) },
+    {
+      nome: 'ver_notas',
+      descricao: 'Todos os jogadores ativos com a nota (0 a 5). Só no privado dos organizadores. O robô manda o texto sozinho.',
+      parametros: semParametros,
+      executar: async () => new TextoPronto(await c.notas(m.quando), 'lista'),
+    },
     {
       nome: 'mudar_nota',
       descricao: 'Muda a nota de um jogador cadastrado. Só no privado dos organizadores. Devolve o texto para a conversa.',
@@ -650,7 +689,27 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
         return new TextoPronto(feito.texto, 'acao');
       },
     },
-    { nome: 'link_do_site', descricao: 'O endereço do site da pelada e da área dos organizadores.', parametros: semParametros, executar: async () => textoDoSite(c.urlSite) },
+    {
+      nome: 'link_do_site',
+      descricao: 'O endereço do site da pelada e da área dos organizadores. O robô manda o texto sozinho.',
+      parametros: semParametros,
+      executar: async () => new TextoPronto(textoDoSite(c.urlSite), 'lista'),
+    },
+    {
+      nome: 'mandar_lista_no_grupo',
+      altera: true,
+      descricao:
+        'Manda a lista completa da semana no grupo (encaminhar, postar, mandar lá). Use só quando o organizador pedir para mandar a lista no grupo; ver_lista só mostra aqui. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        try {
+          return new TextoPronto(await respostaMandarLista(m, c), 'acao');
+        } catch (err) {
+          c.log(`lista no grupo não saiu: ${(err as Error).message}`);
+          throw new ErroDeFerramenta('Não consegui mandar no grupo agora (entre 23h e 8h o robô não manda nada no grupo). Nada foi mandado.');
+        }
+      },
+    },
     {
       nome: 'confirmar_times',
       descricao: 'O voto deste organizador nos times propostos (como responder "sim"). Use só quando ele disser que confirma ou aprova os times. Devolve o texto para a conversa.',

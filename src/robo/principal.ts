@@ -317,11 +317,17 @@ async function laco(): Promise<void> {
         anuncio,
         // Fora da janela só lê (nunca cria a pelada da semana), como o ensaio.
         lerLista: (n) => (dentroDaJanela(n) ? estadoDaSemana(db, n) : estadoDaSemanaSemCriar(db, n)),
-        propor: (n, times) => sortearTimesDaNoite(db, n, Math.random, times),
+        propor: (n, times, incluirPendentes) => sortearTimesDaNoite(db, n, Math.random, times, incluirPendentes),
         importar: (n, texto) => importarTimesColados(db, n, texto),
         salvar: (n, p) => salvarProposta(db, n, p),
         avisarOrganizadores,
         anunciarNoGrupo: enviarNoGrupo,
+        // Lista mandada no grupo pelo privado: vira a última do grupo, como a que sai pela marcação.
+        listaMandadaNoGrupo: (g) => {
+          if (!podeGravarLista(new Date(), g.foto, estado)) return;
+          estado = aposEnvio(estado, new Date(), g.tipo, g.foto);
+          gravar(estado);
+        },
         // As ações da lista seguem o caminho normal do site (depois da abertura de segunda, criam a pelada se preciso).
         mexerNaLista: (acao, nome, n) => mexerNaLista(db, acao, nome, n),
         memoria,

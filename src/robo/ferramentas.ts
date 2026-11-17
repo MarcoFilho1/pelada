@@ -13,14 +13,14 @@ import { timesDaPelada } from '@/server/times';
 /** JSON Schema dos argumentos, no formato estrito (`strict: true`) da API: sem propriedades extras. */
 export type Parametros = {
   type: 'object';
-  properties: Record<string, { type: 'string'; description?: string } | { type: 'integer'; enum: number[]; description?: string }>;
+  properties: Record<string, { type: 'string'; enum?: string[]; description?: string } | { type: 'integer'; enum: number[]; description?: string }>;
   required?: string[];
   additionalProperties: false;
 };
 
 /**
  * Texto que vai ao grupo palavra por palavra, mesmo que o modelo o reescreva ou a conversa falhe:
- * `acao` (mudança na lista, com o "pedido por"), `lista` (a lista inteira, nunca cortada) e
+ * `acao` (mudança na lista, com o "pedido por"), `lista` (a lista inteira e as consultas: ranking, fila, times, notas; nunca cortadas) e
  * `sorteio` (a proposta que o "sim" salva). `descartar` desfaz o que ninguém vai ver.
  */
 export class TextoPronto {
@@ -103,7 +103,7 @@ export function ferramentasDeLeitura(db: DB, agora: () => Date, op: { timesPende
   return [
     {
       nome: 'lista_da_semana',
-      descricao: 'Dados da lista da próxima pelada (quarta): quem está na lista, quem confirmou, a fila e as vagas. Para perguntas sobre alguém; para mostrar a lista no grupo, use ver_lista.',
+      descricao: 'Dados da lista da próxima pelada (quarta): quem está na lista, quem confirmou, a fila e as vagas. Para perguntas sobre alguém. Para mostrar a lista ("como está a lista", "manda a lista"), use ver_lista.',
       parametros: semParametros,
       async executar() {
         const e = await estadoDaSemanaSemCriar(db, agora());
