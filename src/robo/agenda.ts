@@ -2,7 +2,7 @@ import type { AnuncioGuardado, PropostaGuardada } from './sorteio-zap';
 import { aberturaLista, dataDe, inicioJogo, prazoMensalista } from '@/domain/tempo';
 import { haMudanca, mudancas, type FotoDaLista } from './foto';
 
-export type TipoMensagem = 'abertura' | 'primeira' | 'rodada' | 'lembrete' | 'prazo' | 'cancelada' | 'voltou';
+export type TipoMensagem = 'abertura' | 'primeira' | 'rodada' | 'lembrete' | 'prazo' | 'cancelada' | 'voltou' | 'pendentes';
 
 /** `rodada` = ISO do :00/:30 em que a mensagem saiu. */
 export type Envio = { quando: string; rodada: string; tipo: TipoMensagem; foto: FotoDaLista };
@@ -22,6 +22,8 @@ export type EstadoDoRobo = {
 
 const MEIA_HORA_MS = 30 * 60 * 1000;
 const HORA_MS = 60 * 60 * 1000;
+/** Sem mudança na lista mas com alguém sem confirmar: a lista sai de novo depois deste tempo do último envio. */
+export const INTERVALO_PENDENTES_MS = 90 * 60 * 1000;
 /** A rodada só sai nos primeiros minutos do :00/:30 (Mac que acorda no meio espera a próxima). */
 const TOLERANCIA_RODADA_MS = 5 * 60 * 1000;
 // Recife é sempre UTC-03:00 (sem horário de verão), como em tempo.ts.
@@ -62,5 +64,9 @@ export function decidir(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): Tip
 
   if (!anterior) return 'primeira';
   if (now.getTime() - ms >= TOLERANCIA_RODADA_MS) return null;
-  return haMudanca(mudancas(anterior, foto)) ? 'rodada' : null;
+  if (haMudanca(mudancas(anterior, foto))) return 'rodada';
+  // Ninguém mexeu, mas tem gente na lista sem confirmar: lembra o grupo a cada 1h30 (a contar do último envio).
+  const temPendente = Object.values(foto.jogadores).some((j) => j.onde === 'pendente');
+  const ultimoEm = estado.ultimo ? new Date(estado.ultimo.quando).getTime() : 0;
+  return temPendente && now.getTime() - ultimoEm >= INTERVALO_PENDENTES_MS ? 'pendentes' : null;
 }

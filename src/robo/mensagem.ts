@@ -38,6 +38,10 @@ export function montarMensagem(
       const meio = perderam.length ? [`❌ Perderam a vaga: ${juntarNomes(perderam)}.`] : ['🙌 Todos os mensalistas confirmaram!'];
       return juntar(['🔒 Prazo dos mensalistas encerrado.', ...meio, ...resto], estadoDaSemana, data);
     }
+    case 'pendentes': {
+      const pendentes = estadoDaSemana.principal.filter((i) => !i.confirmado).map((i) => i.nome);
+      return juntar([`⏳ Ainda falta confirmar: ${juntarNomes(pendentes)}. Bora confirmar!`], estadoDaSemana, data);
+    }
     case 'cancelada':
       return `🌧️ A pelada de quarta, ${dia} foi cancelada.`;
     case 'voltou':
