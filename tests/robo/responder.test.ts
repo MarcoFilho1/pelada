@@ -18,7 +18,7 @@ import {
   TEXTO_SO_ADMIN_IMPORTAR,
   TEXTO_TIMES_INDEFINIDOS,
 } from '@/robo/responder';
-import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, lerTrocas, TEXTO_NADA_PARA_DESFAZER, TEXTO_SEM_TIMES_PARA_TROCAR, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
+import { apelidosDoEnv, calvinhoDoEnv, ferramentasDoOrganizador, perguntaPendentes, TEXTO_LISTA_MANDADA, lerTrocas, TEXTO_NADA_PARA_DESFAZER, TEXTO_SEM_TIMES_PARA_TROCAR, TEXTO_SO_ADMIN_ANOTAR, ferramentasDeAcao, PREFIXO_NAO_ENTENDI, PREFIXOS_CALVINHO, SALVOS_CALVINHO, configDasRespostas, podeGravarLista, responder, type ContextoDaResposta, type MensagemRecebida } from '@/robo/responder';
 import { CALVINHO } from '@/robo/lista-zap';
 import { ConversasPrivadas } from '@/robo/conversa-privada';
 import { ErroDeFerramenta, TextoPronto } from '@/robo/ferramentas';
@@ -275,9 +275,9 @@ describe('responder: sorteio com 2 de 3', () => {
   it('"sortear 3 times" propõe em 3; "sortear" em 4; "sortear 5 times" recusa sem propor', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sortear 3 times', c, ADMIN);
-    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 3);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 3, false);
     await passo('sortear', c, ADMIN);
-    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 4);
+    expect(c.propor).toHaveBeenLastCalledWith(expect.any(Date), 4, false);
     expect((await passo('sortear 5 times', c, ADMIN))?.texto).toBe(TEXTO_SO_3_OU_4);
     expect(c.propor).toHaveBeenCalledTimes(2);
   });
@@ -499,7 +499,7 @@ describe('times com proposta pendente (sem vazar)', () => {
     const c = ctx();
     c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
     const f = ferramentasDeAcao(msg('x'), c).find((x) => x.nome === 'ver_times')!;
-    expect(await f.executar({})).toBe(TEXTO_TIMES_INDEFINIDOS);
+    expect(await f.executar({})).toEqual(new TextoPronto(TEXTO_TIMES_INDEFINIDOS, 'lista'));
   });
 });
 
@@ -578,13 +578,14 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
   it('consultas devolvem os mesmos textos dos comandos', async () => {
     const c = ctx();
     const fs = ferramentasDeAcao(msg('x'), c);
-    expect(await achar(fs, 'quem_falta_confirmar').executar({})).toBe('⏳ Ainda não confirmaram: Bia.');
-    expect(await achar(fs, 'ver_fila').executar({})).toBe('📝 Fila:\n1. Caio');
+    // Todas vão como texto pronto: o robô manda inteiro (a IA dizia "aqui está o ranking" e não mandava).
+    expect(await achar(fs, 'quem_falta_confirmar').executar({})).toEqual(new TextoPronto('⏳ Ainda não confirmaram: Bia.', 'lista'));
+    expect(await achar(fs, 'ver_fila').executar({})).toEqual(new TextoPronto('📝 Fila:\n1. Caio', 'lista'));
     const textoLista = (await achar(fs, 'ver_lista').executar({})) as TextoPronto;
     expect(textoLista.como).toBe('lista');
     expect(textoLista.texto).toContain(textoWhatsApp(lista, lista.data));
     for (const [ferramenta, tipo] of [['ver_times', 'times'], ['artilheiros', 'artilheiro'], ['garcons', 'garcom'], ['ranking', 'ranking']] as const) {
-      expect(await achar(fs, ferramenta).executar({})).toBe('⚽ Artilheiros (novembro):\n1. Pepe 5');
+      expect(await achar(fs, ferramenta).executar({})).toEqual(new TextoPronto('⚽ Artilheiros (novembro):\n1. Pepe 5', 'lista'));
       expect(c.consultar).toHaveBeenLastCalledWith(tipo, expect.any(Date));
     }
   });
@@ -592,9 +593,9 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
   it('pedir_sorteio: admin pelo telefone da mensagem; guarda a proposta como o comando, e o "sim" confirma', async () => {
     const quando = t('2026-11-11T15:00:00');
     const c = ctx({}, () => quando);
-    const r = (await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
+    const r = (await achar(ferramentasDeAcao(msg('sorteia aí', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({ quem_nao_confirmou: 'deixar_de_fora' })) as TextoPronto;
     expect(r).toMatchObject({ texto: textoProposta(), como: 'sorteio' });
-    expect(c.propor).toHaveBeenCalledWith(quando, 4);
+    expect(c.propor).toHaveBeenCalledWith(quando, 4, false);
     expect(c.proposta.atual).toMatchObject({ quemPropos: ADMIN, texto: textoProposta() });
     const sim = await responder(msg('sim', { remetenteTelefone: ADMIN, quando: t('2026-11-11T15:02:00') }), c);
     expect(sim?.texto).toBe('✅ Aprovado! Mandei para os outros organizadores; falta 1 confirmar.');
@@ -606,21 +607,64 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
     const f = achar(ferramentasDeAcao(msg('sorteia em 3 times', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio');
     expect(f.parametros).toEqual({
       type: 'object',
-      properties: { times: expect.objectContaining({ type: 'integer', enum: [3, 4] }) },
+      properties: {
+        times: expect.objectContaining({ type: 'integer', enum: [3, 4] }),
+        quem_nao_confirmou: expect.objectContaining({ type: 'string', enum: ['incluir', 'deixar_de_fora'] }),
+      },
       additionalProperties: false,
     });
-    await f.executar({ times: 3 });
-    expect(c.propor).toHaveBeenLastCalledWith(quando, 3);
-    for (const args of [{}, { times: 4 }, { times: 7 }, { times: '3' }, null]) {
-      await f.executar(args);
-      expect(c.propor).toHaveBeenLastCalledWith(quando, 4);
+    await f.executar({ times: 3, quem_nao_confirmou: 'deixar_de_fora' });
+    expect(c.propor).toHaveBeenLastCalledWith(quando, 3, false);
+    for (const args of [{}, { times: 4 }, { times: 7 }, { times: '3' }]) {
+      await f.executar({ ...args, quem_nao_confirmou: 'deixar_de_fora' });
+      expect(c.propor).toHaveBeenLastCalledWith(quando, 4, false);
     }
+  });
+
+  it('pedir_sorteio com gente na lista sem confirmar e sem escolha: não sorteia e devolve a pergunta para a IA fazer', async () => {
+    const quando = t('2026-11-11T15:00:00');
+    const c = ctx({}, () => quando);
+    const f = achar(ferramentasDeAcao(msg('quero sortear', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio');
+    for (const args of [{}, null, { quem_nao_confirmou: 'talvez' }]) {
+      await expect(f.executar(args)).rejects.toEqual(new ErroDeFerramenta(perguntaPendentes(['Bia'])));
+    }
+    expect(perguntaPendentes(['Bia'])).toContain('Bia está na lista e ainda não confirmou');
+    expect(perguntaPendentes(['Bia', 'Caio'])).toContain('Bia e Caio estão na lista e ainda não confirmaram');
+    expect(c.propor).not.toHaveBeenCalled();
+    expect(c.proposta.atual).toBeNull();
+  });
+
+  it('pedir_sorteio "incluir": sorteia com quem não confirmou; sem ninguém pendente, sorteia direto', async () => {
+    const quando = t('2026-11-11T15:00:00');
+    const c = ctx({}, () => quando);
+    await achar(ferramentasDeAcao(msg('sorteia com a Bia', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({ quem_nao_confirmou: 'incluir' });
+    expect(c.propor).toHaveBeenLastCalledWith(quando, 4, true);
+    const todos = { ...lista, principal: lista.principal.map((i) => ({ ...i, confirmado: true })) };
+    const c2 = ctx({ lerLista: vi.fn(async () => todos) }, () => quando);
+    await achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN, quando }), c2), 'pedir_sorteio').executar({});
+    expect(c2.propor).toHaveBeenLastCalledWith(quando, 4, false);
+  });
+
+  it('mandar_lista_no_grupo: manda a lista de sempre no grupo, vira a última do grupo e responde aqui', async () => {
+    const c = ctx({ listaMandadaNoGrupo: vi.fn() });
+    const f = achar(ferramentasDoOrganizador(msg('encaminha a lista no grupo', { remetenteTelefone: ADMIN, privado: true }), c), 'mandar_lista_no_grupo');
+    expect(await f.executar({})).toEqual(new TextoPronto(TEXTO_LISTA_MANDADA, 'acao'));
+    expect(c.anunciarNoGrupo).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(c.anunciarNoGrupo).mock.calls[0][0]).toContain(textoWhatsApp(lista, lista.data));
+    expect(c.listaMandadaNoGrupo).toHaveBeenCalledWith(expect.objectContaining({ foto: expect.any(Object) }));
+  });
+
+  it('mandar_lista_no_grupo que não sai (23h–8h, queda): erro para a IA, nada gravado', async () => {
+    const c = ctx({ anunciarNoGrupo: vi.fn(async () => { throw new Error('passou das 23:00'); }), listaMandadaNoGrupo: vi.fn() });
+    const f = achar(ferramentasDoOrganizador(msg('manda a lista lá', { remetenteTelefone: ADMIN, privado: true }), c), 'mandar_lista_no_grupo');
+    await expect(f.executar({})).rejects.toBeInstanceOf(ErroDeFerramenta);
+    expect(c.listaMandadaNoGrupo).not.toHaveBeenCalled();
   });
 
   it('pedir_sorteio: descartar a proposta (chegou depois do prazo) limpa só ela', async () => {
     const quando = t('2026-11-11T15:00:00');
     const c = ctx({}, () => quando);
-    const r = (await achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({})) as TextoPronto;
+    const r = (await achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN, quando }), c), 'pedir_sorteio').executar({ quem_nao_confirmou: 'deixar_de_fora' })) as TextoPronto;
     expect(c.proposta.atual).not.toBeNull();
     r.descartar?.();
     expect(c.proposta.atual).toBeNull();
@@ -628,7 +672,7 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
 
   it('pedir_sorteio que dá erro do sorteio (hoje não tem pelada): erro da ferramenta, nada guardado', async () => {
     const c = ctx({ propor: vi.fn(async () => ({ erro: '📅 Hoje não tem pelada para sortear.' })) });
-    await expect(achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN }), c), 'pedir_sorteio').executar({})).rejects.toEqual(new ErroDeFerramenta('📅 Hoje não tem pelada para sortear.'));
+    await expect(achar(ferramentasDeAcao(msg('sorteia', { remetenteTelefone: ADMIN }), c), 'pedir_sorteio').executar({ quem_nao_confirmou: 'deixar_de_fora' })).rejects.toEqual(new ErroDeFerramenta('📅 Hoje não tem pelada para sortear.'));
     expect(c.proposta.atual).toBeNull();
   });
 

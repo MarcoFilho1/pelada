@@ -7,6 +7,8 @@ import {
   ehAdmin,
   importarTimesColados,
   INSTRUCOES_VOTO,
+  TEXTO_COMPLETE,
+  textoDeFora,
   montarProposta,
   paraGuardar,
   paraWhatsApp,
@@ -92,7 +94,52 @@ describe('sortearTimesDaNoite + montarProposta', () => {
     expect(p.blocos).toMatch(/^🔵 Azul \(\d+,\d\)\n- \S+ \d,\d/);
     expect(p.blocos).toContain('- COMPLETE ');
     expect(p.blocos).toMatch(/\n\nDiferença: \d+,\d$/);
-    expect(p.texto).toBe(`🎲 Times sorteados por Marco para quarta, 11/11:\n\n${p.blocos}\n\n${INSTRUCOES_VOTO}`);
+    // Com COMPLETE nos times, a linha que explica o que ele é (a IA chegou a dizer que era erro).
+    expect(p.texto).toBe(`🎲 Times sorteados por Marco para quarta, 11/11:\n\n${p.blocos}\n\n${TEXTO_COMPLETE}\n\n${INSTRUCOES_VOTO}`);
+  });
+
+  it('sem COMPLETE (16 jogadores em 4 times), a proposta não traz a linha do COMPLETE', async () => {
+    const extras = await db.insert(jogadores).values(['Lia', 'Mel', 'Nina', 'Olga', 'Pia', 'Rui'].map((nome) => ({ nome, nota: '3.0' }))).returning();
+    await db.insert(presencas).values(extras.map((j) => ({ peladaId, jogadorId: j.id, tipo: 'D' as const, status: 'confirmado' as const })));
+    const p = await proposta();
+    expect(p.completes.flat()).toEqual([]);
+    expect(p.texto).not.toContain(TEXTO_COMPLETE);
+  });
+
+  it('quem está na lista sem confirmar fica fora e aparece numa linha; com incluirPendentes entra, e o salvar aceita', async () => {
+    await db.execute(sql`update presencas set status = 'pendente' where jogador_id in (select id from jogadores where nome in ('Ana', 'Beto'))`);
+    const fora = (await sortearTimesDaNoite(db, QUARTA, rng)) as TimesPropostos;
+    expect(fora.deFora).toEqual(['Ana', 'Beto']);
+    expect(fora.comPendentes).toBeUndefined();
+    const pf = montarProposta('sorteio', quem, QUARTA, fora);
+    expect(pf.elencos.flat()).toHaveLength(8);
+    expect(pf.texto).toContain(textoDeFora(['Ana', 'Beto']));
+    expect(textoDeFora(['Ana', 'Beto'])).toBe('⏳ Fora do sorteio por não terem confirmado: Ana e Beto.');
+    expect(textoDeFora(['Ana'])).toBe('⏳ Fora do sorteio por não ter confirmado: Ana.');
+
+    const com = (await sortearTimesDaNoite(db, QUARTA, rng, 4, true)) as TimesPropostos;
+    expect(com.deFora).toBeUndefined();
+    const pc = montarProposta('sorteio', quem, QUARTA, com);
+    expect(pc).toMatchObject({ comPendentes: true });
+    expect(pc.elencos.flat()).toHaveLength(10);
+    expect(pc.texto).not.toContain('⏳ Fora do sorteio');
+    // Volta igual do estado.json, e a troca de time mantém a escolha.
+    expect(deGuardada(JSON.parse(JSON.stringify(paraGuardar(pc))))).toMatchObject({ comPendentes: true });
+    const ids = pc.elencos.map((e) => e[0]);
+    const nomes = await db.select({ id: jogadores.id, nome: jogadores.nome }).from(jogadores);
+    const nome = (id: number) => nomes.find((j) => j.id === id)!.nome;
+    const trocada = await trocarNaProposta(db, pc, [{ de: nome(ids[0]), por: nome(ids[1]) }], QUARTA);
+    expect('proposta' in trocada && trocada.proposta.comPendentes).toBe(true);
+    // O "salvar" confere a lista do mesmo jeito que o sorteio: com os pendentes, não recusa como "lista mudou".
+    expect(await salvarProposta(db, mais(1), pc)).toEqual({ ok: true });
+    expect(await salvarProposta(db, mais(2), pf)).toEqual({ ok: true });
+  });
+
+  it('deGuardada recusa comPendentes ou deFora fora do formato', async () => {
+    const g = paraGuardar(await proposta())!;
+    expect(deGuardada({ ...g, comPendentes: 'sim' })).toBeNull();
+    expect(deGuardada({ ...g, deFora: [1] })).toBeNull();
+    expect(deGuardada({ ...g, deFora: ['Ana'] })).toMatchObject({ deFora: ['Ana'] });
   });
 
   it('vale em qualquer dia para a pelada da semana (ex.: na terça, a de quarta)', async () => {

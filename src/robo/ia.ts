@@ -69,9 +69,13 @@ export const SISTEMA = [
   'Limites da resenha: zoeira de futebol e de amigo, sem ofender ninguém de verdade, sem palavrão pesado, sem política, religião, aparência (fora o apelido carinhoso do Jonas) ou assunto sério de alguém.',
   'Dados da pelada (lista, confirmados, fila, gols, assistências, ranking, times, notas, datas): só com o que as ferramentas trazem. Nunca invente jogador, número ou data; se não souber, diga que não sabe (pode ser com graça).',
   'Para adicionar, confirmar ou remover alguém da lista, use sempre a ferramenta, com o nome como a pessoa escreveu. Nunca diga que a lista mudou sem a ferramenta ter respondido.',
-  'A lista (ver_lista), as mudanças na lista, os links (de anotar) e o sorteio o robô acrescenta sozinho no fim da sua resposta, palavra por palavra: não reescreva esses textos nem repita o link ou a validade dele; uma frase curta basta. Outros textos prontos (fila, times, ranking), repita sem mudar nada.',
-  'No privado com um organizador, você também pode mostrar e mudar notas (ver_notas, mudar_nota), dar o link do site (link_do_site), trocar jogadores de time num sorteio (trocar_nos_times) e desfazer uma mudança na lista (desfazer_mudanca_na_lista). No grupo, essas ferramentas não existem.',
-  'Se um organizador perguntar o que você faz, no privado: lista e fila, pôr/confirmar/tirar alguém, cadastrar jogador novo com nota, ver e mudar notas, sortear ou importar times, trocar jogadores de time, aprovar os times e mandar no grupo, link de anotar as partidas, link do site, ranking, artilheiros e assistências, e desfazer a última mudança na lista.',
+  'Os textos prontos das ferramentas (lista, fila, quem falta, times, ranking, artilheiros, assistências, notas, site, mudanças na lista, links e sorteio) o robô manda sozinho, palavra por palavra, logo depois da sua fala: não reescreva nem resuma esses textos, não repita o link ou a validade dele; uma frase curta basta. Nunca diga que mostrou ou mandou algo sem ter chamado a ferramenta nesta mensagem.',
+  'Sortear, importar e trocar times, link de anotar e lista valem para a pelada da semana (a próxima quarta) e podem ser pedidos em qualquer dia, antes ou no dia. Nunca diga para pedir só no dia.',
+  'Times: 3 ou 4 (o padrão), com até 4 jogadores cada e mais quando sobra gente; faltando gente, o time fica com COMPLETE (vaga sem jogador, não é erro nem nome). Não invente outro formato.',
+  'Sortear: se pedir_sorteio disser que tem gente na lista sem confirmar, pergunte se o sorteio é com ou sem essas pessoas e espere a resposta; depois chame de novo com quem_nao_confirmou. Se o organizador já disse ("sorteia com o David", "sem quem não confirmou"), passe direto.',
+  'Mandar no grupo: ver_lista só mostra a lista aqui. Para encaminhar, postar ou mandar a lista no grupo, use mandar_lista_no_grupo; para os times, mandar_times_no_grupo. Nunca diga que mandou no grupo sem a ferramenta ter respondido.',
+  'No privado com um organizador, você também pode mostrar e mudar notas (ver_notas, mudar_nota), dar o link do site (link_do_site), trocar jogadores de time num sorteio (trocar_nos_times), mandar a lista no grupo (mandar_lista_no_grupo) e desfazer uma mudança na lista (desfazer_mudanca_na_lista). No grupo, essas ferramentas não existem.',
+  'Se um organizador perguntar o que você faz, no privado: lista e fila, pôr/confirmar/tirar alguém, cadastrar jogador novo com nota, ver e mudar notas, sortear ou importar times, trocar jogadores de time, aprovar os times e mandar no grupo, mandar a lista no grupo, link de anotar as partidas, link do site, ranking, artilheiros e assistências, e desfazer a última mudança na lista.',
   'Quando a pessoa fala de si mesma ("eu vou", "me tira"), use o nome dela no site, se vier na mensagem; senão, o nome do WhatsApp. Para chamar a pessoa, use sempre o mesmo nome (o do site, se vier).',
   'Pedido com mais de uma coisa ("ver a lista e sortear", "tira o X e confirma o Y"): faça todas, na ordem pedida, e não pule nenhuma. Se pedir para ver algo antes, chame primeiro a ferramenta de ver.',
   'Remover alguém da lista só quando pedirem claramente para tirar ou dizerem que a pessoa não vai. "Troca o X pelo Y" ou "põe o X no time do Y" logo depois de um sorteio é troca de time (trocar_nos_times), nunca mudança na lista. Na dúvida sobre o que a pessoa quer, pergunte antes de mexer na lista.',
@@ -136,6 +140,25 @@ function emMensagens(prosa: string): string[] {
     .filter(Boolean);
   return ps.length <= MAX_PARTES_DE_FALA ? ps : [...ps.slice(0, MAX_PARTES_DE_FALA - 1), ps.slice(MAX_PARTES_DE_FALA - 1).join('\n\n')];
 }
+/**
+ * A fala em mensagens, com cada texto pronto que ela repete inteiro numa mensagem só, no lugar onde veio
+ * (cortar a lista por parágrafo a mandava em pedaços). `filtro` vale só para os pedaços da fala.
+ */
+function emMensagensComProntos(prosa: string, prontos: string[], filtro: (ps: string[]) => string[] = (ps) => ps): string[] {
+  const saida: string[] = [];
+  let resto = prosa;
+  for (;;) {
+    let achado: { i: number; t: string } | null = null;
+    for (const t of prontos) {
+      const i = resto.indexOf(t);
+      if (i >= 0 && (!achado || i < achado.i)) achado = { i, t };
+    }
+    if (!achado) break;
+    saida.push(...filtro(emMensagens(resto.slice(0, achado.i))), achado.t);
+    resto = resto.slice(achado.i + achado.t.length);
+  }
+  return [...saida, ...filtro(emMensagens(resto))];
+}
 const tirar = (texto: string, partes: string[]) => partes.reduce((t, p) => t.split(p).join(''), texto).trim();
 
 /**
@@ -157,7 +180,9 @@ function montar(prosa: string, a: Anuncios): string[] {
   // Link que já vai no texto pronto: o parágrafo da fala que repete esse link sai (senão o link chega duas vezes).
   const links = new Set(faltam.flatMap((t) => t.match(/https?:\/\/\S+/g) ?? []));
   const semRepetir = (ps: string[]) => (links.size ? ps.filter((p) => ![...links].some((l) => p.includes(l))) : ps);
-  if (prosa.length <= MAX_RESPOSTA) return juntar([...semRepetir(emMensagens(prosa)), ...faltam]);
+  // Só os de mais de um parágrafo (lista, ranking) seriam picotados; uma linha no meio da frase fica onde está.
+  const grandes = integrais.filter((t) => /\n\s*\n/.test(t));
+  if (prosa.length <= MAX_RESPOSTA) return juntar([...emMensagensComProntos(prosa, grandes, semRepetir), ...faltam]);
   // Longa demais: os textos prontos saem do meio da fala e vão inteiros no fim; só a fala é cortada.
   const resto = tirar(prosa, integrais);
   return juntar([...emMensagens(resto && cortar(resto)), ...integrais]);

@@ -55,13 +55,22 @@ export class ErroTimes extends ErroDeValidacao {
 
 const porNota = (a: JogadorNota, b: JogadorNota) => b.nota - a.nota || a.nome.localeCompare(b.nome, 'pt-BR');
 
-/** Quem entra no sorteio por padrão: os confirmados da lista principal (mesma leitura da lista), com a nota. */
-export async function participantesPadrao(db: DB, peladaId: number, now: Date): Promise<JogadorNota[]> {
+/**
+ * Quem entra no sorteio por padrão: os confirmados da lista principal (mesma leitura da lista), com a nota.
+ * `incluirPendentes`: também quem está na lista principal e ainda não confirmou (o organizador escolheu sortear com eles).
+ */
+export async function participantesPadrao(db: DB, peladaId: number, now: Date, incluirPendentes = false): Promise<JogadorNota[]> {
   const estado = await estadoDaPelada(db, peladaId, now);
   const notas = new Map((await listarJogadores(db, { incluirInativos: false })).map((j) => [j.id, j.nota]));
   return estado.principal
-    .filter((i) => i.confirmado && notas.has(i.jogadorId))
+    .filter((i) => (incluirPendentes || i.confirmado) && notas.has(i.jogadorId))
     .map((i) => ({ id: i.jogadorId, nome: i.nome, nota: notas.get(i.jogadorId)! }));
+}
+
+/** Os nomes de quem está na lista principal e ainda não confirmou (fica fora do sorteio padrão). */
+export async function pendentesDaLista(db: DB, peladaId: number, now: Date): Promise<string[]> {
+  const estado = await estadoDaPelada(db, peladaId, now);
+  return estado.principal.filter((i) => !i.confirmado).map((i) => i.nome);
 }
 
 /** Trava a linha da pelada: mudanças nos times da mesma pelada andam uma de cada vez. */
