@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { EstadoDoRobo } from '@/robo/agenda';
-import { umaVolta } from '@/robo/volta';
+import { motivoDoErro, umaVolta } from '@/robo/volta';
 
 const t = (s: string) => new Date(`${s}-03:00`);
 const lista: EstadoDaSemana = {
@@ -69,5 +69,18 @@ describe('uma volta do laço', () => {
     const d2 = deps();
     await umaVolta(t('2026-11-09T14:00:50'), novo, d2);
     expect(d2.enviar).not.toHaveBeenCalled();
+  });
+});
+
+describe('motivoDoErro', () => {
+  it('junta o motivo de baixo (o pg) ao "Failed query", numa linha e sem os parâmetros', () => {
+    const pg = Object.assign(new Error(''), { code: 'ETIMEDOUT' });
+    const err = Object.assign(new Error('Failed query: select 1 where data = $1\nparams: 2026-11-18'), { cause: pg });
+    expect(motivoDoErro(err)).toBe('Failed query: select 1 where data = $1 (motivo: ETIMEDOUT)');
+    expect(motivoDoErro(Object.assign(new Error('Failed query'), { cause: new Error('Connection terminated') }))).toBe('Failed query (motivo: Connection terminated)');
+  });
+  it('sem causa, só a mensagem; erro que não é Error vira texto', () => {
+    expect(motivoDoErro(new Error('caiu'))).toBe('caiu');
+    expect(motivoDoErro('estranho')).toBe('estranho');
   });
 });

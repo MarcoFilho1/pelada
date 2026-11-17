@@ -30,7 +30,7 @@ export async function umaVolta(now: Date, estado: EstadoDoRobo, d: DepsDaVolta):
     novo = aposEnvio(estado, now, tipo, foto);
     d.log(`enviada: ${tipo}`);
   } catch (err) {
-    d.log(`erro (tenta de novo na próxima volta): ${(err as Error).message}`);
+    d.log(`erro (tenta de novo na próxima volta): ${motivoDoErro(err)}`);
     return estado;
   }
   try {
@@ -40,4 +40,16 @@ export async function umaVolta(now: Date, estado: EstadoDoRobo, d: DepsDaVolta):
     d.log(`ATENÇÃO: mensagem enviada, mas o estado não foi gravado (${(err as Error).message}).`);
   }
   return novo;
+}
+
+/**
+ * A mensagem do erro com o motivo de baixo (o "Failed query" do drizzle esconde o do pg: ETIMEDOUT, ECONNRESET…),
+ * em uma linha só e sem os parâmetros da consulta.
+ */
+export function motivoDoErro(err: unknown): string {
+  const e = err as { message?: string; cause?: { code?: string; message?: string } };
+  const msg = (e?.message ?? String(err)).split('\n')[0];
+  const c = e?.cause;
+  const causa = [c?.code, c?.message].filter(Boolean).join(' ');
+  return causa ? `${msg} (motivo: ${causa})` : msg;
 }
