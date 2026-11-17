@@ -4,6 +4,7 @@
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, renameSync } from 'node:fs';
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -29,6 +30,10 @@ import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, resp
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
+
+// O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
+// ("Failed query", ETIMEDOUT em ~760 ms) bem antes dos 10 s do pool. Com 2 s cada, a conexão espera a rede.
+setDefaultAutoSelectFamilyAttemptTimeout(2000);
 
 const NOME_DO_GRUPO = 'Pelada 3.0';
 const VOLTA_MS = 60_000;
