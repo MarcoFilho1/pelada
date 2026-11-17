@@ -66,6 +66,34 @@ describe('decidir', () => {
     expect(decidir(t('2026-11-10T15:03:00'), comMudanca, robo(u))).toBe('rodada');
     expect(decidir(t('2026-11-10T15:06:00'), comMudanca, robo(u))).toBeNull();
   });
+  describe('lembrete de quem não confirmou (sem mudança, a cada 1h30)', () => {
+    const comPendente = foto({ principal: [item(1, 'Ana', true), item(2, 'Bia', false, 'D')] });
+    const u = envio('2026-11-10T09:30:05', '2026-11-10T09:30:00', comPendente);
+    it('antes de 1h30 do último envio não manda; com 1h30 manda "pendentes"', () => {
+      expect(decidir(t('2026-11-10T10:30:00'), comPendente, robo(u))).toBeNull();
+      expect(decidir(t('2026-11-10T11:00:00'), comPendente, robo(u))).toBeNull();
+      expect(decidir(t('2026-11-10T11:00:10'), comPendente, robo(envio('2026-11-10T09:30:00', '2026-11-10T09:30:00', comPendente)))).toBe('pendentes');
+      expect(decidir(t('2026-11-10T11:30:00'), comPendente, robo(u))).toBe('pendentes');
+    });
+    it('todos confirmados: não manda; mudança na lista continua sendo "rodada"', () => {
+      expect(decidir(t('2026-11-10T12:00:00'), semMudanca, robo(envio('2026-11-10T09:30:05', '2026-11-10T09:30:00', semMudanca)))).toBeNull();
+      const mudou = foto({ principal: [item(1, 'Ana', true), item(2, 'Bia', true)] });
+      expect(decidir(t('2026-11-10T11:30:00'), mudou, robo(u))).toBe('rodada');
+    });
+    it('respeita o silêncio 23h–8h, os 5 min do :00/:30 e quem está só na fila não conta', () => {
+      expect(decidir(t('2026-11-10T23:30:00'), comPendente, robo(u))).toBeNull();
+      expect(decidir(t('2026-11-10T11:40:00'), comPendente, robo(u))).toBeNull();
+      const soFila = foto({ principal: [item(1, 'Ana', true)], fila: [item(3, 'Caio', false, 'D')] });
+      expect(decidir(t('2026-11-10T12:00:00'), soFila, robo(envio('2026-11-10T09:30:05', '2026-11-10T09:30:00', soFila)))).toBeNull();
+    });
+    it('a mensagem abre com quem falta confirmar e traz a lista', () => {
+      const lista = estado({ principal: [item(1, 'Ana', true), item(2, 'Bia', false, 'D'), item(4, 'Davi', false)] });
+      const texto = montarMensagem('pendentes', lista, fotografar(lista), fotografar(lista));
+      expect(texto.split('\n')[0]).toBe('⏳ Ainda falta confirmar: Bia e Davi. Bora confirmar!');
+      expect(texto).toContain('Ana');
+    });
+  });
+
   it('sem mudança não envia', () => {
     const u = envio('2026-11-10T14:00:05', '2026-11-10T14:00:00', semMudanca);
     expect(decidir(t('2026-11-10T14:30:00'), semMudanca, robo(u))).toBeNull();

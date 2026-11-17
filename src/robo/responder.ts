@@ -218,7 +218,7 @@ function comBrincadeira(cmd: Comando, texto: string, c: ContextoDaResposta): str
 export function podeGravarLista(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): boolean {
   if (!dentroDaJanela(now)) return false;
   const tipo = decidir(now, foto, estado);
-  return tipo === null || tipo === 'rodada';
+  return tipo === null || tipo === 'rodada' || tipo === 'pendentes';
 }
 
 export const STATUS_SEM_ATUALIZACAO = '🔄 Status: sem nenhuma atualização.';
