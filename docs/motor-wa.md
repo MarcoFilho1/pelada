@@ -69,6 +69,9 @@ export MOTOR_WA_ADMIN_KEY=$(openssl rand -hex 24)
 ./motor-wa service install                # sobe agora e a cada login
 ```
 
+Os segredos precisam estar exportados no terminal na hora do `service install`: o launchd não
+vê o seu terminal, então eles vão para o arquivo do serviço (criado legível só por você).
+
 O envio começa **desligado**. Ligue só quando o número estiver pronto (o aquecimento começa aí):
 
 ```sh
@@ -100,9 +103,25 @@ roda como antes.
 - **Recusas do motor-wa** aparecem no log do robô com o motivo, por exemplo
   `motor-wa recusou (not_a_reply): a conversa não escreveu antes e não está em allow_initiate`.
   Nada sai nesses casos.
-- **O mesmo texto** para a mesma conversa na mesma janela de 10 minutos sai uma vez só, mesmo se
-  o robô tentar de novo.
+- **Mensagens atrasadas** (que chegam mais de 10 minutos depois de enviadas, por exemplo depois de
+  uma reconexão) são ignoradas: um "anotar"/"sai" antigo não mexe na lista agora. Fica no log.
+- **O mesmo texto** para a mesma conversa em menos de 2 minutos é recusado pelo motor-wa (com
+  erro no log); repetir depois disso, ou para outra conversa, é normal.
+- **Numa queda curta**, um envio espera o motor-wa reconectar por até 1 minuto e tenta mais uma
+  vez, como a Baileys fazia.
+- **Avisos aos organizadores** vão sempre para o telefone deles (é o que está em
+  `allow_initiate`).
 - **Se a sessão parar** (número errado, deslogado, banido), o robô para com a explicação.
+
+## Limites a ter em mente
+
+- **Aquecimento:** nos primeiros 3 dias depois de ligar o envio, o motor-wa permite 25 % dos
+  limites (15 mensagens/hora, 100/dia, 3 respostas/hora a conversas novas); 50 % até o 7º dia,
+  75 % até o 14º. Numa quarta movimentada isso pode recusar respostas (`hourly_limit`). Para um
+  número que já é usado há tempo, dá para desligar com `warmup = false` em `[sessions.gate]`.
+- **Horário de silêncio (22:00-07:00):** só bloqueia *puxar conversa*. Se o grupo ficou mais de
+  24 h sem escrever, um lembrete às 22:30 é recusado até de manhã. Responder quem escreveu
+  continua valendo a qualquer hora.
 
 ## Testes
 
