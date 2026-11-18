@@ -304,9 +304,12 @@ async function laco(): Promise<void> {
   // A conversa privada de cada organizador: a que ele já usou com o robô ou a que o WhatsApp informa.
   const conversas = new Map<string, string>();
   const conversaDe = async (admin: string): Promise<string | null> => {
-    for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
     const digitos = admin.replace(/\D/g, '');
     const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
+    // Pelo motor-wa, o aviso vai sempre para o telefone: é ele que está em `allow_initiate`
+    // (a conversa guardada pode ser um LID, que o motor-wa trataria como contato desconhecido).
+    if (usaMotorWa()) return `${comDdi}@s.whatsapp.net`;
+    for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
     return (await conexao!).conversaDoTelefone(comDdi);
   };
   /** Um texto no privado de cada organizador (menos `exceto`); falha de um não impede os outros. */

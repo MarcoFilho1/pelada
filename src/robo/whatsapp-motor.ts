@@ -5,7 +5,6 @@
 // `allow_initiate`, limites, horário de silêncio, SAIR) e entrega o que chega por webhook assinado.
 // Aqui o robô só: abre um servidorzinho local para o webhook, traduz os eventos para
 // `MensagemRecebida` e manda pela API.
-import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { MotorWa, MotorWaError, createWebhookHandler, type MessageReceived, type SessionStatus } from './motor-wa';
 import type { MensagemRecebida } from './responder';
@@ -29,6 +28,9 @@ export type OpcoesMotor = {
   aoReceber?: (mensagem: MensagemRecebida) => void;
 };
 
+/** Quanto um envio espera o motor-wa reconectar depois de uma queda curta. */
+const ESPERA_RECONEXAO_MS = 60_000;
+
 /** Estados em que a sessão parou de vez no motor-wa (precisa de gente). */
 const PARADOS = new Set(['wrong_number', 'logged_out', 'replaced', 'banned', 'failed']);
 
@@ -48,12 +50,20 @@ function telefone(endereco: string | undefined | null): string | null {
 
 const usuario = (endereco: string) => endereco.slice(0, endereco.indexOf('@'));
 
+/** Mensagens que chegam com mais que isso de atraso (reconexão, sincronização) são ignoradas. */
+export const ATRASO_MAXIMO_S = 600;
+
 /**
  * Evento `message.received` do motor-wa → mensagem do robô (mesma forma que vinha da Baileys).
  * `eu`: os endereços do robô (telefone e LID), para tirar a marcação dele do texto.
+ *
+ * Devolve `null` para o que o robô não deve tratar: sem texto, ou **atrasada** (enviada há mais de
+ * 10 minutos). Um comando antigo ("anotar", "sai fulano") que chega depois de uma reconexão não
+ * deve mexer na lista agora — foi um disparo assim, com mensagens antigas, que baniu o número.
  */
-export function lerEventoDoMotor(m: MessageReceived, eu: string[]): MensagemRecebida | null {
+export function lerEventoDoMotor(m: MessageReceived, eu: string[], agoraS = Date.now() / 1000): MensagemRecebida | null {
   if (m.text == null) return null;
+  if (agoraS - m.timestamp > ATRASO_MAXIMO_S) return null;
   const doRobo = new Set(eu.map(usuario));
   const outros = new Set(m.mentions.filter((j) => !eu.includes(j)).map(usuario));
   // No texto a marcação aparece como "@<usuário>": a do robô sai; a de outra pessoa vira "@alguém".
@@ -77,12 +87,6 @@ export function lerEventoDoMotor(m: MessageReceived, eu: string[]): MensagemRece
   };
 }
 
-/** Referência de idempotência: o mesmo texto para a mesma conversa na mesma janela de 10 min sai uma vez só. */
-export function referenciaDoEnvio(conversa: string, texto: string, agora = Date.now()): string {
-  const h = createHash('sha256').update(`${conversa}\n${texto}`).digest('hex').slice(0, 24);
-  return `robo-${h}-${Math.floor(agora / 600_000)}`;
-}
-
 /** Explica em português uma recusa do motor-wa (o que fazer, se algo). */
 export function explicarErro(err: unknown): string {
   if (!(err instanceof MotorWaError)) return (err as Error).message;
@@ -94,6 +98,7 @@ export function explicarErro(err: unknown): string {
     quiet_hours: 'horário de silêncio',
     cautious_mode: 'modo cauteloso (sinais de risco): só respostas',
     not_connected: 'o motor-wa não está conectado agora',
+    duplicate_content: 'o mesmo texto acabou de ir para esta conversa',
   };
   return `motor-wa recusou (${err.code}): ${motivo[err.code] ?? err.message}`;
 }
@@ -128,12 +133,18 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
   const servidor: Server = createServer(
     createWebhookHandler({
       secret: op.segredoWebhook,
-      onEvent(evento) {
+      async onEvent(evento) {
         if (evento.session !== op.sessao) return;
         switch (evento.type) {
           case 'message.received': {
+            // Sem o LID do robô (início, ou o motor ainda não sabia), a marcação dele ficaria no texto.
+            if (!eu.some((e) => e.endsWith('@lid'))) {
+              const st = await wa.status().catch(() => null);
+              if (st) eu = [st.own_address, st.own_lid].filter((e): e is string => !!e);
+            }
             const m = lerEventoDoMotor(evento.data, eu);
             if (m) op.aoReceber?.(m);
+            else if (evento.data.text != null) op.log(`mensagem ${evento.data.id} ignorada: chegou atrasada (enviada há mais de 10 min)`);
             break;
           }
           case 'session.state':
@@ -174,11 +185,22 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     async enviar(conversa: string, texto: string): Promise<void> {
       if (fatal) throw fatal;
+      // Só resolve quando o servidor do WhatsApp confirma (wait=ack é o padrão). Sem `clientRef`:
+      // repetir o mesmo texto é legítimo (duas pessoas perguntando a mesma coisa); o motor-wa só
+      // recusa, com erro, o mesmo texto para a mesma conversa em 2 minutos.
+      const tentar = () => wa.sendText(conversa, texto);
       try {
-        // Só resolve quando o servidor do WhatsApp confirma (wait=ack é o padrão).
-        await wa.sendText(conversa, texto, { clientRef: referenciaDoEnvio(conversa, texto) });
+        await tentar();
       } catch (err) {
-        throw new Error(explicarErro(err));
+        // Queda curta: como a Baileys fazia, espera reconectar (até 1 min) e tenta mais uma vez.
+        // Só quando nada saiu (não conectado); sem confirmação, a mensagem pode ter saído.
+        if (!(err instanceof MotorWaError && err.code === 'not_connected')) throw new Error(explicarErro(err));
+        try {
+          await esperarConectado(wa, ESPERA_RECONEXAO_MS, op.log);
+          await tentar();
+        } catch (err2) {
+          throw new Error(explicarErro(err2));
+        }
       }
     },
     async conversaDoTelefone(tel: string): Promise<string | null> {

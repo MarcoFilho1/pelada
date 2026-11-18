@@ -7,13 +7,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { MessageReceived } from '@/robo/motor-wa';
-import { conectarMotor, explicarErro, lerEventoDoMotor, referenciaDoEnvio } from '@/robo/whatsapp-motor';
+import { conectarMotor, explicarErro, lerEventoDoMotor } from '@/robo/whatsapp-motor';
 import type { MensagemRecebida } from '@/robo/responder';
 import type { WhatsApp } from '@/robo/whatsapp';
 
 const ROBO = '5583999990000@s.whatsapp.net';
 const ROBO_LID = '100000000000001@lid';
 const GRUPO = '120363000000000000@g.us';
+
+const AGORA = 1_800_000_000;
 
 const base: MessageReceived = {
   id: 'M1',
@@ -30,7 +32,7 @@ const base: MessageReceived = {
 
 describe('lerEventoDoMotor', () => {
   it('traduz uma mensagem de grupo', () => {
-    const m = lerEventoDoMotor(base, [ROBO, ROBO_LID])!;
+    const m = lerEventoDoMotor(base, [ROBO, ROBO_LID], AGORA)!;
     expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false });
     expect(m.privado).toBeUndefined();
     expect(m.quando.getTime()).toBe(1_800_000_000_000);
@@ -40,36 +42,35 @@ describe('lerEventoDoMotor', () => {
     const m = lerEventoDoMotor(
       { ...base, text: '@100000000000001 bora?  @5583222220000 vem', mentions: [ROBO_LID, '5583222220000@s.whatsapp.net'], mentions_me: true },
       [ROBO, ROBO_LID],
+      AGORA,
     )!;
     expect(m.mencionaORobo).toBe(true);
     expect(m.texto).toBe('bora? @alguém vem');
   });
 
   it('privado com LID: telefone vem do sender_alt', () => {
-    const m = lerEventoDoMotor({ ...base, chat: '247416506831075@lid', sender: '247416506831075@lid', sender_alt: '5583111110000@s.whatsapp.net', is_group: false }, [ROBO])!;
+    const m = lerEventoDoMotor({ ...base, chat: '247416506831075@lid', sender: '247416506831075@lid', sender_alt: '5583111110000@s.whatsapp.net', is_group: false }, [ROBO], AGORA)!;
     expect(m.privado).toBe(true);
     expect(m.remetenteTelefone).toBe('5583111110000');
   });
 
   it('resposta a uma mensagem do robô', () => {
-    expect(lerEventoDoMotor({ ...base, reply_to: 'B1', reply_to_sender: ROBO_LID, replies_to_me: true }, [ROBO])!.respondeAoRobo).toBe(true);
+    expect(lerEventoDoMotor({ ...base, reply_to: 'B1', reply_to_sender: ROBO_LID, replies_to_me: true }, [ROBO], AGORA)!.respondeAoRobo).toBe(true);
   });
 
   it('sem texto (figurinha, áudio): ignorada', () => {
-    expect(lerEventoDoMotor({ ...base, text: undefined }, [ROBO])).toBeNull();
+    expect(lerEventoDoMotor({ ...base, text: undefined }, [ROBO], AGORA)).toBeNull();
   });
 
   it('mantém as quebras de linha (o importar lê linha a linha)', () => {
-    expect(lerEventoDoMotor({ ...base, text: 'Time A:\n  João   e Zé\n\n\n\nTime B' }, [ROBO])!.texto).toBe('Time A:\nJoão e Zé\n\nTime B');
+    expect(lerEventoDoMotor({ ...base, text: 'Time A:\n  João   e Zé\n\n\n\nTime B' }, [ROBO], AGORA)!.texto).toBe('Time A:\nJoão e Zé\n\nTime B');
   });
 });
 
-describe('referenciaDoEnvio', () => {
-  it('mesma conversa e texto na mesma janela de 10 min: mesma referência', () => {
-    const t = 1_800_000_000_000;
-    expect(referenciaDoEnvio(GRUPO, 'lista', t)).toBe(referenciaDoEnvio(GRUPO, 'lista', t + 60_000));
-    expect(referenciaDoEnvio(GRUPO, 'lista', t)).not.toBe(referenciaDoEnvio(GRUPO, 'outra', t));
-    expect(referenciaDoEnvio(GRUPO, 'lista', t)).not.toBe(referenciaDoEnvio(GRUPO, 'lista', t + 600_000));
+describe('mensagens atrasadas', () => {
+  it('mais de 10 minutos de atraso: o robô não trata (nem mexe na lista)', () => {
+    expect(lerEventoDoMotor({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 601)).toBeNull();
+    expect(lerEventoDoMotor({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 300)).not.toBeNull();
   });
 });
 
@@ -161,12 +162,29 @@ scopes = ["read", "send"]
     expect(recebidas.find((m) => m.texto === 'ajuda')).toMatchObject({ grupoId: GRUPO, mencionaORobo: true, remetenteTelefone: '5583111110000' });
   });
 
-  it('o mesmo texto duas vezes seguidas sai uma vez só', async () => {
+  it('o mesmo texto de novo em 2 minutos é recusado com erro (não some calado)', async () => {
     const antes = (await enviadas()).length;
     await wa.enviar(GRUPO, 'Lembrete: faltam 3');
-    await wa.enviar(GRUPO, 'Lembrete: faltam 3');
+    await expect(wa.enviar(GRUPO, 'Lembrete: faltam 3')).rejects.toThrow(/duplicate_content/);
     expect((await enviadas()).length).toBe(antes + 1);
   });
+
+  it('uma mensagem antiga (reconexão) não chega ao robô', async () => {
+    await evento({
+      type: 'message', id: 'VELHA', chat: GRUPO, sender: '5583111110000@s.whatsapp.net', sender_alt: null, push_name: 'Ana',
+      timestamp: Math.floor(Date.now() / 1000) - 3600, text: 'anotar Zé', media: null, mentions: [], reply_to: null, offline: true,
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(recebidas.some((m) => m.texto === 'anotar Zé')).toBe(false);
+  });
+
+  it('numa queda curta o envio espera reconectar e sai', async () => {
+    await evento({ type: 'disconnected', reason: 'timeout' });
+    const envio = wa.enviar(GRUPO, 'Lista depois da queda');
+    setTimeout(() => void evento({ type: 'connected', own: ROBO }), 1500);
+    await envio;
+    expect((await enviadas()).at(-1)).toMatchObject({ content: { body: 'Lista depois da queda' } });
+  }, 20_000);
 
   it('puxar conversa no privado de quem não escreveu é recusado, com explicação', async () => {
     await expect(wa.enviar('5583333330000@s.whatsapp.net', 'oi')).rejects.toThrow(/not_a_reply/);
