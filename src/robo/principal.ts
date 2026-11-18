@@ -82,8 +82,46 @@ function lerEstadoOuParar(arquivo: string) {
   }
 }
 
+/** `ROBO_MOTOR=motor-wa` no `.env`: o robô fala com o WhatsApp pelo motor-wa em vez da Baileys. */
+function usaMotorWa(): boolean {
+  return process.env.ROBO_MOTOR === 'motor-wa';
+}
+
+/** Conexão pelo motor-wa (ver docs/motor-wa.md). Parear é com o próprio motor-wa: `motor-wa pair pelada`. */
+async function conectarPeloMotor(prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
+  const { conectarMotor } = await import('./whatsapp-motor');
+  const { ErroFatalWhatsApp } = await import('./whatsapp');
+  const arquivo = join(pasta, '.env');
+  if (existsSync(arquivo)) process.loadEnvFile(arquivo); // o `configurar` não carrega o banco
+  const chave = process.env.MOTOR_WA_KEY;
+  const segredo = process.env.MOTOR_WA_WEBHOOK_SECRET;
+  if (!chave || !segredo) {
+    parar('Com ROBO_MOTOR=motor-wa, o .env do robô precisa de MOTOR_WA_KEY e MOTOR_WA_WEBHOOK_SECRET (veja docs/motor-wa.md).');
+  }
+  try {
+    return await conectarMotor({
+      url: process.env.MOTOR_WA_URL ?? 'http://127.0.0.1:8787',
+      chave: chave!,
+      sessao: process.env.MOTOR_WA_SESSAO ?? 'pelada',
+      portaWebhook: Number(process.env.MOTOR_WA_WEBHOOK_PORTA ?? 8788),
+      segredoWebhook: segredo!,
+      prazoMs,
+      log,
+      aoReceber,
+      aoFalhar: (e) => {
+        log(e.message);
+        process.exit(1);
+      },
+    });
+  } catch (err) {
+    if (err instanceof ErroFatalWhatsApp) parar(`${hora(new Date())} ${err.message}`);
+    throw err;
+  }
+}
+
 /** No laço, `prazoMs` evita ficar preso esperando a rede (a volta seguinte tenta de novo). */
 async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
+  if (usaMotorWa()) return conectarPeloMotor(prazoMs, aoReceber);
   const { conectar, ErroFatalWhatsApp } = await import('./whatsapp');
   try {
     return await conectar({
@@ -125,6 +163,8 @@ async function ensaio(): Promise<void> {
  * guarda a pasta antiga ao lado e começa de novo com um QR novo, em vez de só repetir o aviso.
  */
 async function conectarParaConfigurar(): Promise<WhatsApp> {
+  // Com o motor-wa, o pareamento é dele (`motor-wa pair pelada`); aqui só se escolhe o grupo.
+  if (usaMotorWa()) return conectarPeloMotor();
   const { ErroFatalWhatsApp, MSG_DESLOGADO } = await import('./whatsapp');
   try {
     return await conectarSemParar();
