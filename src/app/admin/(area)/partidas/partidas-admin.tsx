@@ -8,8 +8,11 @@ import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import type { Placar, Resultado } from '@/domain/partida';
 import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import type { GoleiroPossivel } from '@/server/partidas';
 import { iniciar, quemCompleta } from './acoes';
+import { GoleirosDaPartida } from './escolher-goleiro';
 import { ConferirQuemCompleta, QuemCompleta } from './escolher-quem-completa';
+import { sugerirGoleiros, type Anterior, type Goleiros } from './goleiros';
 import { completamDe, escolhidosFora, proximaVaga, vagasDaPartida, type Completam, type Resposta, type Vaga } from './quem-completa';
 
 type Time = { id: number; cor: Cor; jogadores: JogadorNota[]; completes: { id: number; nota: number }[] };
@@ -27,6 +30,8 @@ type Props = {
   fila: number[];
   emAndamento: { id: number; corA: Cor; corB: Cor; placar: Placar } | null;
   historico: Jogada[];
+  /** Para a escolha de goleiro: os ativos (quem costuma agarrar primeiro) e os goleiros da última partida. */
+  goleiros: { jogadores: GoleiroPossivel[]; anteriores: Anterior[] };
   /** Partidas abertas de peladas anteriores ('DD/MM'): ninguém encerrou. */
   esquecidas: Esquecida[];
   /** Entrou pelo link de anotar: sem os atalhos para as telas de organizador. */
@@ -144,6 +149,7 @@ type Completando = {
   daConferencia: boolean;
   deFora: JogadorNota[];
   semTime: JogadorNota[];
+  goleiros: Goleiros;
 };
 
 function ProximaPartida(p: Props) {
@@ -159,6 +165,13 @@ function ProximaPartida(p: Props) {
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
   const comComplete = [a, b].filter((t) => t?.completes.length);
 
+  // Goleiros: a sugestão vale para o par escolhido até a pessoa mexer (a escolha fica presa ao par).
+  const [escolhaGk, setEscolhaGk] = useState<{ par: string; g: Goleiros } | null>(null);
+  const par = a && b ? `${a.id}-${b.id}` : '';
+  const jogando = new Set([...(a?.jogadores ?? []), ...(b?.jogadores ?? [])].map((j) => j.id));
+  const goleiros: Goleiros =
+    escolhaGk?.par === par ? escolhaGk.g : a && b ? sugerirGoleiros(a.id, b.id, p.goleiros.anteriores, (id) => !jogando.has(id)) : { A: null, B: null };
+
   function alternar(id: number) {
     setErro(null);
     setEscolhidos((es) => {
@@ -168,10 +181,10 @@ function ProximaPartida(p: Props) {
     });
   }
 
-  function comecar(timeA: Time, timeB: Time, completam?: Completam) {
+  function comecar(timeA: Time, timeB: Time, gks: Goleiros, completam?: Completam) {
     setErro(null);
     startIniciar(async () => {
-      const r = await iniciar(p.peladaId, timeA.id, timeB.id, completam).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
+      const r = await iniciar(p.peladaId, timeA.id, timeB.id, completam, gks).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (r && !r.ok) setErro(r.erro);
     });
   }
@@ -179,12 +192,24 @@ function ProximaPartida(p: Props) {
   function tocarIniciar() {
     if (!a || !b) return;
     const vagas = vagasDaPartida(a, b);
-    if (!vagas.length) return comecar(a, b);
+    if (!vagas.length) return comecar(a, b, goleiros);
     setErro(null);
     startCarregar(async () => {
       const r = await quemCompleta(p.peladaId, a.id, b.id).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (!r.ok) return setErro(r.erro);
-      setCompletando({ a, b, vagas, respostas: vagas.map(() => undefined), atual: 0, daConferencia: false, deFora: r.deFora, semTime: r.semTime });
+      // Quem vai agarrar não aparece para completar.
+      const gk = new Set([goleiros.A, goleiros.B]);
+      setCompletando({
+        a,
+        b,
+        vagas,
+        respostas: vagas.map(() => undefined),
+        atual: 0,
+        daConferencia: false,
+        deFora: r.deFora.filter((j) => !gk.has(j.id)),
+        semTime: r.semTime.filter((j) => !gk.has(j.id)),
+        goleiros,
+      });
     });
   }
 
@@ -199,7 +224,7 @@ function ProximaPartida(p: Props) {
           setErro(null);
           setCompletando(c);
         }}
-        onIniciar={() => comecar(completando.a, completando.b, completamDe(completando.vagas, completando.respostas))}
+        onIniciar={() => comecar(completando.a, completando.b, completando.goleiros, completamDe(completando.vagas, completando.respostas))}
         onSair={() => {
           setErro(null);
           setCompletando(null);
@@ -255,6 +280,18 @@ function ProximaPartida(p: Props) {
         <button type="button" className={`-mx-3 mt-1 ${TEXTO}`} onClick={() => setEscolhidos(sugeridos)}>
           Voltar para a sugerida
         </button>
+      )}
+      {a && b && (
+        <GoleirosDaPartida
+          cores={{ A: a.cor, B: b.cor }}
+          valor={goleiros}
+          jogadores={p.goleiros.jogadores}
+          jogando={jogando}
+          onMudar={(g) => {
+            setErro(null);
+            setEscolhaGk({ par, g });
+          }}
+        />
       )}
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
@@ -315,6 +352,7 @@ function PassosDeQuemCompleta({
   const vaga = c.vagas[atual];
   const ocupados = escolhidosFora(c.respostas, atual);
   const doJogo = new Set([...c.a.jogadores, ...c.b.jogadores].map((j) => j.id));
+  for (const g of [c.goleiros.A, c.goleiros.B]) if (g !== null) doJogo.add(g);
   const porId = new Map([...c.semTime, ...cadastrados, ...c.deFora, ...c.a.jogadores, ...c.b.jogadores].map((j) => [j.id, j]));
 
   function responder(r: Resposta) {

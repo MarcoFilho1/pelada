@@ -6,6 +6,7 @@ import type { JogadorNota } from '@/domain/sorteio';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
 import { iniciarPartida, quemPodeCompletar } from '@/server/partidas';
 import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
+import { goleirosValidos, type Goleiros } from './goleiros';
 import { completamValido, type Completam } from './quem-completa';
 
 const PEDIDO_INVALIDO = { ok: false, erro: 'Pedido inválido.' } as const;
@@ -18,19 +19,23 @@ async function exigirAcesso(peladaId: number) {
 
 /**
  * Começa a partida entre os dois times escolhidos e abre o anotador. `completam` = quem completa os
- * COMPLETE de cada lado só nesta partida (menos ids que COMPLETE = o time joga sem).
+ * COMPLETE de cada lado só nesta partida (menos ids que COMPLETE = o time joga sem). `goleiros` =
+ * quem agarra em cada lado (opcional).
  */
 export async function iniciar(
   peladaId: number,
   timeAId: number,
   timeBId: number,
   completam: Completam = { A: [], B: [] },
+  goleiros: Goleiros = { A: null, B: null },
 ): Promise<{ ok: false; erro: string }> {
   await exigirAcesso(peladaId);
-  if (!idValido(peladaId) || !idValido(timeAId) || !idValido(timeBId) || !completamValido(completam)) return PEDIDO_INVALIDO;
+  if (!idValido(peladaId) || !idValido(timeAId) || !idValido(timeBId) || !completamValido(completam) || !goleirosValidos(goleiros)) {
+    return PEDIDO_INVALIDO;
+  }
   let id: number;
   try {
-    id = await iniciarPartida(getDb(), peladaId, timeAId, timeBId, new Date(), { A: completam.A, B: completam.B });
+    id = await iniciarPartida(getDb(), peladaId, timeAId, timeBId, new Date(), { A: completam.A, B: completam.B }, { A: goleiros.A, B: goleiros.B });
   } catch (e) {
     return { ok: false, erro: mensagemParaUsuario(e) };
   }

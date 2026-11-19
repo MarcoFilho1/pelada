@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import { dataDe, diaMes } from '@/domain/tempo';
-import { filaDeTimes, historicoDaPelada, partidaAoVivo, partidaEmAndamento, partidasAbertasDeOutrasPeladas } from '@/server/partidas';
+import { filaDeTimes, goleirosDaNoite, historicoDaPelada, partidaAoVivo, partidaEmAndamento, partidasAbertasDeOutrasPeladas } from '@/server/partidas';
 import { peladaDoDia, peladaPorId } from '@/server/pelada';
 import { acessoNaPelada, LINK_VENCIDO, lerAcessoPartidas } from '@/server/sessao';
 import { timesDaPelada } from '@/server/times';
@@ -32,11 +32,12 @@ export default async function PartidasPage() {
     );
   }
 
-  const [times, fila, emAndamentoId, historico] = await Promise.all([
+  const [times, fila, emAndamentoId, historico, goleiros] = await Promise.all([
     timesDaPelada(db, pelada.id),
     filaDeTimes(db, pelada.id),
     partidaEmAndamento(db, pelada.id),
     historicoDaPelada(db, pelada.id),
+    goleirosDaNoite(db, pelada.id),
   ]);
   const aoVivo = emAndamentoId === null ? null : await partidaAoVivo(db, emAndamentoId, now);
 
@@ -52,6 +53,7 @@ export default async function PartidasPage() {
         aoVivo && { id: aoVivo.id, corA: aoVivo.lados.A.cor, corB: aoVivo.lados.B.cor, placar: aoVivo.placar }
       }
       historico={historico.map((h) => ({ id: h.id, corA: h.timeA.cor, corB: h.timeB.cor, placar: h.placar, resultado: h.resultado }))}
+      goleiros={goleiros}
       esquecidas={esquecidas}
       anotador={anotador}
     />

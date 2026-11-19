@@ -50,13 +50,11 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
   const [encerrando, startEncerrar] = useTransition();
 
   const agora = useAgoraDoServidor(doServidor.lidoEm);
-  // Pausa otimista: o cronômetro para (ou volta) no toque; some quando o servidor concorda.
-  const [pausaPedida, setPausaPedida] = useState<{ pausar: boolean; em: number } | null>(null);
-  const pausadaNoServidor = atual.pausadaEm !== null;
-  useEffect(() => {
-    if (pausaPedida && pausaPedida.pausar === pausadaNoServidor) setPausaPedida(null);
-  }, [pausaPedida, pausadaNoServidor]);
-  const relogioDaTela = comPausaPedida(atual, pausaPedida);
+  // Pausa otimista: o cronômetro para (ou volta) no toque. Vale até a tela ter uma leitura do
+  // servidor tão nova quanto a resposta da pausa (`lidoAte`; null enquanto não respondeu).
+  const [pausaPedida, setPausaPedida] = useState<{ pausar: boolean; em: number; lidoAte: number | null } | null>(null);
+  const pedida = pausaPedida && (pausaPedida.lidoAte === null || atual.lidoEm < pausaPedida.lidoAte) ? pausaPedida : null;
+  const relogioDaTela = comPausaPedida(atual, pedida);
   const pausada = !atual.encerrada && relogioDaTela.pausadaEm !== null;
   const tempo = tempoNaTela(relogioDaTela, agora);
   useVibrarNoFim(!atual.encerrada && tempo >= DURACAO_MS);
@@ -104,14 +102,16 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
     destravarAudio();
     vibrar('gol');
     const pausar_ = !pausada;
-    setPausaPedida({ pausar: pausar_, em: agora ?? Date.now() });
+    setPausaPedida({ pausar: pausar_, em: agora ?? Date.now(), lidoAte: null });
     pausar(atual.id, pausar_)
       .then((r) => {
         if (!r.ok) {
           setPausaPedida(null);
           setErroAoEncerrar(r.erro);
+        } else {
+          if (r.estado) fila.receberDaPagina(r.estado);
+          setPausaPedida((p) => p && { ...p, lidoAte: r.estado?.lidoEm ?? 0 });
         }
-        if (r.ok && r.estado) fila.receberDaPagina(r.estado);
         router.refresh();
       })
       .catch(() => {
@@ -356,9 +356,14 @@ function CartaoDoJogador({
     // baixa (navegador de um celular comum, ≤ 760px): o topo e o cartão apertam e o botão vai até
     // 48px, para 4 contra 4 caber sem rolar em 360×640. Cada marca "completando" na coluna mais cheia
     // (`--completando`) tira a altura dela antes de dividir.
-    <li className="rounded-placa bg-placa p-1.5 [--botao:clamp(3.5rem,calc((100dvh-16rem-var(--completando)*1.25rem)/var(--linhas)-4.5rem),4.5rem)] baixa:p-1 baixa:[--botao:clamp(3rem,calc((100dvh-13rem-var(--completando)*1rem)/var(--linhas)-3.375rem),4.5rem)]">
+    <li className={`rounded-placa bg-placa p-1.5 ${jogador.goleiro ? 'ring-[1.5px] ring-lima ring-inset' : ''} [--botao:clamp(3.5rem,calc((100dvh-16rem-var(--completando)*1.25rem)/var(--linhas)-4.5rem),4.5rem)] baixa:p-1 baixa:[--botao:clamp(3rem,calc((100dvh-13rem-var(--completando)*1rem)/var(--linhas)-3.375rem),4.5rem)]`}>
       <div className="px-1.5 pt-0.5 baixa:pt-0">
-        <p className="truncate text-base font-medium text-tinta baixa:leading-5">{jogador.nome}</p>
+        <p className="flex items-center gap-1.5 text-base font-medium text-tinta baixa:leading-5">
+          <span className="truncate">{jogador.nome}</span>
+          {jogador.goleiro && (
+            <span className="flex-none rounded-[5px] bg-lima px-1.5 text-xs leading-4 font-semibold tracking-[0.06em] text-chao uppercase">goleiro</span>
+          )}
+        </p>
         {jogador.completando && (
           // Buraco na placa, como o COMPLETE no Sorteio: está no lugar de uma vaga só nesta partida.
           <p className="flex">

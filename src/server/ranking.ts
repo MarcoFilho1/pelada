@@ -44,7 +44,12 @@ async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEnce
   const ids = ps.map((p) => p.id);
   const [elenco, ls] = await Promise.all([
     db
-      .select({ partidaId: partidaJogadores.partidaId, jogadorId: partidaJogadores.jogadorId, lado: partidaJogadores.lado })
+      .select({
+        partidaId: partidaJogadores.partidaId,
+        jogadorId: partidaJogadores.jogadorId,
+        lado: partidaJogadores.lado,
+        goleiro: partidaJogadores.goleiro,
+      })
       .from(partidaJogadores)
       .where(inArray(partidaJogadores.partidaId, ids)),
     db
@@ -53,7 +58,7 @@ async function partidasEncerradas(db: DB, periodo: Periodo): Promise<PartidaEnce
       .where(inArray(lances.partidaId, ids)),
   ]);
   const elencoDe = new Map<number, PartidaEncerrada['elenco']>();
-  for (const e of elenco) (elencoDe.get(e.partidaId) ?? elencoDe.set(e.partidaId, []).get(e.partidaId)!).push({ jogadorId: e.jogadorId, lado: e.lado });
+  for (const e of elenco) (elencoDe.get(e.partidaId) ?? elencoDe.set(e.partidaId, []).get(e.partidaId)!).push({ jogadorId: e.jogadorId, lado: e.lado, goleiro: e.goleiro });
   const lancesDe = new Map<number, PartidaEncerrada['lances']>();
   for (const l of ls) (lancesDe.get(l.partidaId) ?? lancesDe.set(l.partidaId, []).get(l.partidaId)!).push({ jogadorId: l.jogadorId, tipo: l.tipo });
   return ps.map((p) => ({

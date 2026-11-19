@@ -10,6 +10,7 @@ import {
   encerrarPartida,
   ErroPartida,
   filaDeTimes,
+  goleirosDaNoite,
   historicoDaPelada,
   iniciarPartida,
   partidaAoVivo,
@@ -500,16 +501,16 @@ describe('partidaAoVivo', () => {
           timeId: c.azul,
           cor: 'azul',
           jogadores: [
-            { id: c.a1, nome: 'Ana', gols: 2, assistencias: 0, completando: false },
-            { id: c.a2, nome: 'Bia', gols: 0, assistencias: 1, completando: false },
+            { id: c.a1, nome: 'Ana', gols: 2, assistencias: 0, completando: false, goleiro: false },
+            { id: c.a2, nome: 'Bia', gols: 0, assistencias: 1, completando: false, goleiro: false },
           ],
         },
         B: {
           timeId: c.laranja,
           cor: 'laranja',
           jogadores: [
-            { id: c.l1, nome: 'Caio', gols: 1, assistencias: 0, completando: false },
-            { id: c.l2, nome: 'Davi', gols: 0, assistencias: 0, completando: false },
+            { id: c.l1, nome: 'Caio', gols: 1, assistencias: 0, completando: false, goleiro: false },
+            { id: c.l2, nome: 'Davi', gols: 0, assistencias: 0, completando: false, goleiro: false },
           ],
         },
       },
@@ -867,5 +868,51 @@ describe('noite com 3 times', () => {
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual([[], [], [3]]);
+  });
+});
+
+describe('goleiros', () => {
+  it('goleiro de fora entra no lado, aparece primeiro e o gol dele conta no placar', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: null });
+    await registrarLance(db, id, c.v1, 'gol');
+    const v = (await partidaAoVivo(db, id, NOITE))!;
+    expect(v.placar).toEqual({ A: 1, B: 0 });
+    expect(v.lados.A.jogadores[0]).toMatchObject({ id: c.v1, nome: 'Edu', goleiro: true, gols: 1 });
+    expect(v.lados.A.jogadores.slice(1).every((j) => !j.goleiro)).toBe(true);
+  });
+
+  it('recusa goleiro dos dois times, repetido, de quem completa ou inativo', async () => {
+    const c = await cenario();
+    const ini = (g: { A: number | null; B: number | null }, completam = { A: [] as number[], B: [] as number[] }) =>
+      motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, completam, g));
+    expect(await ini({ A: c.a1, B: null })).toBe('goleiro_invalido');
+    expect(await ini({ A: null, B: c.a2 })).toBe('goleiro_invalido');
+    expect(await ini({ A: c.v1, B: c.v1 })).toBe('goleiro_invalido');
+    await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.p1));
+    expect(await ini({ A: c.p1, B: null })).toBe('goleiro_invalido');
+    expect(await db.select().from(partidas)).toHaveLength(0);
+  });
+
+  it('no ranking, goleiro ganha gols e assistências mas não jogo, vitória ou presença', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: c.v2 });
+    await registrarLance(db, id, c.v1, 'gol');
+    await registrarLance(db, id, c.v2, 'assistencia');
+    await encerrarPartida(db, id, depois(5 * MIN));
+    const linhas = await rankingDoPeriodo(db, { tipo: 'geral' });
+    expect(linhas.find((l) => l.jogadorId === c.v1)).toMatchObject({ gols: 1, jogos: 0, vitorias: 0, presencas: 0, pontos: 1 });
+    expect(linhas.find((l) => l.jogadorId === c.v2)).toMatchObject({ assistencias: 1, jogos: 0, derrotas: 0, pontos: 1 });
+    expect(linhas.find((l) => l.jogadorId === c.a1)).toMatchObject({ jogos: 1, vitorias: 1 });
+  });
+
+  it('goleirosDaNoite: quem agarra primeiro e os goleiros da última partida com o time', async () => {
+    const c = await cenario();
+    await db.update(jogadores).set({ agarra: true }).where(eq(jogadores.id, c.p2));
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: null, B: c.v1 });
+    await encerrarPartida(db, id, depois(MIN));
+    const g = await goleirosDaNoite(db, c.peladaId);
+    expect(g.jogadores[0]).toMatchObject({ id: c.p2, agarra: true });
+    expect(g.anteriores).toEqual([{ jogadorId: c.v1, timeId: c.laranja }]);
   });
 });

@@ -31,11 +31,22 @@ describe('iniciar', () => {
 
   it('com o formato certo, inicia com quem completa cada lado e abre o anotador', async () => {
     await expect(iniciar(1, 2, 3, { A: [7], B: [] })).rejects.toThrow('redirect:/admin/partida/42');
-    expect(iniciarPartida).toHaveBeenCalledWith({}, 1, 2, 3, expect.any(Date), { A: [7], B: [] });
+    expect(iniciarPartida).toHaveBeenCalledWith({}, 1, 2, 3, expect.any(Date), { A: [7], B: [] }, { A: null, B: null });
   });
 
   it('sem `completam` (nenhum COMPLETE), inicia com as listas vazias', async () => {
     await expect(iniciar(1, 2, 3)).rejects.toThrow('redirect:/admin/partida/42');
-    expect(iniciarPartida).toHaveBeenCalledWith({}, 1, 2, 3, expect.any(Date), { A: [], B: [] });
+    expect(iniciarPartida).toHaveBeenCalledWith({}, 1, 2, 3, expect.any(Date), { A: [], B: [] }, { A: null, B: null });
+  });
+
+  it('passa os goleiros e recusa goleiros fora do formato', async () => {
+    await expect(iniciar(1, 2, 3, { A: [], B: [] }, { A: 9, B: null })).rejects.toThrow('redirect:/admin/partida/42');
+    expect(iniciarPartida).toHaveBeenCalledWith({}, 1, 2, 3, expect.any(Date), { A: [], B: [] }, { A: 9, B: null });
+    iniciarPartida.mockClear();
+    for (const ruim of [null, { A: 9, B: 9 }, { A: -1, B: null }, { A: '9', B: null }]) {
+      // @ts-expect-error de propósito: o cliente pode mandar qualquer coisa
+      expect(await iniciar(1, 2, 3, { A: [], B: [] }, ruim), JSON.stringify(ruim)).toEqual({ ok: false, erro: 'Pedido inválido.' });
+    }
+    expect(iniciarPartida).not.toHaveBeenCalled();
   });
 });
