@@ -2,8 +2,8 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, timeJogadores } from '@/db/schema';
-import { DURACAO_MS } from '@/domain/partida';
 import {
+  continuarPartida,
   corrigirContagem,
   corrigirPartida,
   desfazerUltimo,
@@ -15,6 +15,7 @@ import {
   partidaAoVivo,
   partidaEmAndamento,
   partidasAbertasDeOutrasPeladas,
+  pausarPartida,
   quemPodeCompletar,
   registrarLance,
   violouUmaAberta,
@@ -484,7 +485,9 @@ describe('partidaAoVivo', () => {
       encerrada: false,
       resultado: null,
       placar: { A: 2, B: 1 },
-      tempoRestanteMs: 5 * MIN,
+      tempoDeJogoMs: 3 * MIN,
+      pausadoMs: 0,
+      pausadaEm: null,
       sugerirEncerrar: null,
       lances: [
         { id: l1, jogadorId: c.a1, tipo: 'gol' },
@@ -518,7 +521,7 @@ describe('partidaAoVivo', () => {
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
     expect((await partidaAoVivo(db, id, depois(8 * MIN)))!).toMatchObject({
       sugerirEncerrar: 'tempo',
-      tempoRestanteMs: 0,
+      tempoDeJogoMs: 8 * MIN,
     });
     for (let i = 0; i < 3; i++) await registrarLance(db, id, c.l2, 'gol');
     expect((await partidaAoVivo(db, id, depois(MIN)))!.sugerirEncerrar).toBe('tres_gols');
@@ -533,9 +536,43 @@ describe('partidaAoVivo', () => {
       encerrada: true,
       resultado: 'A',
       placar: { A: 3, B: 0 },
-      tempoRestanteMs: DURACAO_MS - 5 * MIN,
+      tempoDeJogoMs: 5 * MIN,
       sugerirEncerrar: null,
     });
+  });
+
+  it('pausar para o cronômetro e continuar desconta o tempo parado', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(2 * MIN));
+    await pausarPartida(db, id, depois(3 * MIN)); // já pausada: nada muda
+    expect(await partidaAoVivo(db, id, depois(5 * MIN))).toMatchObject({ tempoDeJogoMs: 2 * MIN, pausadaEm: depois(2 * MIN) });
+    await continuarPartida(db, id, depois(5 * MIN));
+    await continuarPartida(db, id, depois(6 * MIN)); // já rodando: nada muda
+    expect(await partidaAoVivo(db, id, depois(7 * MIN))).toMatchObject({ tempoDeJogoMs: 4 * MIN, pausadoMs: 3 * MIN, pausadaEm: null });
+    // o tempo da pausa não conta para sugerir o fim: 11 min de relógio são 8 de jogo
+    expect((await partidaAoVivo(db, id, depois(11 * MIN - 1)))!.sugerirEncerrar).toBeNull();
+    expect((await partidaAoVivo(db, id, depois(11 * MIN)))!.sugerirEncerrar).toBe('tempo');
+  });
+
+  it('o lance guarda o tempo de jogo, sem as pausas', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(MIN));
+    await continuarPartida(db, id, depois(3 * MIN));
+    const l = await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN));
+    const [lance] = await db.select().from(lances).where(eq(lances.id, l));
+    expect(lance.tempoMs).toBe(2 * MIN);
+  });
+
+  it('encerrar pausada fecha a pausa: o tempo final é o da pausa', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(6 * MIN));
+    await encerrarPartida(db, id, depois(9 * MIN));
+    expect(await partidaAoVivo(db, id, depois(60 * MIN))).toMatchObject({ tempoDeJogoMs: 6 * MIN, pausadaEm: null, pausadoMs: 3 * MIN });
+    await expect(pausarPartida(db, id, depois(61 * MIN))).rejects.toMatchObject({ motivo: 'ja_encerrada' });
+    await expect(continuarPartida(db, id, depois(61 * MIN))).rejects.toMatchObject({ motivo: 'ja_encerrada' });
   });
 
   it('sem lances: lista vazia; partida que não existe: null', async () => {

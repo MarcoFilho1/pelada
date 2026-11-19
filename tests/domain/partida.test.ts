@@ -6,8 +6,10 @@ import {
   placar,
   proximaPartidaSugerida,
   resultadoDoPlacar,
+  acrescimo,
+  minutoDoLance,
   sugerirEncerrar,
-  tempoRestanteMs,
+  tempoDeJogoMs,
   relogio,
 } from '@/domain/partida';
 
@@ -58,36 +60,45 @@ describe('resultadoDoPlacar', () => {
 
 describe('sugerirEncerrar', () => {
   it('3 gols de um lado: tres_gols (mesmo antes do tempo)', () => {
-    expect(sugerirEncerrar({ A: 3, B: 1 }, INICIO, depois(2 * MIN))).toBe('tres_gols');
-    expect(sugerirEncerrar({ A: 0, B: 3 }, INICIO, depois(2 * MIN))).toBe('tres_gols');
+    expect(sugerirEncerrar({ A: 3, B: 1 }, 2 * MIN)).toBe('tres_gols');
+    expect(sugerirEncerrar({ A: 0, B: 3 }, 2 * MIN)).toBe('tres_gols');
   });
 
-  it('8:00 decorridos: tempo', () => {
-    expect(sugerirEncerrar({ A: 1, B: 1 }, INICIO, depois(8 * MIN))).toBe('tempo');
-    expect(sugerirEncerrar({ A: 0, B: 0 }, INICIO, depois(12 * MIN))).toBe('tempo');
+  it('8:00 de jogo: tempo', () => {
+    expect(sugerirEncerrar({ A: 1, B: 1 }, 8 * MIN)).toBe('tempo');
+    expect(sugerirEncerrar({ A: 0, B: 0 }, 12 * MIN)).toBe('tempo');
   });
 
   it('3 gols e tempo esgotado: tres_gols tem prioridade', () => {
-    expect(sugerirEncerrar({ A: 3, B: 2 }, INICIO, depois(9 * MIN))).toBe('tres_gols');
+    expect(sugerirEncerrar({ A: 3, B: 2 }, 9 * MIN)).toBe('tres_gols');
   });
 
   it('antes de 8:00 e sem 3 gols: null', () => {
-    expect(sugerirEncerrar({ A: 2, B: 2 }, INICIO, depois(8 * MIN - 1))).toBeNull();
+    expect(sugerirEncerrar({ A: 2, B: 2 }, 8 * MIN - 1)).toBeNull();
   });
 });
 
-describe('tempoRestanteMs', () => {
-  it('conta para baixo a partir de 8:00', () => {
-    expect(tempoRestanteMs(INICIO, INICIO)).toBe(DURACAO_MS);
-    expect(tempoRestanteMs(INICIO, depois(3 * MIN))).toBe(5 * MIN);
+describe('tempoDeJogoMs', () => {
+  const rodando = { iniciadaEm: INICIO, pausadoMs: 0, pausadaEm: null };
+
+  it('sobe a partir de 0:00 e passa dos 8:00', () => {
+    expect(tempoDeJogoMs(rodando, INICIO)).toBe(0);
+    expect(tempoDeJogoMs(rodando, depois(3 * MIN))).toBe(3 * MIN);
+    expect(tempoDeJogoMs(rodando, depois(9 * MIN))).toBe(9 * MIN);
   });
 
-  it('nunca negativo: aos 9 min é 0', () => {
-    expect(tempoRestanteMs(INICIO, depois(9 * MIN))).toBe(0);
+  it('tira o tempo já pausado', () => {
+    expect(tempoDeJogoMs({ ...rodando, pausadoMs: MIN }, depois(5 * MIN))).toBe(4 * MIN);
   });
 
-  it('relógio do servidor atrás do início: no máximo 8:00', () => {
-    expect(tempoRestanteMs(INICIO, depois(-5_000))).toBe(DURACAO_MS);
+  it('pausada agora: para na hora da pausa', () => {
+    const pausada = { iniciadaEm: INICIO, pausadoMs: MIN, pausadaEm: depois(4 * MIN) };
+    expect(tempoDeJogoMs(pausada, depois(4 * MIN))).toBe(3 * MIN);
+    expect(tempoDeJogoMs(pausada, depois(20 * MIN))).toBe(3 * MIN);
+  });
+
+  it('relógio do servidor atrás do início: 0:00', () => {
+    expect(tempoDeJogoMs(rodando, depois(-5_000))).toBe(0);
   });
 });
 
@@ -145,12 +156,30 @@ describe('filaDepois', () => {
 });
 
 describe('relogio', () => {
-  it('mostra m:ss arredondando o segundo para cima (8:00 no início, 0:00 só no fim)', () => {
-    expect(relogio(DURACAO_MS)).toBe('8:00');
-    expect(relogio(DURACAO_MS - 1)).toBe('8:00');
-    expect(relogio(5 * 60_000 + 32_000)).toBe('5:32');
-    expect(relogio(61_000)).toBe('1:01');
-    expect(relogio(999)).toBe('0:01');
+  it('mostra m:ss cortando o segundo (0:00 no início, 8:00 só quando chega)', () => {
     expect(relogio(0)).toBe('0:00');
+    expect(relogio(999)).toBe('0:00');
+    expect(relogio(61_000)).toBe('1:01');
+    expect(relogio(5 * 60_000 + 32_999)).toBe('5:32');
+    expect(relogio(DURACAO_MS - 1)).toBe('7:59');
+    expect(relogio(DURACAO_MS)).toBe('8:00');
+  });
+});
+
+describe('acrescimo', () => {
+  it('só depois de um segundo inteiro passado dos 8:00', () => {
+    expect(acrescimo(DURACAO_MS - 1)).toBeNull();
+    expect(acrescimo(DURACAO_MS + 999)).toBeNull();
+    expect(acrescimo(DURACAO_MS + 12_000)).toBe('+0:12');
+    expect(acrescimo(DURACAO_MS + 75_000)).toBe('+1:15');
+  });
+});
+
+describe('minutoDoLance', () => {
+  it('o minuto que o cronômetro mostrava', () => {
+    expect(minutoDoLance(0)).toBe(0);
+    expect(minutoDoLance(59_999)).toBe(0);
+    expect(minutoDoLance(2 * MIN + 9_000)).toBe(2);
+    expect(minutoDoLance(8 * MIN + 30_000)).toBe(8);
   });
 });

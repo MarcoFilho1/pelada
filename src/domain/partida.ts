@@ -1,6 +1,6 @@
 // Regras de uma partida: placar, resultado, cronômetro e a próxima partida da noite.
 
-/** A partida dura 8 minutos, com o cronômetro correndo direto. */
+/** A partida dura 8 minutos de jogo (o cronômetro sobe de 0:00 e pode ser pausado). */
 export const DURACAO_MS = 8 * 60_000;
 /** Ou acaba antes, quando um time chega a 3 gols. */
 export const GOLS_PARA_VENCER = 3;
@@ -29,25 +29,41 @@ export function resultadoDoPlacar(p: Placar): Resultado {
   return p.A > p.B ? 'A' : p.B > p.A ? 'B' : 'empate';
 }
 
-/** Quanto falta para os 8:00, nunca negativo (nem mais que 8:00, se o relógio vier antes do início). */
-export function tempoRestanteMs(iniciadaEm: Date, now: Date): number {
-  const decorrido = now.getTime() - iniciadaEm.getTime();
-  return Math.min(DURACAO_MS, Math.max(0, DURACAO_MS - decorrido));
+/** O que o cronômetro precisa: quando começou, o tempo já pausado e, se está pausada, desde quando. */
+export type Cronometro = { iniciadaEm: Date; pausadoMs: number; pausadaEm: Date | null };
+
+/**
+ * Tempo de jogo: do início até agora (ou até a pausa em curso), menos o tempo já pausado. Sobe
+ * de 0:00 e passa de 8:00 (os acréscimos). Nunca negativo (relógio do servidor antes do início).
+ */
+export function tempoDeJogoMs(c: Cronometro, now: Date): number {
+  const ate = c.pausadaEm && c.pausadaEm < now ? c.pausadaEm : now;
+  return Math.max(0, ate.getTime() - c.iniciadaEm.getTime() - c.pausadoMs);
 }
 
-/** Cronômetro na tela: 'm:ss', com o segundo arredondado para cima (só mostra 0:00 quando acabou). */
-export function relogio(restanteMs: number): string {
-  const s = Math.ceil(Math.max(0, restanteMs) / 1000);
+/** Cronômetro na tela: 'm:ss' do tempo de jogo, com o segundo cortado (só mostra 8:00 quando chegou). */
+export function relogio(tempoMs: number): string {
+  const s = Math.floor(Math.max(0, tempoMs) / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Depois dos 8:00: quanto passou ('+0:12'); antes, null. */
+export function acrescimo(tempoMs: number): string | null {
+  return tempoMs > DURACAO_MS && relogio(tempoMs - DURACAO_MS) !== '0:00' ? `+${relogio(tempoMs - DURACAO_MS)}` : null;
+}
+
+/** Minuto do lance como o cronômetro mostrava: 2:09 é o 2' (o desenho aprovado). */
+export function minutoDoLance(tempoMs: number): number {
+  return Math.floor(Math.max(0, tempoMs) / 60_000);
 }
 
 /**
  * Hora de sugerir o encerramento (o site só sugere; quem encerra é o admin): 3 gols de um
  * time têm prioridade sobre o tempo esgotado.
  */
-export function sugerirEncerrar(p: Placar, iniciadaEm: Date, now: Date): null | 'tres_gols' | 'tempo' {
+export function sugerirEncerrar(p: Placar, tempoMs: number): null | 'tres_gols' | 'tempo' {
   if (p.A >= GOLS_PARA_VENCER || p.B >= GOLS_PARA_VENCER) return 'tres_gols';
-  if (tempoRestanteMs(iniciadaEm, now) === 0) return 'tempo';
+  if (tempoMs >= DURACAO_MS) return 'tempo';
   return null;
 }
 

@@ -7,11 +7,12 @@ import { Colete, NOME_DA_COR } from '@/components/colete';
 import { SetaEsquerda } from '@/components/icones';
 import { PILULA, PILULA_SEGUNDA, TEXTO } from '@/components/pilula';
 import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
-import { DURACAO_MS, GOLS_PARA_VENCER, relogio, type Lado, type TipoLance } from '@/domain/partida';
+import { acrescimo, DURACAO_MS, GOLS_PARA_VENCER, relogio, type Lado, type TipoLance } from '@/domain/partida';
 import { bipar, destravarAudio } from '@/lib/bipe';
+import { vibrar } from '@/lib/vibrar';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import type { JogadorNaPartida } from '@/server/partidas';
-import { anotar, desfazer, encerrar } from './acoes';
+import { anotar, desfazer, encerrar, pausar } from './acoes';
 import { Anotacoes, tempoNaTela } from './anotador-estado';
 import type { EstadoDaPartida } from './estado';
 
@@ -49,8 +50,16 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
   const [encerrando, startEncerrar] = useTransition();
 
   const agora = useAgoraDoServidor(doServidor.lidoEm);
-  const restante = tempoNaTela(atual, agora);
-  useVibrarNoFim(!atual.encerrada && restante === 0);
+  // Pausa otimista: o cronômetro para (ou volta) no toque; some quando o servidor concorda.
+  const [pausaPedida, setPausaPedida] = useState<{ pausar: boolean; em: number } | null>(null);
+  const pausadaNoServidor = atual.pausadaEm !== null;
+  useEffect(() => {
+    if (pausaPedida && pausaPedida.pausar === pausadaNoServidor) setPausaPedida(null);
+  }, [pausaPedida, pausadaNoServidor]);
+  const relogioDaTela = comPausaPedida(atual, pausaPedida);
+  const pausada = !atual.encerrada && relogioDaTela.pausadaEm !== null;
+  const tempo = tempoNaTela(relogioDaTela, agora);
+  useVibrarNoFim(!atual.encerrada && tempo >= DURACAO_MS);
   useTelaAcesa(!atual.encerrada);
 
   // Erro da fila: fica 4 s e a página é lida de novo (o servidor pode ter mudado, ex.: encerrada).
@@ -77,7 +86,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
     ? null
     : placar.A >= GOLS_PARA_VENCER || placar.B >= GOLS_PARA_VENCER
       ? 'tres_gols'
-      : restante === 0
+      : tempo >= DURACAO_MS
         ? 'tempo'
         : null;
   const chaveDoAviso = sugestao && `${sugestao}:${placar.A}x${placar.B}`;
@@ -86,14 +95,34 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
 
   function tocar(j: JogadorNaPartida, tipo: TipoLance) {
     destravarAudio();
-    navigator.vibrate?.(30);
+    vibrar(tipo);
     setErroAoEncerrar(null);
     fila.tocar(j.id, tipo);
   }
 
+  function alternarPausa() {
+    destravarAudio();
+    vibrar('gol');
+    const pausar_ = !pausada;
+    setPausaPedida({ pausar: pausar_, em: agora ?? Date.now() });
+    pausar(atual.id, pausar_)
+      .then((r) => {
+        if (!r.ok) {
+          setPausaPedida(null);
+          setErroAoEncerrar(r.erro);
+        }
+        if (r.ok && r.estado) fila.receberDaPagina(r.estado);
+        router.refresh();
+      })
+      .catch(() => {
+        setPausaPedida(null);
+        setErroAoEncerrar('Sem resposta do servidor. Confira o cronômetro e tente de novo.');
+      });
+  }
+
   function desfazerUltimo() {
     destravarAudio();
-    navigator.vibrate?.(30);
+    vibrar('gol');
     setErroAoEncerrar(null);
     fila.desfazer();
   }
@@ -109,6 +138,7 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
     });
   }
 
+  const extra = acrescimo(tempo);
   const nomeA = NOME_DA_COR[atual.lados.A.cor];
   const nomeB = NOME_DA_COR[atual.lados.B.cor];
   const fraseDoPlacar =
@@ -135,14 +165,40 @@ export function Anotador({ estado: doServidor }: { estado: EstadoDaPartida }) {
               <SetaEsquerda className="size-6" />
               <span className="sr-only">Voltar para partidas</span>
             </Link>
-            <p className="text-center font-placa text-numero font-semibold tabular-nums baixa:text-titulo" role="timer">
-              {relogio(restante)}
+            <p
+              className={`text-center font-placa font-semibold tabular-nums ${
+                extra ? 'text-titulo baixa:text-subtitulo' : 'text-numero baixa:text-titulo'
+              } ${pausada ? 'motion-safe:animate-piscar text-lima' : extra ? 'text-lima' : ''}`}
+              role="timer"
+            >
+              {extra ? (
+                <>
+                  8:00 <span className="text-[0.75em]">{extra}</span>
+                </>
+              ) : (
+                relogio(tempo)
+              )}
             </p>
+            {!atual.encerrada && (
+              <button
+                type="button"
+                onClick={alternarPausa}
+                className="-mr-1 flex size-12 items-center justify-center justify-self-end rounded-full text-tinta transition-colors active:bg-meta/60"
+                aria-label={pausada ? 'Continuar o cronômetro' : 'Pausar o cronômetro'}
+              >
+                <span className="flex size-10 items-center justify-center rounded-full bg-placa-alta">
+                  {pausada ? <IconeContinuar /> : <IconePausar />}
+                </span>
+              </button>
+            )}
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-placa-alta baixa:mt-0.5" aria-hidden="true">
+          <p className={`h-4 text-center text-xs leading-4 font-semibold tracking-[0.12em] text-lima uppercase ${pausada ? '' : 'invisible'}`} aria-live="polite">
+            {pausada ? 'Pausado' : ''}
+          </p>
+          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-placa-alta" aria-hidden="true">
             <div
               className="h-full origin-left rounded-full bg-tinta transition-transform duration-500 ease-linear"
-              style={{ transform: `scaleX(${1 - restante / DURACAO_MS})` }}
+              style={{ transform: `scaleX(${Math.min(1, tempo / DURACAO_MS)})` }}
             />
           </div>
           <h1 className="sr-only">
@@ -393,6 +449,30 @@ function Encerrada({ estado, frase }: { estado: EstadoDaPartida; frase: string }
 
 // ---- Relógio, vibração e tela acesa ----
 
+/** O estado com a pausa que a pessoa acabou de tocar, enquanto o servidor não responde. */
+function comPausaPedida(e: EstadoDaPartida, pedida: { pausar: boolean; em: number } | null): EstadoDaPartida {
+  if (!pedida || pedida.pausar === (e.pausadaEm !== null)) return e;
+  if (pedida.pausar) return { ...e, pausadaEm: pedida.em };
+  return { ...e, pausadoMs: e.pausadoMs + Math.max(0, pedida.em - (e.pausadaEm ?? pedida.em)), pausadaEm: null };
+}
+
+function IconePausar() {
+  return (
+    <svg viewBox="0 0 14 14" className="size-3.5 fill-current" aria-hidden="true">
+      <rect x="2" y="1" width="3.5" height="12" rx="1" />
+      <rect x="8.5" y="1" width="3.5" height="12" rx="1" />
+    </svg>
+  );
+}
+
+function IconeContinuar() {
+  return (
+    <svg viewBox="0 0 14 14" className="size-3.5 fill-current" aria-hidden="true">
+      <path d="M3 1.5v11l9.5-5.5z" />
+    </svg>
+  );
+}
+
 /**
  * A hora do servidor, andando no relógio do aparelho: o desvio é medido uma vez, na primeira
  * leitura, para um celular com o relógio errado não adiantar nem atrasar o cronômetro.
@@ -411,12 +491,12 @@ function useAgoraDoServidor(lidoEmInicial: number): number | null {
   return agora;
 }
 
-/** Vibração longa e bipe quando o cronômetro chega a 0:00 com a tela aberta (uma vez). */
+/** Vibração longa e bipe quando o cronômetro chega a 8:00 com a tela aberta (uma vez). */
 function useVibrarNoFim(acabou: boolean) {
   const antes = useRef(acabou);
   useEffect(() => {
     if (acabou && !antes.current) {
-      navigator.vibrate?.([200, 100, 200]);
+      vibrar('fim');
       bipar();
     }
     antes.current = acabou;

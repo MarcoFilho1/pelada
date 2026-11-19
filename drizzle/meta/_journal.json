@@ -50,6 +50,13 @@
       "when": 1794851046369,
       "tag": "0006_ancient_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795057419700,
+      "tag": "0007_dark_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

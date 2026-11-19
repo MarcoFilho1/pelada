@@ -6,7 +6,8 @@ import {
   placar,
   resultadoDoPlacar,
   sugerirEncerrar,
-  tempoRestanteMs,
+  tempoDeJogoMs,
+  type Cronometro,
   type Lado,
   type Placar,
   type Resultado,
@@ -85,6 +86,8 @@ async function travarPartida(tx: Tx, partidaId: number): Promise<Partida> {
   const [p] = await tx.select().from(partidas).where(eq(partidas.id, partidaId));
   return p;
 }
+
+const cronometroDe = (p: Partida): Cronometro => ({ iniciadaEm: p.iniciadaEm, pausadoMs: p.pausadoMs, pausadaEm: p.pausadaEm });
 
 /** Lado de cada jogador da foto do elenco. */
 async function ladosDaPartida(db: DB | Tx, partidaId: number): Promise<Map<number, Lado>> {
@@ -194,14 +197,41 @@ export async function iniciarPartida(
   });
 }
 
-/** Um toque = um lance (dois toques rápidos são dois gols). Só em partida em andamento, de quem está nela. Devolve o id do lance. */
-export async function registrarLance(db: DB, partidaId: number, jogadorId: number, tipo: TipoLance): Promise<number> {
+/**
+ * Um toque = um lance (dois toques rápidos são dois gols). Só em partida em andamento, de quem está
+ * nela (goleiro incluído). Guarda o tempo de jogo da hora do toque, para a linha do tempo. Devolve o id do lance.
+ */
+export async function registrarLance(db: DB, partidaId: number, jogadorId: number, tipo: TipoLance, now = new Date()): Promise<number> {
   return db.transaction(async (tx) => {
     const partida = await travarPartida(tx, partidaId);
     if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
     if (!(await ladosDaPartida(tx, partidaId)).has(jogadorId)) throw new ErroPartida('fora_da_partida');
-    const [lance] = await tx.insert(lances).values({ partidaId, jogadorId, tipo }).returning({ id: lances.id });
+    const tempoMs = tempoDeJogoMs(cronometroDe(partida), now);
+    const [lance] = await tx.insert(lances).values({ partidaId, jogadorId, tipo, criadoEm: now, tempoMs }).returning({ id: lances.id });
     return lance.id;
+  });
+}
+
+/** Para o cronômetro. Já pausada: não faz nada. Só em partida em andamento. */
+export async function pausarPartida(db: DB, partidaId: number, now: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const partida = await travarPartida(tx, partidaId);
+    if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
+    if (partida.pausadaEm) return;
+    await tx.update(partidas).set({ pausadaEm: now }).where(eq(partidas.id, partidaId));
+  });
+}
+
+/** Tempo parado da pausa em curso, somado no que já estava pausado (0 se a pausa veio "depois" de agora). */
+const pausadoAte = (p: Partida, now: Date) => p.pausadoMs + (p.pausadaEm ? Math.max(0, now.getTime() - p.pausadaEm.getTime()) : 0);
+
+/** Solta o cronômetro: o tempo parado entra no `pausadoMs`. Rodando: não faz nada. */
+export async function continuarPartida(db: DB, partidaId: number, now: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const partida = await travarPartida(tx, partidaId);
+    if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
+    if (!partida.pausadaEm) return;
+    await tx.update(partidas).set({ pausadoMs: pausadoAte(partida, now), pausadaEm: null }).where(eq(partidas.id, partidaId));
   });
 }
 
@@ -233,7 +263,11 @@ export async function encerrarPartida(db: DB, partidaId: number, now: Date): Pro
     const partida = await travarPartida(tx, partidaId);
     if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
     const resultado = resultadoDoPlacar(await placarDaPartida(tx, partidaId));
-    await tx.update(partidas).set({ resultado, encerradaEm: now }).where(eq(partidas.id, partidaId));
+    // Encerrada pausada: a pausa fecha junto, e o tempo final é o da pausa.
+    await tx
+      .update(partidas)
+      .set({ resultado, encerradaEm: now, pausadoMs: pausadoAte(partida, now), pausadaEm: null })
+      .where(eq(partidas.id, partidaId));
     return resultado;
   });
 }
@@ -315,8 +349,11 @@ export type PartidaAoVivo = {
   encerrada: boolean;
   resultado: Resultado | null;
   placar: Placar;
-  /** Encerrada: o que faltava na hora do encerramento. */
-  tempoRestanteMs: number;
+  /** Tempo de jogo na hora da leitura (encerrada: o da hora do encerramento). */
+  tempoDeJogoMs: number;
+  /** O tempo já pausado e, se está pausada agora, desde quando (a tela anda o cronômetro com isso). */
+  pausadoMs: number;
+  pausadaEm: Date | null;
   /** Só para partida em andamento. */
   sugerirEncerrar: null | 'tres_gols' | 'tempo';
   /**
@@ -359,6 +396,7 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
   });
   const pl = placar(ls, new Map(elenco.map((j) => [j.id, j.lado])));
   const relogio = p.encerradaEm ?? now;
+  const tempo = tempoDeJogoMs(cronometroDe(p), relogio);
 
   return {
     id: p.id,
@@ -367,8 +405,10 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     encerrada: p.encerradaEm !== null,
     resultado: p.resultado,
     placar: pl,
-    tempoRestanteMs: tempoRestanteMs(p.iniciadaEm, relogio),
-    sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, p.iniciadaEm, now),
+    tempoDeJogoMs: tempo,
+    pausadoMs: p.pausadoMs,
+    pausadaEm: p.pausadaEm,
+    sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, tempo),
     lances: ls,
     lados: { A: lado('A', p.timeAId), B: lado('B', p.timeBId) },
   };

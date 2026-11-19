@@ -83,6 +83,13 @@
   --spacing-toque: 3.5rem; /* 56px, alvo de toque principal */
 
   --animate-pendurar: pendurar 90ms steps(2, end);
+  --animate-piscar: piscar 1.2s steps(2, start) infinite; /* cronômetro pausado */
+}
+
+@keyframes piscar {
+  to {
+    opacity: 0.35;
+  }
 }
 
 @keyframes pendurar {

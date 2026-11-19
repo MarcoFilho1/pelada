@@ -6,10 +6,10 @@ import { partidaAoVivo, type PartidaAoVivo } from '@/server/partidas';
  * `lidoEm`, a hora (do servidor) da leitura. Entre a resposta de um toque e a página recarregada,
  * a tela fica com a leitura mais nova.
  */
-export type EstadoDaPartida = Omit<PartidaAoVivo, 'iniciadaEm'> & { iniciadaEm: number; lidoEm: number };
+export type EstadoDaPartida = Omit<PartidaAoVivo, 'iniciadaEm' | 'pausadaEm'> & { iniciadaEm: number; pausadaEm: number | null; lidoEm: number };
 
 export async function lerEstado(db: DB, partidaId: number): Promise<EstadoDaPartida | null> {
   const agora = new Date();
   const p = await partidaAoVivo(db, partidaId, agora);
-  return p && { ...p, iniciadaEm: p.iniciadaEm.getTime(), lidoEm: agora.getTime() };
+  return p && { ...p, iniciadaEm: p.iniciadaEm.getTime(), pausadaEm: p.pausadaEm?.getTime() ?? null, lidoEm: agora.getTime() };
 }

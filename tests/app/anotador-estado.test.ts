@@ -426,11 +426,18 @@ describe('derivar', () => {
 });
 
 describe('tempoNaTela', () => {
-  it('em andamento conta pelo relógio; encerrada fica parada no que faltava ao encerrar (P5-c)', async () => {
+  it('em andamento sobe pelo relógio; encerrada fica parada no tempo do encerramento (P5-c)', async () => {
     const e = await estado();
-    expect(tempoNaTela(e, null)).toBe(e.tempoRestanteMs);
-    expect(tempoNaTela(e, e.iniciadaEm + 60_000)).toBe(7 * 60_000);
-    const encerrada = { ...e, encerrada: true, tempoRestanteMs: 3 * 60_000 };
-    expect(tempoNaTela(encerrada, e.iniciadaEm + 60 * 60_000)).toBe(3 * 60_000);
+    expect(tempoNaTela(e, null)).toBe(e.tempoDeJogoMs);
+    expect(tempoNaTela(e, e.iniciadaEm + 60_000)).toBe(60_000);
+    const encerrada = { ...e, encerrada: true, tempoDeJogoMs: 5 * 60_000 };
+    expect(tempoNaTela(encerrada, e.iniciadaEm + 60 * 60_000)).toBe(5 * 60_000);
+  });
+
+  it('pausada: o tempo para na pausa e desconta as pausas anteriores', async () => {
+    const e = await estado();
+    const pausada = { ...e, pausadoMs: 30_000, pausadaEm: e.iniciadaEm + 3 * 60_000 };
+    expect(tempoNaTela(pausada, e.iniciadaEm + 10 * 60_000)).toBe(2 * 60_000 + 30_000);
+    expect(tempoNaTela({ ...e, pausadoMs: 30_000 }, e.iniciadaEm + 4 * 60_000)).toBe(3 * 60_000 + 30_000);
   });
 });
