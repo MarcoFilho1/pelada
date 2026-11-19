@@ -8,7 +8,8 @@ export type PartidaEncerrada = {
   /** Cor do colete de cada lado. */
   corA: Cor;
   corB: Cor;
-  elenco: { jogadorId: number; lado: 'A' | 'B' }[];
+  /** Quem estava na partida; `goleiro`: agarrou para o lado (conta gols e assistências, não conta jogo). */
+  elenco: { jogadorId: number; lado: 'A' | 'B'; goleiro?: boolean }[];
   lances: { jogadorId: number; tipo: 'gol' | 'assistencia' }[];
 };
 
@@ -119,12 +120,18 @@ function ordenar(a: LinhaRanking, b: LinhaRanking): number {
 export function calcularRanking(partidas: PartidaEncerrada[], nomes: Map<number, string>, periodo: Periodo): LinhaRanking[] {
   const acc = new Map<number, Acumulo>();
   for (const p of filtrarPeriodo(partidas, periodo)) {
-    for (const { jogadorId, lado } of p.elenco) {
+    for (const { jogadorId, lado, goleiro } of p.elenco) {
       const d = desempenho(p, jogadorId, lado);
       let a = acc.get(jogadorId);
       if (!a) {
         a = { jogadorId, jogos: 0, vitorias: 0, empates: 0, derrotas: 0, gols: 0, assistencias: 0, quartas: new Set() };
         acc.set(jogadorId, a);
+      }
+      if (goleiro) {
+        // Goleiro: só os gols e as assistências (não jogou pelo time).
+        a.gols += d.gols;
+        a.assistencias += d.assistencias;
+        continue;
       }
       a.jogos++;
       a.vitorias += d.vitoria;
@@ -180,7 +187,7 @@ export function historicoDoJogador(partidas: PartidaEncerrada[], jogadorId: numb
   const porQuarta = new Map<string, QuartaDoJogador>();
   const emOrdem = [...partidas].sort((a, b) => a.encerradaEm.getTime() - b.encerradaEm.getTime() || a.id - b.id);
   for (const p of emOrdem) {
-    const no = p.elenco.find((e) => e.jogadorId === jogadorId);
+    const no = p.elenco.find((e) => e.jogadorId === jogadorId && !e.goleiro);
     if (!no) continue;
     const d = desempenho(p, jogadorId, no.lado);
     let q = porQuarta.get(p.peladaData);

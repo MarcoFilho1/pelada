@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
 import type { TipoLance } from '@/domain/partida';
 import { idValido, mensagemParaUsuario } from '@/server/erros';
-import { corrigirContagem, desfazerUltimo, encerrarPartida, registrarLance } from '@/server/partidas';
+import { continuarPartida, corrigirContagem, desfazerUltimo, encerrarPartida, pausarPartida, registrarLance } from '@/server/partidas';
 import { peladaDaPartida } from '@/server/anotador';
 import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
 import { lerEstado, type EstadoDaPartida } from './estado';
@@ -72,6 +72,13 @@ export async function desfazer(partidaId: number, esperadoId: number): Promise<R
     apagado = await desfazerUltimo(getDb(), partidaId, esperadoId);
   });
   return r.ok ? { ...r, desfeito: apagado !== null } : r;
+}
+
+/** Pausa (`pausar: true`) ou solta o cronômetro. Repetir o pedido não muda nada. */
+export async function pausar(partidaId: number, pausar: boolean): Promise<RespostaDeEscrita> {
+  await exigirAcesso(partidaId);
+  if (!idValido(partidaId) || typeof pausar !== 'boolean') return PEDIDO_INVALIDO;
+  return eDepoisLer(partidaId, () => (pausar ? pausarPartida : continuarPartida)(getDb(), partidaId, new Date()));
 }
 
 /** Encerra com o placar de agora e volta para a noite (histórico). */

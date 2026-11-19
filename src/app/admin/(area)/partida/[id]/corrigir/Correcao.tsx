@@ -87,7 +87,10 @@ function LinhaDoJogador({
 }) {
   return (
     <li className="rounded-placa bg-placa p-3">
-      <p className="truncate text-linha font-medium">{jogador.nome}</p>
+      <p className="truncate text-linha font-medium">
+        {jogador.nome}
+        {jogador.goleiro && <span className="text-base font-normal text-meta"> · goleiro</span>}
+      </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Contador rotulo="gols" nome={jogador.nome} valor={jogador.gols} desabilitado={desabilitado} onMudar={(d) => onMudar('gol', d)} />
         <Contador

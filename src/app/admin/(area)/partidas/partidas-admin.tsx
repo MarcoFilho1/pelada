@@ -8,12 +8,16 @@ import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import type { Placar, Resultado } from '@/domain/partida';
 import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import type { GoleiroPossivel, MoedaDaNoite } from '@/server/partidas';
 import { iniciar, quemCompleta } from './acoes';
+import { GoleirosDaPartida } from './escolher-goleiro';
 import { ConferirQuemCompleta, QuemCompleta } from './escolher-quem-completa';
+import { sugerirGoleiros, type Anterior, type Goleiros } from './goleiros';
+import { Desempate } from './moeda';
 import { completamDe, escolhidosFora, proximaVaga, vagasDaPartida, type Completam, type Resposta, type Vaga } from './quem-completa';
 
 type Time = { id: number; cor: Cor; jogadores: JogadorNota[]; completes: { id: number; nota: number }[] };
-type Jogada = { id: number; corA: Cor; corB: Cor; placar: Placar; resultado: Resultado };
+type Jogada = { id: number; corA: Cor; corB: Cor; placar: Placar; resultado: Resultado; /** 'HH:MM' do início. */ hora: string };
 
 type Props = {
   peladaId: number;
@@ -27,6 +31,10 @@ type Props = {
   fila: number[];
   emAndamento: { id: number; corA: Cor; corB: Cor; placar: Placar } | null;
   historico: Jogada[];
+  /** Para a escolha de goleiro: os ativos (quem costuma agarrar primeiro) e os goleiros da última partida. */
+  goleiros: { jogadores: GoleiroPossivel[]; anteriores: Anterior[] };
+  /** Depois de um empate (com 3 times ou mais): a moeda que decide quem volta primeiro. */
+  moeda: MoedaDaNoite | null;
   /** Partidas abertas de peladas anteriores ('DD/MM'): ninguém encerrou. */
   esquecidas: Esquecida[];
   /** Entrou pelo link de anotar: sem os atalhos para as telas de organizador. */
@@ -82,7 +90,7 @@ export function PartidasAdmin(p: Props) {
             </Aviso>
           )
         ) : (
-          <ProximaPartida key={p.fila.join(',')} {...p} />
+          <ProximaPartida {...p} />
         )}
       </div>
 
@@ -144,20 +152,41 @@ type Completando = {
   daConferencia: boolean;
   deFora: JogadorNota[];
   semTime: JogadorNota[];
+  goleiros: Goleiros;
 };
 
 function ProximaPartida(p: Props) {
   const ordem = new Map(p.fila.map((id, i) => [id, i]));
   const times = [...p.times].sort((a, b) => (ordem.get(a.id) ?? 99) - (ordem.get(b.id) ?? 99));
   const sugeridos = times.slice(0, 2).map((t) => t.id);
-  const [escolhidos, setEscolhidos] = useState<number[]>(sugeridos);
+  // A escolha e os passos de quem completa valem para a fila em que foram feitos: quando a fila
+  // muda (partida encerrada, moeda jogada), voltam para a sugestão. Sem remontar o bloco, para a
+  // moeda no meio do voo não ser recriada pela atualização de 5 s.
+  const chaveDaFila = p.fila.join(',');
+  const [escolha, setEscolha] = useState<{ fila: string; ids: number[] }>({ fila: chaveDaFila, ids: sugeridos });
+  const escolhidos = escolha.fila === chaveDaFila ? escolha.ids : sugeridos;
+  const setEscolhidos = (f: number[] | ((es: number[]) => number[])) =>
+    setEscolha({ fila: chaveDaFila, ids: typeof f === 'function' ? f(escolhidos) : f });
   const [erro, setErro] = useState<string | null>(null);
   const [iniciando, startIniciar] = useTransition();
   const [carregando, startCarregar] = useTransition();
-  const [completando, setCompletando] = useState<Completando | null>(null);
+  const [passos, setPassos] = useState<{ fila: string; c: Completando } | null>(null);
+  const completando = passos?.fila === chaveDaFila ? passos.c : null;
+  const setCompletando = (c: Completando | null) => setPassos(c && { fila: chaveDaFila, c });
   const [a, b] = times.filter((t) => escolhidos.includes(t.id)); // na ordem da fila
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
+  // Moeda pendente: a vaga do adversário fica travada até jogar (ou até escolher sem moeda).
+  const [semMoeda, setSemMoeda] = useState<number | null>(null);
+  const moedaNaTela = p.moeda && semMoeda !== p.moeda.partidaId ? p.moeda : null;
+  const faltaMoeda = moedaNaTela !== null && moedaNaTela.resultado === null;
   const comComplete = [a, b].filter((t) => t?.completes.length);
+
+  // Goleiros: a sugestão vale para o par escolhido até a pessoa mexer (a escolha fica presa ao par).
+  const [escolhaGk, setEscolhaGk] = useState<{ par: string; g: Goleiros } | null>(null);
+  const par = a && b ? `${a.id}-${b.id}` : '';
+  const jogando = new Set([...(a?.jogadores ?? []), ...(b?.jogadores ?? [])].map((j) => j.id));
+  const goleiros: Goleiros =
+    escolhaGk?.par === par ? escolhaGk.g : a && b ? sugerirGoleiros(a.id, b.id, p.goleiros.anteriores, (id) => !jogando.has(id)) : { A: null, B: null };
 
   function alternar(id: number) {
     setErro(null);
@@ -168,10 +197,10 @@ function ProximaPartida(p: Props) {
     });
   }
 
-  function comecar(timeA: Time, timeB: Time, completam?: Completam) {
+  function comecar(timeA: Time, timeB: Time, gks: Goleiros, completam?: Completam) {
     setErro(null);
     startIniciar(async () => {
-      const r = await iniciar(p.peladaId, timeA.id, timeB.id, completam).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
+      const r = await iniciar(p.peladaId, timeA.id, timeB.id, completam, gks).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (r && !r.ok) setErro(r.erro);
     });
   }
@@ -179,12 +208,24 @@ function ProximaPartida(p: Props) {
   function tocarIniciar() {
     if (!a || !b) return;
     const vagas = vagasDaPartida(a, b);
-    if (!vagas.length) return comecar(a, b);
+    if (!vagas.length) return comecar(a, b, goleiros);
     setErro(null);
     startCarregar(async () => {
       const r = await quemCompleta(p.peladaId, a.id, b.id).catch(() => ({ ok: false as const, erro: MSG_ALGO_DEU_ERRADO }));
       if (!r.ok) return setErro(r.erro);
-      setCompletando({ a, b, vagas, respostas: vagas.map(() => undefined), atual: 0, daConferencia: false, deFora: r.deFora, semTime: r.semTime });
+      // Quem vai agarrar não aparece para completar.
+      const gk = new Set([goleiros.A, goleiros.B]);
+      setCompletando({
+        a,
+        b,
+        vagas,
+        respostas: vagas.map(() => undefined),
+        atual: 0,
+        daConferencia: false,
+        deFora: r.deFora.filter((j) => !gk.has(j.id)),
+        semTime: r.semTime.filter((j) => !gk.has(j.id)),
+        goleiros,
+      });
     });
   }
 
@@ -199,7 +240,7 @@ function ProximaPartida(p: Props) {
           setErro(null);
           setCompletando(c);
         }}
-        onIniciar={() => comecar(completando.a, completando.b, completamDe(completando.vagas, completando.respostas))}
+        onIniciar={() => comecar(completando.a, completando.b, completando.goleiros, completamDe(completando.vagas, completando.respostas))}
         onSair={() => {
           setErro(null);
           setCompletando(null);
@@ -221,8 +262,14 @@ function ProximaPartida(p: Props) {
           <p className="mt-1 hidden text-base text-meta lg:block">Escolha livre. Clique para trocar.</p>
         </>
       )}
+      {moedaNaTela && <Desempate key={moedaNaTela.partidaId} moeda={moedaNaTela} />}
+      {faltaMoeda && (
+        <button type="button" className={`-mx-3 mt-1 ${TEXTO}`} onClick={() => setSemMoeda(moedaNaTela.partidaId)}>
+          Escolher os times sem a moeda
+        </button>
+      )}
       {/* No PC, os times da fila numa linha só quando a coluna tem largura para quatro. */}
-      <div className="mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4">
+      <div className={`mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4 ${faltaMoeda ? 'hidden' : ''}`}>
         {times.map((t, i) => {
           const marcado = escolhidos.includes(t.id);
           return (
@@ -251,16 +298,28 @@ function ProximaPartida(p: Props) {
           );
         })}
       </div>
-      {!ehSugestao && (
+      {!ehSugestao && !faltaMoeda && (
         <button type="button" className={`-mx-3 mt-1 ${TEXTO}`} onClick={() => setEscolhidos(sugeridos)}>
           Voltar para a sugerida
         </button>
       )}
+      {a && b && !faltaMoeda && (
+        <GoleirosDaPartida
+          cores={{ A: a.cor, B: b.cor }}
+          valor={goleiros}
+          jogadores={p.goleiros.jogadores}
+          jogando={jogando}
+          onMudar={(g) => {
+            setErro(null);
+            setEscolhaGk({ par, g });
+          }}
+        />
+      )}
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
       </p>
-      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
-        {iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
+      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={!a || !b || iniciando || carregando || faltaMoeda} onClick={tocarIniciar}>
+        {faltaMoeda ? 'Jogue a moeda primeiro' : iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
       </button>
       {a && b && comComplete.length > 0 && (
         <p className="mt-2 text-base text-meta">
@@ -315,6 +374,7 @@ function PassosDeQuemCompleta({
   const vaga = c.vagas[atual];
   const ocupados = escolhidosFora(c.respostas, atual);
   const doJogo = new Set([...c.a.jogadores, ...c.b.jogadores].map((j) => j.id));
+  for (const g of [c.goleiros.A, c.goleiros.B]) if (g !== null) doJogo.add(g);
   const porId = new Map([...c.semTime, ...cadastrados, ...c.deFora, ...c.a.jogadores, ...c.b.jogadores].map((j) => [j.id, j]));
 
   function responder(r: Resposta) {
@@ -352,7 +412,9 @@ function PassosDeQuemCompleta({
   );
 }
 
+/** As partidas já jogadas, da mais nova para a mais antiga; o número é a ordem da noite. Tocar abre os detalhes. */
 function Historico({ jogadas }: { jogadas: Jogada[] }) {
+  const maisNovaPrimeiro = jogadas.map((j, i) => ({ ...j, numero: i + 1 })).reverse();
   return (
     <section aria-labelledby="historico" className="mt-10 pb-8 lg:col-start-2 lg:row-start-3 lg:mt-6">
       <h2 id="historico" className="font-placa text-2xl font-semibold">
@@ -362,17 +424,23 @@ function Historico({ jogadas }: { jogadas: Jogada[] }) {
         <p className="mt-2 text-base text-meta">Nenhuma partida encerrada ainda.</p>
       ) : (
         <ol className="mt-3 flex flex-col gap-2">
-          {jogadas.map((j, i) => (
-            <li key={j.id} className="flex items-center gap-3 rounded-placa bg-placa py-2 pr-1 pl-3">
-              <span className="w-5 shrink-0 text-right font-placa text-xl text-meta tabular-nums">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <Confronto corA={j.corA} corB={j.corB} placar={j.placar} />
-                <p className="text-sm text-apagado">
-                  {j.resultado === 'empate' ? 'Empate' : `${NOME_DA_COR[j.resultado === 'A' ? j.corA : j.corB]} venceu`}
-                </p>
-              </div>
-              <Link href={`/admin/partida/${j.id}/corrigir`} className={`shrink-0 ${TEXTO}`}>
-                Corrigir
+          {maisNovaPrimeiro.map((j) => (
+            <li key={j.id}>
+              <Link
+                href={`/admin/partida/${j.id}`}
+                className="flex items-center gap-3 rounded-placa bg-placa py-2 pr-3 pl-3 transition-colors hover:bg-placa-alta/60 active:bg-placa-alta"
+              >
+                <span className="w-6 shrink-0 text-right font-placa text-xl text-meta tabular-nums">{j.numero}</span>
+                <div className="min-w-0 flex-1">
+                  <Confronto corA={j.corA} corB={j.corB} placar={j.placar} />
+                  <p className="text-sm text-apagado">
+                    {j.resultado === 'empate' ? 'Empate' : `${NOME_DA_COR[j.resultado === 'A' ? j.corA : j.corB]} venceu`} · {j.hora}
+                  </p>
+                </div>
+                <span aria-hidden="true" className="text-xl text-meta">
+                  ›
+                </span>
+                <span className="sr-only">Ver detalhes</span>
               </Link>
             </li>
           ))}

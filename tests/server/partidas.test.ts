@@ -2,19 +2,24 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, timeJogadores } from '@/db/schema';
-import { DURACAO_MS } from '@/domain/partida';
 import {
+  continuarPartida,
   corrigirContagem,
   corrigirPartida,
   desfazerUltimo,
+  detalhesDaPartida,
   encerrarPartida,
   ErroPartida,
   filaDeTimes,
+  goleirosDaNoite,
   historicoDaPelada,
   iniciarPartida,
+  jogarMoeda,
+  moedaDaNoite,
   partidaAoVivo,
   partidaEmAndamento,
   partidasAbertasDeOutrasPeladas,
+  pausarPartida,
   quemPodeCompletar,
   registrarLance,
   violouUmaAberta,
@@ -484,7 +489,9 @@ describe('partidaAoVivo', () => {
       encerrada: false,
       resultado: null,
       placar: { A: 2, B: 1 },
-      tempoRestanteMs: 5 * MIN,
+      tempoDeJogoMs: 3 * MIN,
+      pausadoMs: 0,
+      pausadaEm: null,
       sugerirEncerrar: null,
       lances: [
         { id: l1, jogadorId: c.a1, tipo: 'gol' },
@@ -497,16 +504,16 @@ describe('partidaAoVivo', () => {
           timeId: c.azul,
           cor: 'azul',
           jogadores: [
-            { id: c.a1, nome: 'Ana', gols: 2, assistencias: 0, completando: false },
-            { id: c.a2, nome: 'Bia', gols: 0, assistencias: 1, completando: false },
+            { id: c.a1, nome: 'Ana', gols: 2, assistencias: 0, completando: false, goleiro: false },
+            { id: c.a2, nome: 'Bia', gols: 0, assistencias: 1, completando: false, goleiro: false },
           ],
         },
         B: {
           timeId: c.laranja,
           cor: 'laranja',
           jogadores: [
-            { id: c.l1, nome: 'Caio', gols: 1, assistencias: 0, completando: false },
-            { id: c.l2, nome: 'Davi', gols: 0, assistencias: 0, completando: false },
+            { id: c.l1, nome: 'Caio', gols: 1, assistencias: 0, completando: false, goleiro: false },
+            { id: c.l2, nome: 'Davi', gols: 0, assistencias: 0, completando: false, goleiro: false },
           ],
         },
       },
@@ -518,7 +525,7 @@ describe('partidaAoVivo', () => {
     const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
     expect((await partidaAoVivo(db, id, depois(8 * MIN)))!).toMatchObject({
       sugerirEncerrar: 'tempo',
-      tempoRestanteMs: 0,
+      tempoDeJogoMs: 8 * MIN,
     });
     for (let i = 0; i < 3; i++) await registrarLance(db, id, c.l2, 'gol');
     expect((await partidaAoVivo(db, id, depois(MIN)))!.sugerirEncerrar).toBe('tres_gols');
@@ -533,9 +540,43 @@ describe('partidaAoVivo', () => {
       encerrada: true,
       resultado: 'A',
       placar: { A: 3, B: 0 },
-      tempoRestanteMs: DURACAO_MS - 5 * MIN,
+      tempoDeJogoMs: 5 * MIN,
       sugerirEncerrar: null,
     });
+  });
+
+  it('pausar para o cronômetro e continuar desconta o tempo parado', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(2 * MIN));
+    await pausarPartida(db, id, depois(3 * MIN)); // já pausada: nada muda
+    expect(await partidaAoVivo(db, id, depois(5 * MIN))).toMatchObject({ tempoDeJogoMs: 2 * MIN, pausadaEm: depois(2 * MIN) });
+    await continuarPartida(db, id, depois(5 * MIN));
+    await continuarPartida(db, id, depois(6 * MIN)); // já rodando: nada muda
+    expect(await partidaAoVivo(db, id, depois(7 * MIN))).toMatchObject({ tempoDeJogoMs: 4 * MIN, pausadoMs: 3 * MIN, pausadaEm: null });
+    // o tempo da pausa não conta para sugerir o fim: 11 min de relógio são 8 de jogo
+    expect((await partidaAoVivo(db, id, depois(11 * MIN - 1)))!.sugerirEncerrar).toBeNull();
+    expect((await partidaAoVivo(db, id, depois(11 * MIN)))!.sugerirEncerrar).toBe('tempo');
+  });
+
+  it('o lance guarda o tempo de jogo, sem as pausas', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(MIN));
+    await continuarPartida(db, id, depois(3 * MIN));
+    const l = await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN));
+    const [lance] = await db.select().from(lances).where(eq(lances.id, l));
+    expect(lance.tempoMs).toBe(2 * MIN);
+  });
+
+  it('encerrar pausada fecha a pausa: o tempo final é o da pausa', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await pausarPartida(db, id, depois(6 * MIN));
+    await encerrarPartida(db, id, depois(9 * MIN));
+    expect(await partidaAoVivo(db, id, depois(60 * MIN))).toMatchObject({ tempoDeJogoMs: 6 * MIN, pausadaEm: null, pausadoMs: 3 * MIN });
+    await expect(pausarPartida(db, id, depois(61 * MIN))).rejects.toMatchObject({ motivo: 'ja_encerrada' });
+    await expect(continuarPartida(db, id, depois(61 * MIN))).rejects.toMatchObject({ motivo: 'ja_encerrada' });
   });
 
   it('sem lances: lista vazia; partida que não existe: null', async () => {
@@ -830,5 +871,161 @@ describe('noite com 3 times', () => {
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual([[], [], [3]]);
+  });
+});
+
+describe('goleiros', () => {
+  it('goleiro de fora entra no lado, aparece primeiro e o gol dele conta no placar', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: null });
+    await registrarLance(db, id, c.v1, 'gol');
+    const v = (await partidaAoVivo(db, id, NOITE))!;
+    expect(v.placar).toEqual({ A: 1, B: 0 });
+    expect(v.lados.A.jogadores[0]).toMatchObject({ id: c.v1, nome: 'Edu', goleiro: true, gols: 1 });
+    expect(v.lados.A.jogadores.slice(1).every((j) => !j.goleiro)).toBe(true);
+  });
+
+  it('recusa goleiro dos dois times, repetido, de quem completa ou inativo', async () => {
+    const c = await cenario();
+    const ini = (g: { A: number | null; B: number | null }, completam = { A: [] as number[], B: [] as number[] }) =>
+      motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, completam, g));
+    expect(await ini({ A: c.a1, B: null })).toBe('goleiro_invalido');
+    expect(await ini({ A: null, B: c.a2 })).toBe('goleiro_invalido');
+    expect(await ini({ A: c.v1, B: c.v1 })).toBe('goleiro_invalido');
+    await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.p1));
+    expect(await ini({ A: c.p1, B: null })).toBe('goleiro_invalido');
+    expect(await db.select().from(partidas)).toHaveLength(0);
+  });
+
+  it('no ranking, goleiro ganha gols e assistências mas não jogo, vitória ou presença', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: c.v2 });
+    await registrarLance(db, id, c.v1, 'gol');
+    await registrarLance(db, id, c.v2, 'assistencia');
+    await encerrarPartida(db, id, depois(5 * MIN));
+    const linhas = await rankingDoPeriodo(db, { tipo: 'geral' });
+    expect(linhas.find((l) => l.jogadorId === c.v1)).toMatchObject({ gols: 1, jogos: 0, vitorias: 0, presencas: 0, pontos: 1 });
+    expect(linhas.find((l) => l.jogadorId === c.v2)).toMatchObject({ assistencias: 1, jogos: 0, derrotas: 0, pontos: 1 });
+    expect(linhas.find((l) => l.jogadorId === c.a1)).toMatchObject({ jogos: 1, vitorias: 1 });
+  });
+
+  it('goleirosDaNoite: quem agarra primeiro e os goleiros da última partida com o time', async () => {
+    const c = await cenario();
+    await db.update(jogadores).set({ agarra: true }).where(eq(jogadores.id, c.p2));
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: null, B: c.v1 });
+    await encerrarPartida(db, id, depois(MIN));
+    const g = await goleirosDaNoite(db, c.peladaId);
+    expect(g.jogadores[0]).toMatchObject({ id: c.p2, agarra: true });
+    expect(g.anteriores).toEqual([{ jogadorId: c.v1, timeId: c.laranja }]);
+  });
+});
+
+describe('detalhesDaPartida', () => {
+  it('número na noite, goleiros, tempo total e a linha do tempo com as assistências ligadas', async () => {
+    const c = await cenario();
+    const primeira = await iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE);
+    await encerrarPartida(db, primeira, depois(MIN));
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, depois(2 * MIN), { A: [], B: [] }, { A: null, B: c.v1 });
+    await registrarLance(db, id, c.a2, 'assistencia', depois(4 * MIN));
+    await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN + 2_000));
+    await registrarLance(db, id, c.v1, 'gol', depois(6 * MIN));
+    await encerrarPartida(db, id, depois(9 * MIN));
+    await corrigirContagem(db, id, c.l1, 'gol', 1); // posto depois: sem minuto
+    const d = (await detalhesDaPartida(db, id, depois(60 * MIN)))!;
+    expect(d).toMatchObject({ numero: 2, peladaData: HOJE, encerrada: true, tempoDeJogoMs: 7 * MIN, placar: { A: 1, B: 2 } });
+    expect(d.lados.B.goleiro).toBe('Edu');
+    expect(d.lados.A.goleiro).toBeNull();
+    expect(d.eventos).toEqual([
+      { tipo: 'gol', lado: 'A', tempoMs: 2 * MIN + 2_000, autor: c.a1, assistencia: c.a2, placar: { A: 1, B: 0 } },
+      { tipo: 'gol', lado: 'B', tempoMs: 4 * MIN, autor: c.v1, assistencia: null, placar: { A: 1, B: 1 } },
+      { tipo: 'gol', lado: 'B', tempoMs: null, autor: c.l1, assistencia: null, placar: { A: 1, B: 2 } },
+    ]);
+    expect(d.nomes[c.v1]).toBe('Edu');
+    expect(await detalhesDaPartida(db, 999_999, NOITE)).toBeNull();
+  });
+
+  it('lance antigo sem tempo_ms usa a hora em que foi tocado', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await db.insert(lances).values({ partidaId: id, jogadorId: c.a1, tipo: 'gol', criadoEm: depois(3 * MIN + 30_000) });
+    await encerrarPartida(db, id, depois(8 * MIN));
+    const d = (await detalhesDaPartida(db, id, depois(9 * MIN)))!;
+    expect(d.eventos[0]).toMatchObject({ autor: c.a1, tempoMs: 3 * MIN + 30_000 });
+  });
+});
+
+describe('moeda do empate', () => {
+  async function empate(c: Awaited<ReturnType<typeof cenario>>, a: number, b: number, inicio: Date) {
+    const id = await iniciarPartida(db, c.peladaId, a, b, inicio);
+    await encerrarPartida(db, id, new Date(inicio.getTime() + MIN));
+    return id;
+  }
+
+  it('4 times: a moeda aparece quando um dos empatados for entrar, e quem ganha entra', async () => {
+    const c = await cenario();
+    const id = await empate(c, c.azul, c.laranja, NOITE);
+    expect(await moedaDaNoite(db, c.peladaId)).toBeNull(); // a próxima é verde × preto
+    const v = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(2 * MIN));
+    await registrarLance(db, v, c.v1, 'gol');
+    await encerrarPartida(db, v, depois(3 * MIN));
+    expect(await moedaDaNoite(db, c.peladaId)).toEqual({
+      partidaId: id,
+      timeA: { id: c.azul, cor: 'azul' },
+      timeB: { id: c.laranja, cor: 'laranja' },
+      fixo: { id: c.verde, cor: 'verde' },
+      resultado: null,
+    });
+    expect(await jogarMoeda(db, id, () => 0.99)).toBe('B');
+    expect(await jogarMoeda(db, id, () => 0)).toBe('B'); // já jogada: não muda
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.laranja, c.azul, c.preto]);
+    expect((await moedaDaNoite(db, c.peladaId))!.resultado).toBe('B');
+  });
+
+  it('3 times: a moeda já vale para a partida seguinte ao empate', async () => {
+    const peladaId = await novaPelada('2026-11-18');
+    const [x, y, z] = await criar(['Ivo', 'Jó', 'Kim']);
+    await salvarTimesDefinitivos(db, peladaId, [[x], [y], [z]]);
+    const [t1, t2, t3] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
+    const quarta = new Date('2026-11-18T20:40:00-03:00');
+    const id = await iniciarPartida(db, peladaId, t1, t2, quarta);
+    await encerrarPartida(db, id, new Date(quarta.getTime() + MIN));
+    expect(await moedaDaNoite(db, peladaId)).toMatchObject({ partidaId: id, fixo: { id: t3 }, resultado: null });
+  });
+
+  it('quem jogou menos na noite tem 70%; mesmo número, 50%', async () => {
+    const c = await cenario();
+    await empate(c, c.azul, c.verde, NOITE); // azul: 1 jogo
+    const id = await empate(c, c.laranja, c.azul, depois(2 * MIN)); // laranja 1, azul 2
+    // laranja (A) jogou menos: ganha com sorteio < 0.7
+    expect(await jogarMoeda(db, id, () => 0.69)).toBe('A');
+    // verde (A, 2 jogos) contra preto (B, 1 jogo): o verde só ganha com sorteio < 0.3
+    const outra = await empate(c, c.verde, c.preto, depois(4 * MIN));
+    expect(await jogarMoeda(db, outra, () => 0.31)).toBe('B');
+    // mesmo número de jogos: meio a meio
+    const meio = await empate(c, c.laranja, c.preto, depois(6 * MIN)); // laranja 2, preto 2
+    expect(await jogarMoeda(db, meio, () => 0.49)).toBe('A');
+    expect((await db.select().from(partidas).where(eq(partidas.id, meio)))[0].desempate).toBe('A');
+  });
+
+  it('sem moeda: vitória, partida aberta ou só 2 times', async () => {
+    const c = await cenario();
+    const aberta = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    expect(await motivo(jogarMoeda(db, aberta))).toBe('sem_empate');
+    await registrarLance(db, aberta, c.a1, 'gol');
+    await encerrarPartida(db, aberta, depois(MIN));
+    expect(await motivo(jogarMoeda(db, aberta))).toBe('sem_empate');
+    expect(await moedaDaNoite(db, c.peladaId)).toBeNull();
+
+    const outra = await novaPelada('2026-11-18');
+    const [x, y, z, w] = await criar(['Ivo', 'Jó', 'Kim', 'Lia']);
+    await salvarTimesDefinitivos(db, outra, [
+      [x, y],
+      [z, w],
+    ]);
+    const [t1, t2] = (await timesDaPelada(db, outra)).map((t) => t.id);
+    const quarta = new Date('2026-11-18T20:40:00-03:00');
+    const id = await iniciarPartida(db, outra, t1, t2, quarta);
+    await encerrarPartida(db, id, new Date(quarta.getTime() + MIN));
+    expect(await moedaDaNoite(db, outra)).toBeNull();
   });
 });

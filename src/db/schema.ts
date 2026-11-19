@@ -34,6 +34,8 @@ export const jogadores = pgTable(
     pinErros: integer('pin_erros').notNull().default(0),
     bloqueadoAte: timestamptz('bloqueado_ate'),
     ativo: boolean('ativo').notNull().default(true),
+    // Costuma agarrar: aparece primeiro na escolha de goleiro da partida.
+    agarra: boolean('agarra').notNull().default(false),
     // Sobe para derrubar todas as sessões do jogador (zerar PIN, desativar).
     sessaoVersao: integer('sessao_versao').notNull().default(0),
     criadoEm: timestamptz('criado_em').notNull().defaultNow(),
@@ -136,6 +138,11 @@ export const partidas = pgTable(
     iniciadaEm: timestamptz('iniciada_em').notNull().defaultNow(),
     encerradaEm: timestamptz('encerrada_em'),
     resultado: resultadoEnum('resultado'),
+    // Pausa do cronômetro: o tempo parado já somado e, se está pausada agora, desde quando.
+    pausadoMs: integer('pausado_ms').notNull().default(0),
+    pausadaEm: timestamptz('pausada_em'),
+    // Empate: o lado que ganhou na moeda e volta primeiro para a fila (null: moeda ainda não jogada).
+    desempate: ladoEnum('desempate'),
   },
   // Uma partida aberta por pelada, garantido pelo banco (o código também confere, travando a pelada).
   (t) => [uniqueIndex('partidas_uma_aberta_por_pelada').on(t.peladaId).where(sql`${t.encerradaEm} is null`)],
@@ -153,6 +160,8 @@ export const partidaJogadores = pgTable(
     lado: ladoEnum('lado').notNull(),
     // Task 18: jogador que entrou para completar o time de outro lado nesta partida.
     completando: boolean('completando').notNull().default(false),
+    // Goleiro do lado nesta partida: alguém de fora dos dois times. Conta gols e assistências, não conta jogo.
+    goleiro: boolean('goleiro').notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.partidaId, t.jogadorId] })],
 );
@@ -167,6 +176,8 @@ export const lances = pgTable('lances', {
     .references(() => jogadores.id),
   tipo: tipoLanceEnum('tipo').notNull(),
   criadoEm: timestamptz('criado_em').notNull().defaultNow(),
+  // Tempo de jogo (sem as pausas) na hora do lance. Null: lance de antes da pausa existir ou posto em Corrigir.
+  tempoMs: integer('tempo_ms'),
 });
 
 // Link temporário de anotar (o robô gera): abre só as telas de partida da pelada, sem login de admin.

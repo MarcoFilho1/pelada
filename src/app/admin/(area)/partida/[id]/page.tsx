@@ -6,7 +6,9 @@ import { getDb } from '@/db/client';
 import { idValido } from '@/server/erros';
 import { peladaDaPartida } from '@/server/anotador';
 import { acessoNaPelada, destinoSemAcesso, lerAcessoPartidas } from '@/server/sessao';
+import { detalhesDaPartida } from '@/server/partidas';
 import { Anotador } from './Anotador';
+import { Detalhes } from './Detalhes';
 import { lerEstado } from './estado';
 
 export const metadata: Metadata = { title: 'Anotador · Pelada' };
@@ -29,6 +31,11 @@ export default async function PartidaPage({ params }: PageProps<'/admin/partida/
         </Link>
       </main>
     );
+  }
+  // Encerrada: os detalhes (linha do tempo e Corrigir); em andamento: o anotador.
+  if (estado.encerrada) {
+    const d = await detalhesDaPartida(db, id, new Date());
+    if (d) return <Detalhes d={d} />;
   }
   return <Anotador estado={estado} />;
 }

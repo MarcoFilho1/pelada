@@ -6,7 +6,7 @@
 // ainda é o último lance. O que a tela mostra = os lances da última resposta + as escritas que
 // ainda estão na fila, aplicadas em ordem.
 
-import { placar as placarDe, tempoRestanteMs, type Lado, type Placar, type TipoLance } from '@/domain/partida';
+import { placar as placarDe, tempoDeJogoMs, type Lado, type Placar, type TipoLance } from '@/domain/partida';
 import type { LanceDaPartida } from '@/server/partidas';
 import type { EstadoDaPartida } from './estado';
 
@@ -77,13 +77,16 @@ export function derivar(base: EstadoDaPartida, escritas: Escrita[]): Vista {
 }
 
 /**
- * O cronômetro da tela. Em andamento: pela hora do servidor andando no relógio do aparelho
- * (`agora`; null antes de montar, aí vale o tempo que veio pronto). Encerrada: parado no que
- * faltava ao encerrar, sem correr até 0:00 (nem vibrar) ao abrir uma partida antiga.
+ * O tempo de jogo na tela. Em andamento: pela hora do servidor andando no relógio do aparelho
+ * (`agora`; null antes de montar, aí vale o tempo que veio pronto), parado enquanto pausada.
+ * Encerrada: parado no tempo do encerramento (abrir uma partida antiga não vibra).
  */
 export function tempoNaTela(estado: EstadoDaPartida, agora: number | null): number {
-  if (estado.encerrada || agora === null) return estado.tempoRestanteMs;
-  return tempoRestanteMs(new Date(estado.iniciadaEm), new Date(agora));
+  if (estado.encerrada || agora === null) return estado.tempoDeJogoMs;
+  return tempoDeJogoMs(
+    { iniciadaEm: new Date(estado.iniciadaEm), pausadoMs: estado.pausadoMs, pausadaEm: estado.pausadaEm === null ? null : new Date(estado.pausadaEm) },
+    new Date(agora),
+  );
 }
 
 /** Uma escrita sem resposta há mais que isto vira o aviso "Salvando há mais de 10 s". */

@@ -2,16 +2,20 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm'
 import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, timeCompletes, timeJogadores, times } from '@/db/schema';
 import {
-  filaDepois,
+  chanceDoA,
+  filaDaNoite,
+  moedaDaProxima,
   placar,
   resultadoDoPlacar,
   sugerirEncerrar,
-  tempoRestanteMs,
+  tempoDeJogoMs,
+  type Cronometro,
   type Lado,
   type Placar,
   type Resultado,
   type TipoLance,
 } from '@/domain/partida';
+import { linhaDoTempo, type EventoDaLinha } from '@/domain/linha-do-tempo';
 import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { dataDe } from '@/domain/tempo';
 import { ErroDeValidacao } from './erros';
@@ -34,7 +38,9 @@ export type MotivoPartida =
   | 'fora_da_partida'
   | 'lance_inexistente'
   | 'completes_demais'
-  | 'completa_invalido';
+  | 'completa_invalido'
+  | 'goleiro_invalido'
+  | 'sem_empate';
 
 const MENSAGENS: Record<MotivoPartida, string> = {
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
@@ -51,6 +57,8 @@ const MENSAGENS: Record<MotivoPartida, string> = {
   lance_inexistente: 'Esse lance não é desta partida ou já foi apagado. Recarregue a página.',
   completes_demais: 'Tem mais gente completando do que vagas de COMPLETE no time.',
   completa_invalido: 'Quem completa precisa ser jogador ativo, de fora dos dois times da partida, e não pode repetir.',
+  sem_empate: 'A moeda só vale para uma partida encerrada empatada.',
+  goleiro_invalido: 'O goleiro precisa ser jogador ativo, de fora dos dois times e de quem completa, e um para cada time.',
 };
 
 export class ErroPartida extends ErroDeValidacao {
@@ -61,6 +69,8 @@ export class ErroPartida extends ErroDeValidacao {
 }
 
 export type LanceNovo = { jogadorId: number; tipo: TipoLance };
+/** Goleiro de cada lado (id do jogador), ou null para jogar sem. */
+export type Goleiros = { A: number | null; B: number | null };
 
 /**
  * Trava a linha da pelada. Tudo que mexe em partidas e times da mesma pelada (iniciar, anotar,
@@ -85,6 +95,8 @@ async function travarPartida(tx: Tx, partidaId: number): Promise<Partida> {
   const [p] = await tx.select().from(partidas).where(eq(partidas.id, partidaId));
   return p;
 }
+
+const cronometroDe = (p: Partida): Cronometro => ({ iniciadaEm: p.iniciadaEm, pausadoMs: p.pausadoMs, pausadaEm: p.pausadaEm });
 
 /** Lado de cada jogador da foto do elenco. */
 async function ladosDaPartida(db: DB | Tx, partidaId: number): Promise<Map<number, Lado>> {
@@ -115,6 +127,9 @@ export function violouUmaAberta(e: unknown): boolean {
  * `completam` diz quem completa cada lado só nesta partida (entra na foto com `completando`): no
  * máximo um jogador por COMPLETE do time, ativo, de fora dos dois times que jogam, sem repetir.
  * Menos ids que COMPLETEs = jogar com um a menos.
+ *
+ * `goleiros` (opcional, um por lado): alguém ativo de fora dos dois times e de quem completa. Entra
+ * na foto com `goleiro`: os gols dele contam para o lado, mas a partida não conta como jogo dele.
  */
 export async function iniciarPartida(
   db: DB,
@@ -123,6 +138,7 @@ export async function iniciarPartida(
   timeBId: number,
   now: Date,
   completam: { A: number[]; B: number[] } = { A: [], B: [] },
+  goleiros: Goleiros = { A: null, B: null },
 ): Promise<number> {
   if (timeAId === timeBId) throw new ErroPartida('mesmo_time');
   return db.transaction(async (tx) => {
@@ -176,6 +192,22 @@ export async function iniciarPartida(
       }
     }
 
+    const gks = [goleiros.A, goleiros.B].filter((g): g is number => g !== null);
+    if (gks.length) {
+      const donos = await tx
+        .select({ jogadorId: timeJogadores.jogadorId })
+        .from(timeJogadores)
+        .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
+      const ocupados = new Set([...elenco.map((j) => j.jogadorId), ...donos.map((j) => j.jogadorId), ...escolhidos]);
+      const ativos = await tx
+        .select({ id: jogadores.id })
+        .from(jogadores)
+        .where(and(inArray(jogadores.id, gks), eq(jogadores.ativo, true)));
+      if (new Set(gks).size !== gks.length || ativos.length !== gks.length || gks.some((id) => ocupados.has(id))) {
+        throw new ErroPartida('goleiro_invalido');
+      }
+    }
+
     // A conferência acima já cobre quase tudo (a pelada está travada); o índice único é a rede de segurança.
     const [partida] = await tx
       .insert(partidas)
@@ -189,19 +221,48 @@ export async function iniciarPartida(
       ...ladoB.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'B' as const })),
       ...completam.A.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'A' as const, completando: true })),
       ...completam.B.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'B' as const, completando: true })),
+      ...(goleiros.A === null ? [] : [{ partidaId: partida.id, jogadorId: goleiros.A, lado: 'A' as const, goleiro: true }]),
+      ...(goleiros.B === null ? [] : [{ partidaId: partida.id, jogadorId: goleiros.B, lado: 'B' as const, goleiro: true }]),
     ]);
     return partida.id;
   });
 }
 
-/** Um toque = um lance (dois toques rápidos são dois gols). Só em partida em andamento, de quem está nela. Devolve o id do lance. */
-export async function registrarLance(db: DB, partidaId: number, jogadorId: number, tipo: TipoLance): Promise<number> {
+/**
+ * Um toque = um lance (dois toques rápidos são dois gols). Só em partida em andamento, de quem está
+ * nela (goleiro incluído). Guarda o tempo de jogo da hora do toque, para a linha do tempo. Devolve o id do lance.
+ */
+export async function registrarLance(db: DB, partidaId: number, jogadorId: number, tipo: TipoLance, now = new Date()): Promise<number> {
   return db.transaction(async (tx) => {
     const partida = await travarPartida(tx, partidaId);
     if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
     if (!(await ladosDaPartida(tx, partidaId)).has(jogadorId)) throw new ErroPartida('fora_da_partida');
-    const [lance] = await tx.insert(lances).values({ partidaId, jogadorId, tipo }).returning({ id: lances.id });
+    const tempoMs = tempoDeJogoMs(cronometroDe(partida), now);
+    const [lance] = await tx.insert(lances).values({ partidaId, jogadorId, tipo, criadoEm: now, tempoMs }).returning({ id: lances.id });
     return lance.id;
+  });
+}
+
+/** Para o cronômetro. Já pausada: não faz nada. Só em partida em andamento. */
+export async function pausarPartida(db: DB, partidaId: number, now: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const partida = await travarPartida(tx, partidaId);
+    if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
+    if (partida.pausadaEm) return;
+    await tx.update(partidas).set({ pausadaEm: now }).where(eq(partidas.id, partidaId));
+  });
+}
+
+/** Tempo parado da pausa em curso, somado no que já estava pausado (0 se a pausa veio "depois" de agora). */
+const pausadoAte = (p: Partida, now: Date) => p.pausadoMs + (p.pausadaEm ? Math.max(0, now.getTime() - p.pausadaEm.getTime()) : 0);
+
+/** Solta o cronômetro: o tempo parado entra no `pausadoMs`. Rodando: não faz nada. */
+export async function continuarPartida(db: DB, partidaId: number, now: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const partida = await travarPartida(tx, partidaId);
+    if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
+    if (!partida.pausadaEm) return;
+    await tx.update(partidas).set({ pausadoMs: pausadoAte(partida, now), pausadaEm: null }).where(eq(partidas.id, partidaId));
   });
 }
 
@@ -233,7 +294,11 @@ export async function encerrarPartida(db: DB, partidaId: number, now: Date): Pro
     const partida = await travarPartida(tx, partidaId);
     if (partida.encerradaEm) throw new ErroPartida('ja_encerrada');
     const resultado = resultadoDoPlacar(await placarDaPartida(tx, partidaId));
-    await tx.update(partidas).set({ resultado, encerradaEm: now }).where(eq(partidas.id, partidaId));
+    // Encerrada pausada: a pausa fecha junto, e o tempo final é o da pausa.
+    await tx
+      .update(partidas)
+      .set({ resultado, encerradaEm: now, pausadoMs: pausadoAte(partida, now), pausadaEm: null })
+      .where(eq(partidas.id, partidaId));
     return resultado;
   });
 }
@@ -306,7 +371,7 @@ export async function corrigirContagem(
 }
 
 export type LanceDaPartida = { id: number; jogadorId: number; tipo: TipoLance };
-export type JogadorNaPartida = { id: number; nome: string; gols: number; assistencias: number; completando: boolean };
+export type JogadorNaPartida = { id: number; nome: string; gols: number; assistencias: number; completando: boolean; goleiro: boolean };
 export type LadoAoVivo = { timeId: number; cor: Cor; jogadores: JogadorNaPartida[] };
 export type PartidaAoVivo = {
   id: number;
@@ -315,8 +380,11 @@ export type PartidaAoVivo = {
   encerrada: boolean;
   resultado: Resultado | null;
   placar: Placar;
-  /** Encerrada: o que faltava na hora do encerramento. */
-  tempoRestanteMs: number;
+  /** Tempo de jogo na hora da leitura (encerrada: o da hora do encerramento). */
+  tempoDeJogoMs: number;
+  /** O tempo já pausado e, se está pausada agora, desde quando (a tela anda o cronômetro com isso). */
+  pausadoMs: number;
+  pausadaEm: Date | null;
   /** Só para partida em andamento. */
   sugerirEncerrar: null | 'tres_gols' | 'tempo';
   /**
@@ -334,7 +402,13 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
   const [cores, elenco, ls] = await Promise.all([
     db.select({ id: times.id, cor: times.cor }).from(times).where(inArray(times.id, [p.timeAId, p.timeBId])),
     db
-      .select({ id: jogadores.id, nome: jogadores.nome, lado: partidaJogadores.lado, completando: partidaJogadores.completando })
+      .select({
+        id: jogadores.id,
+        nome: jogadores.nome,
+        lado: partidaJogadores.lado,
+        completando: partidaJogadores.completando,
+        goleiro: partidaJogadores.goleiro,
+      })
       .from(partidaJogadores)
       .innerJoin(jogadores, eq(jogadores.id, partidaJogadores.jogadorId))
       .where(eq(partidaJogadores.partidaId, partidaId)),
@@ -352,13 +426,20 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     cor: corDe.get(timeId)!,
     jogadores: elenco
       .filter((j) => j.lado === l)
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-      .map((j) => ({ id: j.id, nome: j.nome, gols: conta(j.id, 'gol'), assistencias: conta(j.id, 'assistencia'),
+      // O goleiro vem primeiro; os outros por nome.
+      .sort((a, b) => Number(b.goleiro) - Number(a.goleiro) || a.nome.localeCompare(b.nome, 'pt-BR'))
+      .map((j) => ({
+        id: j.id,
+        nome: j.nome,
+        gols: conta(j.id, 'gol'),
+        assistencias: conta(j.id, 'assistencia'),
         completando: j.completando,
+        goleiro: j.goleiro,
       })),
   });
   const pl = placar(ls, new Map(elenco.map((j) => [j.id, j.lado])));
   const relogio = p.encerradaEm ?? now;
+  const tempo = tempoDeJogoMs(cronometroDe(p), relogio);
 
   return {
     id: p.id,
@@ -367,8 +448,10 @@ export async function partidaAoVivo(db: DB, partidaId: number, now: Date): Promi
     encerrada: p.encerradaEm !== null,
     resultado: p.resultado,
     placar: pl,
-    tempoRestanteMs: tempoRestanteMs(p.iniciadaEm, relogio),
-    sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, p.iniciadaEm, now),
+    tempoDeJogoMs: tempo,
+    pausadoMs: p.pausadoMs,
+    pausadaEm: p.pausadaEm,
+    sugerirEncerrar: p.encerradaEm ? null : sugerirEncerrar(pl, tempo),
     lances: ls,
     lados: { A: lado('A', p.timeAId), B: lado('B', p.timeBId) },
   };
@@ -402,6 +485,42 @@ export async function quemPodeCompletar(
   return {
     deFora: ordenar(todos.filter((j) => timeDe.has(j.id) && timeDe.get(j.id) !== timeAId && timeDe.get(j.id) !== timeBId)),
     semTime: ordenar(todos.filter((j) => !timeDe.has(j.id))),
+  };
+}
+
+export type GoleiroPossivel = { id: number; nome: string; agarra: boolean };
+
+/**
+ * Para a escolha de goleiro na tela da noite: todos os jogadores ativos (quem costuma agarrar
+ * primeiro, depois por nome; a tela tira os dos dois times escolhidos) e os goleiros da última
+ * partida da pelada, com o time em que agarraram (para sugerir de novo).
+ */
+export async function goleirosDaNoite(
+  db: DB,
+  peladaId: number,
+): Promise<{ jogadores: GoleiroPossivel[]; anteriores: { jogadorId: number; timeId: number }[] }> {
+  const [ativos, [ultima]] = await Promise.all([
+    db.select({ id: jogadores.id, nome: jogadores.nome, agarra: jogadores.agarra }).from(jogadores).where(eq(jogadores.ativo, true)),
+    db
+      .select({ id: partidas.id, timeA: partidas.timeAId, timeB: partidas.timeBId })
+      .from(partidas)
+      .where(eq(partidas.peladaId, peladaId))
+      .orderBy(desc(partidas.id))
+      .limit(1),
+  ]);
+  const anteriores = ultima
+    ? (
+        await db
+          .select({ jogadorId: partidaJogadores.jogadorId, lado: partidaJogadores.lado })
+          .from(partidaJogadores)
+          .where(and(eq(partidaJogadores.partidaId, ultima.id), eq(partidaJogadores.goleiro, true)))
+      )
+        .sort((a, b) => a.lado.localeCompare(b.lado))
+        .map((g) => ({ jogadorId: g.jogadorId, timeId: g.lado === 'A' ? ultima.timeA : ultima.timeB }))
+    : [];
+  return {
+    jogadores: ativos.sort((a, b) => Number(b.agarra) - Number(a.agarra) || a.nome.localeCompare(b.nome, 'pt-BR')),
+    anteriores,
   };
 }
 
@@ -455,6 +574,79 @@ export async function partidasAbertasDeOutrasPeladas(db: DB, peladaAtualId: numb
   }));
 }
 
+export type DetalhesDaPartida = {
+  id: number;
+  /** Posição na noite (1 = a primeira partida da pelada). */
+  numero: number;
+  peladaData: string;
+  iniciadaEm: Date;
+  encerrada: boolean;
+  /** Tempo de jogo total (sem as pausas). */
+  tempoDeJogoMs: number;
+  placar: Placar;
+  resultado: Resultado | null;
+  lados: Record<Lado, { cor: Cor; goleiro: string | null; jogadores: { id: number; nome: string; gols: number; assistencias: number; goleiro: boolean }[] }>;
+  eventos: EventoDaLinha[];
+  /** Nome de cada jogador que aparece nos eventos. */
+  nomes: Record<number, string>;
+};
+
+/**
+ * Tudo da tela de detalhes de uma partida: placar, goleiros, a linha do tempo e os números de cada
+ * um. Lance antigo sem `tempo_ms` usa a hora em que foi tocado (antes da pausa existir, o relógio
+ * corria direto); lance posto depois do encerramento (Corrigir) fica sem minuto.
+ */
+export async function detalhesDaPartida(db: DB, partidaId: number, now: Date): Promise<DetalhesDaPartida | null> {
+  const vivo = await partidaAoVivo(db, partidaId, now);
+  if (!vivo) return null;
+  const [p] = await db.select().from(partidas).where(eq(partidas.id, partidaId));
+  const [ids, [pelada], ls] = await Promise.all([
+    db.select({ id: partidas.id }).from(partidas).where(eq(partidas.peladaId, p.peladaId)).orderBy(asc(partidas.id)),
+    db.select({ data: peladas.data }).from(peladas).where(eq(peladas.id, p.peladaId)),
+    db
+      .select({ id: lances.id, jogadorId: lances.jogadorId, tipo: lances.tipo, tempoMs: lances.tempoMs, criadoEm: lances.criadoEm })
+      .from(lances)
+      .where(eq(lances.partidaId, partidaId)),
+  ]);
+  const ladoDe = new Map<number, Lado>();
+  const nomes: Record<number, string> = {};
+  for (const l of ['A', 'B'] as const) {
+    for (const j of vivo.lados[l].jogadores) {
+      ladoDe.set(j.id, l);
+      nomes[j.id] = j.nome;
+    }
+  }
+  const tempoDo = (l: (typeof ls)[number]): number | null => {
+    if (l.tempoMs !== null) return l.tempoMs;
+    if (p.encerradaEm && l.criadoEm > p.encerradaEm) return null;
+    return Math.max(0, l.criadoEm.getTime() - p.iniciadaEm.getTime());
+  };
+  const eventos = linhaDoTempo(
+    ls.flatMap((l) => {
+      const lado = ladoDe.get(l.jogadorId);
+      return lado ? [{ id: l.id, jogadorId: l.jogadorId, tipo: l.tipo, lado, tempoMs: tempoDo(l) }] : [];
+    }),
+  );
+  const lado = (l: Lado) => ({
+    cor: vivo.lados[l].cor,
+    goleiro: vivo.lados[l].jogadores.find((j) => j.goleiro)?.nome ?? null,
+    jogadores: vivo.lados[l].jogadores.map(({ id, nome, gols, assistencias, goleiro }) => ({ id, nome, gols, assistencias, goleiro })),
+  });
+  return {
+    id: vivo.id,
+    numero: ids.findIndex((x) => x.id === partidaId) + 1,
+    peladaData: pelada.data,
+    iniciadaEm: vivo.iniciadaEm,
+    encerrada: vivo.encerrada,
+    tempoDeJogoMs: vivo.tempoDeJogoMs,
+    placar: vivo.placar,
+    resultado: vivo.resultado,
+    lados: { A: lado('A'), B: lado('B') },
+    eventos,
+    nomes,
+  };
+}
+
 export type PartidaDoHistorico = {
   id: number;
   timeA: { id: number; cor: Cor };
@@ -501,22 +693,77 @@ export async function historicoDaPelada(db: DB, peladaId: number): Promise<Parti
   });
 }
 
-/**
- * Os times da pelada na ordem da fila de espera: começa na ordem do sorteio e cada partida
- * encerrada aplica a regra (quem perde sai; empate, saem os dois). Os dois primeiros são a
- * próxima partida sugerida. A partida em andamento ainda não conta.
- */
-export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
+/** A fila da noite e os empates que ainda importam (ver `filaDaNoite`). */
+async function noiteDaFila(db: DB, peladaId: number) {
   const [ts, jogadas] = await Promise.all([
-    db.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))).orderBy(asc(times.ordem)),
     db
-      .select({ timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado })
+      .select({ id: times.id, cor: times.cor })
+      .from(times)
+      .where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)))
+      .orderBy(asc(times.ordem)),
+    db
+      .select({ id: partidas.id, timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado, desempate: partidas.desempate })
       .from(partidas)
       .where(and(eq(partidas.peladaId, peladaId), isNotNull(partidas.encerradaEm)))
       .orderBy(asc(partidas.id)),
   ]);
   const atuais = new Set(ts.map((t) => t.id));
-  return jogadas
+  const validas = jogadas
     .filter((p) => atuais.has(p.timeA) && atuais.has(p.timeB))
-    .reduce((fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado! }), ts.map((t) => t.id));
+    .map((p) => ({ id: p.id, timeA: p.timeA, timeB: p.timeB, resultado: p.resultado!, desempate: p.desempate }));
+  return { ...filaDaNoite(ts.map((t) => t.id), validas), cores: new Map(ts.map((t) => [t.id, t.cor])) };
+}
+
+/**
+ * Os times da pelada na ordem da fila de espera: começa na ordem do sorteio e cada partida
+ * encerrada aplica a regra (quem perde sai; empate, saem os dois, e a moeda decide a ordem). Os
+ * dois primeiros são a próxima partida sugerida. A partida em andamento ainda não conta.
+ */
+export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
+  return (await noiteDaFila(db, peladaId)).fila;
+}
+
+/**
+ * Joga a moeda de uma partida empatada: o lado que ganhar volta primeiro para a fila. Na tela é
+ * cara (A) ou coroa (B), mas quem jogou menos partidas na noite tem mais chance (`chanceDoA`).
+ * Já jogada: devolve o resultado guardado, sem jogar de novo.
+ */
+export async function jogarMoeda(db: DB, partidaId: number, sortear: () => number = Math.random): Promise<Lado> {
+  return db.transaction(async (tx) => {
+    const p = await travarPartida(tx, partidaId);
+    if (!p.encerradaEm || p.resultado !== 'empate') throw new ErroPartida('sem_empate');
+    if (p.desempate) return p.desempate;
+    const jogadas = await tx
+      .select({ timeA: partidas.timeAId, timeB: partidas.timeBId })
+      .from(partidas)
+      .where(and(eq(partidas.peladaId, p.peladaId), isNotNull(partidas.encerradaEm)));
+    const jogos = (timeId: number) => jogadas.filter((j) => j.timeA === timeId || j.timeB === timeId).length;
+    const lado: Lado = sortear() < chanceDoA(jogos(p.timeAId), jogos(p.timeBId)) ? 'A' : 'B';
+    await tx.update(partidas).set({ desempate: lado }).where(eq(partidas.id, partidaId));
+    return lado;
+  });
+}
+
+export type MoedaDaNoite = {
+  partidaId: number;
+  /** Os dois times do empate: o A é cara, o B é coroa. */
+  timeA: { id: number; cor: Cor };
+  timeB: { id: number; cor: Cor };
+  /** Quem já está na próxima partida, esperando o adversário da moeda. */
+  fixo: { id: number; cor: Cor };
+  /** Null: falta jogar (o Iniciar espera); com lado, a moeda já caiu. */
+  resultado: Lado | null;
+};
+
+/**
+ * A moeda da próxima partida: aparece quando um dos dois times de um empate vai entrar e o outro
+ * espera (com 3 times, logo depois do empate; com 4, uma partida depois). Null: a próxima partida
+ * não depende de moeda.
+ */
+export async function moedaDaNoite(db: DB, peladaId: number): Promise<MoedaDaNoite | null> {
+  const { fila, empates, cores } = await noiteDaFila(db, peladaId);
+  const m = moedaDaProxima(fila, empates);
+  if (!m) return null;
+  const time = (id: number) => ({ id, cor: cores.get(id)! });
+  return { partidaId: m.partidaId, timeA: time(m.x), timeB: time(m.y), fixo: time(m.fixo), resultado: m.desempate };
 }
