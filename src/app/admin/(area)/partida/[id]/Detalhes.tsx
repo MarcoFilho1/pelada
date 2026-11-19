@@ -16,7 +16,6 @@ const LADOS: Lado[] = ['A', 'B'];
 export function Detalhes({ d }: { d: DetalhesDaPartida }) {
   const nome = (id: number) => d.nomes[id] ?? '?';
   const temGoleiro = d.lados.A.goleiro !== null || d.lados.B.goleiro !== null;
-  const minutos = Math.round(d.tempoDeJogoMs / 60_000);
   return (
     <main className="flex flex-1 flex-col pb-8">
       <div className="mt-2 grid grid-cols-[3rem_1fr_3rem] items-center">
@@ -43,7 +42,7 @@ export function Detalhes({ d }: { d: DetalhesDaPartida }) {
         </span>
       </div>
       <p className="mt-1 text-center text-sm text-meta">
-        Quarta, {diaMes(d.peladaData)} · {horaDe(d.iniciadaEm)} · durou {minutos <= 0 ? relogio(d.tempoDeJogoMs) : `${minutos} min`}
+        Quarta, {diaMes(d.peladaData)} · {horaDe(d.iniciadaEm)} · durou {relogio(d.tempoDeJogoMs)}
       </p>
       {temGoleiro && (
         <div className="mt-2 flex justify-between gap-3 text-sm text-apagado">
