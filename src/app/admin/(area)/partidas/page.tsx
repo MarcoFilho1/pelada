@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getDb } from '@/db/client';
-import { dataDe, diaMes } from '@/domain/tempo';
+import { dataDe, diaMes, horaDe } from '@/domain/tempo';
 import { filaDeTimes, goleirosDaNoite, historicoDaPelada, partidaAoVivo, partidaEmAndamento, partidasAbertasDeOutrasPeladas } from '@/server/partidas';
 import { peladaDoDia, peladaPorId } from '@/server/pelada';
 import { acessoNaPelada, LINK_VENCIDO, lerAcessoPartidas } from '@/server/sessao';
@@ -52,7 +52,7 @@ export default async function PartidasPage() {
       emAndamento={
         aoVivo && { id: aoVivo.id, corA: aoVivo.lados.A.cor, corB: aoVivo.lados.B.cor, placar: aoVivo.placar }
       }
-      historico={historico.map((h) => ({ id: h.id, corA: h.timeA.cor, corB: h.timeB.cor, placar: h.placar, resultado: h.resultado }))}
+      historico={historico.map((h) => ({ id: h.id, corA: h.timeA.cor, corB: h.timeB.cor, placar: h.placar, resultado: h.resultado, hora: horaDe(h.iniciadaEm) }))}
       goleiros={goleiros}
       esquecidas={esquecidas}
       anotador={anotador}

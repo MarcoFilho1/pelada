@@ -11,6 +11,11 @@ export function dataDe(instante: Date): string {
   return new Date(instante.getTime() + OFFSET_RECIFE_MS).toISOString().slice(0, 10);
 }
 
+/** Hora ('HH:MM') do instante no fuso de Recife. */
+export function horaDe(instante: Date): string {
+  return new Date(instante.getTime() + OFFSET_RECIFE_MS).toISOString().slice(11, 16);
+}
+
 /** 'YYYY-MM-DD' → 'DD/MM'. */
 export function diaMes(data: string): string {
   const [, mes, dia] = data.split('-');

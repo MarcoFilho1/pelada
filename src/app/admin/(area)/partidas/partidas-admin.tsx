@@ -16,7 +16,7 @@ import { sugerirGoleiros, type Anterior, type Goleiros } from './goleiros';
 import { completamDe, escolhidosFora, proximaVaga, vagasDaPartida, type Completam, type Resposta, type Vaga } from './quem-completa';
 
 type Time = { id: number; cor: Cor; jogadores: JogadorNota[]; completes: { id: number; nota: number }[] };
-type Jogada = { id: number; corA: Cor; corB: Cor; placar: Placar; resultado: Resultado };
+type Jogada = { id: number; corA: Cor; corB: Cor; placar: Placar; resultado: Resultado; /** 'HH:MM' do início. */ hora: string };
 
 type Props = {
   peladaId: number;
@@ -390,7 +390,9 @@ function PassosDeQuemCompleta({
   );
 }
 
+/** As partidas já jogadas, da mais nova para a mais antiga; o número é a ordem da noite. Tocar abre os detalhes. */
 function Historico({ jogadas }: { jogadas: Jogada[] }) {
+  const maisNovaPrimeiro = jogadas.map((j, i) => ({ ...j, numero: i + 1 })).reverse();
   return (
     <section aria-labelledby="historico" className="mt-10 pb-8 lg:col-start-2 lg:row-start-3 lg:mt-6">
       <h2 id="historico" className="font-placa text-2xl font-semibold">
@@ -400,17 +402,23 @@ function Historico({ jogadas }: { jogadas: Jogada[] }) {
         <p className="mt-2 text-base text-meta">Nenhuma partida encerrada ainda.</p>
       ) : (
         <ol className="mt-3 flex flex-col gap-2">
-          {jogadas.map((j, i) => (
-            <li key={j.id} className="flex items-center gap-3 rounded-placa bg-placa py-2 pr-1 pl-3">
-              <span className="w-5 shrink-0 text-right font-placa text-xl text-meta tabular-nums">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <Confronto corA={j.corA} corB={j.corB} placar={j.placar} />
-                <p className="text-sm text-apagado">
-                  {j.resultado === 'empate' ? 'Empate' : `${NOME_DA_COR[j.resultado === 'A' ? j.corA : j.corB]} venceu`}
-                </p>
-              </div>
-              <Link href={`/admin/partida/${j.id}/corrigir`} className={`shrink-0 ${TEXTO}`}>
-                Corrigir
+          {maisNovaPrimeiro.map((j) => (
+            <li key={j.id}>
+              <Link
+                href={`/admin/partida/${j.id}`}
+                className="flex items-center gap-3 rounded-placa bg-placa py-2 pr-3 pl-3 transition-colors hover:bg-placa-alta/60 active:bg-placa-alta"
+              >
+                <span className="w-6 shrink-0 text-right font-placa text-xl text-meta tabular-nums">{j.numero}</span>
+                <div className="min-w-0 flex-1">
+                  <Confronto corA={j.corA} corB={j.corB} placar={j.placar} />
+                  <p className="text-sm text-apagado">
+                    {j.resultado === 'empate' ? 'Empate' : `${NOME_DA_COR[j.resultado === 'A' ? j.corA : j.corB]} venceu`} · {j.hora}
+                  </p>
+                </div>
+                <span aria-hidden="true" className="text-xl text-meta">
+                  ›
+                </span>
+                <span className="sr-only">Ver detalhes</span>
               </Link>
             </li>
           ))}

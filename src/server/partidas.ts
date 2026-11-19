@@ -13,6 +13,7 @@ import {
   type Resultado,
   type TipoLance,
 } from '@/domain/partida';
+import { linhaDoTempo, type EventoDaLinha } from '@/domain/linha-do-tempo';
 import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { dataDe } from '@/domain/tempo';
 import { ErroDeValidacao } from './erros';
@@ -567,6 +568,79 @@ export async function partidasAbertasDeOutrasPeladas(db: DB, peladaAtualId: numb
       new Map(elenco.filter((j) => j.partidaId === p.id).map((j) => [j.jogadorId, j.lado])),
     ),
   }));
+}
+
+export type DetalhesDaPartida = {
+  id: number;
+  /** Posição na noite (1 = a primeira partida da pelada). */
+  numero: number;
+  peladaData: string;
+  iniciadaEm: Date;
+  encerrada: boolean;
+  /** Tempo de jogo total (sem as pausas). */
+  tempoDeJogoMs: number;
+  placar: Placar;
+  resultado: Resultado | null;
+  lados: Record<Lado, { cor: Cor; goleiro: string | null; jogadores: { id: number; nome: string; gols: number; assistencias: number; goleiro: boolean }[] }>;
+  eventos: EventoDaLinha[];
+  /** Nome de cada jogador que aparece nos eventos. */
+  nomes: Record<number, string>;
+};
+
+/**
+ * Tudo da tela de detalhes de uma partida: placar, goleiros, a linha do tempo e os números de cada
+ * um. Lance antigo sem `tempo_ms` usa a hora em que foi tocado (antes da pausa existir, o relógio
+ * corria direto); lance posto depois do encerramento (Corrigir) fica sem minuto.
+ */
+export async function detalhesDaPartida(db: DB, partidaId: number, now: Date): Promise<DetalhesDaPartida | null> {
+  const vivo = await partidaAoVivo(db, partidaId, now);
+  if (!vivo) return null;
+  const [p] = await db.select().from(partidas).where(eq(partidas.id, partidaId));
+  const [ids, [pelada], ls] = await Promise.all([
+    db.select({ id: partidas.id }).from(partidas).where(eq(partidas.peladaId, p.peladaId)).orderBy(asc(partidas.id)),
+    db.select({ data: peladas.data }).from(peladas).where(eq(peladas.id, p.peladaId)),
+    db
+      .select({ id: lances.id, jogadorId: lances.jogadorId, tipo: lances.tipo, tempoMs: lances.tempoMs, criadoEm: lances.criadoEm })
+      .from(lances)
+      .where(eq(lances.partidaId, partidaId)),
+  ]);
+  const ladoDe = new Map<number, Lado>();
+  const nomes: Record<number, string> = {};
+  for (const l of ['A', 'B'] as const) {
+    for (const j of vivo.lados[l].jogadores) {
+      ladoDe.set(j.id, l);
+      nomes[j.id] = j.nome;
+    }
+  }
+  const tempoDo = (l: (typeof ls)[number]): number | null => {
+    if (l.tempoMs !== null) return l.tempoMs;
+    if (p.encerradaEm && l.criadoEm > p.encerradaEm) return null;
+    return Math.max(0, l.criadoEm.getTime() - p.iniciadaEm.getTime());
+  };
+  const eventos = linhaDoTempo(
+    ls.flatMap((l) => {
+      const lado = ladoDe.get(l.jogadorId);
+      return lado ? [{ id: l.id, jogadorId: l.jogadorId, tipo: l.tipo, lado, tempoMs: tempoDo(l) }] : [];
+    }),
+  );
+  const lado = (l: Lado) => ({
+    cor: vivo.lados[l].cor,
+    goleiro: vivo.lados[l].jogadores.find((j) => j.goleiro)?.nome ?? null,
+    jogadores: vivo.lados[l].jogadores.map(({ id, nome, gols, assistencias, goleiro }) => ({ id, nome, gols, assistencias, goleiro })),
+  });
+  return {
+    id: vivo.id,
+    numero: ids.findIndex((x) => x.id === partidaId) + 1,
+    peladaData: pelada.data,
+    iniciadaEm: vivo.iniciadaEm,
+    encerrada: vivo.encerrada,
+    tempoDeJogoMs: vivo.tempoDeJogoMs,
+    placar: vivo.placar,
+    resultado: vivo.resultado,
+    lados: { A: lado('A'), B: lado('B') },
+    eventos,
+    nomes,
+  };
 }
 
 export type PartidaDoHistorico = {

@@ -7,6 +7,7 @@ import {
   corrigirContagem,
   corrigirPartida,
   desfazerUltimo,
+  detalhesDaPartida,
   encerrarPartida,
   ErroPartida,
   filaDeTimes,
@@ -914,5 +915,39 @@ describe('goleiros', () => {
     const g = await goleirosDaNoite(db, c.peladaId);
     expect(g.jogadores[0]).toMatchObject({ id: c.p2, agarra: true });
     expect(g.anteriores).toEqual([{ jogadorId: c.v1, timeId: c.laranja }]);
+  });
+});
+
+describe('detalhesDaPartida', () => {
+  it('número na noite, goleiros, tempo total e a linha do tempo com as assistências ligadas', async () => {
+    const c = await cenario();
+    const primeira = await iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE);
+    await encerrarPartida(db, primeira, depois(MIN));
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, depois(2 * MIN), { A: [], B: [] }, { A: null, B: c.v1 });
+    await registrarLance(db, id, c.a2, 'assistencia', depois(4 * MIN));
+    await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN + 2_000));
+    await registrarLance(db, id, c.v1, 'gol', depois(6 * MIN));
+    await encerrarPartida(db, id, depois(9 * MIN));
+    await corrigirContagem(db, id, c.l1, 'gol', 1); // posto depois: sem minuto
+    const d = (await detalhesDaPartida(db, id, depois(60 * MIN)))!;
+    expect(d).toMatchObject({ numero: 2, peladaData: HOJE, encerrada: true, tempoDeJogoMs: 7 * MIN, placar: { A: 1, B: 2 } });
+    expect(d.lados.B.goleiro).toBe('Edu');
+    expect(d.lados.A.goleiro).toBeNull();
+    expect(d.eventos).toEqual([
+      { tipo: 'gol', lado: 'A', tempoMs: 2 * MIN + 2_000, autor: c.a1, assistencia: c.a2, placar: { A: 1, B: 0 } },
+      { tipo: 'gol', lado: 'B', tempoMs: 4 * MIN, autor: c.v1, assistencia: null, placar: { A: 1, B: 1 } },
+      { tipo: 'gol', lado: 'B', tempoMs: null, autor: c.l1, assistencia: null, placar: { A: 1, B: 2 } },
+    ]);
+    expect(d.nomes[c.v1]).toBe('Edu');
+    expect(await detalhesDaPartida(db, 999_999, NOITE)).toBeNull();
+  });
+
+  it('lance antigo sem tempo_ms usa a hora em que foi tocado', async () => {
+    const c = await cenario();
+    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await db.insert(lances).values({ partidaId: id, jogadorId: c.a1, tipo: 'gol', criadoEm: depois(3 * MIN + 30_000) });
+    await encerrarPartida(db, id, depois(8 * MIN));
+    const d = (await detalhesDaPartida(db, id, depois(9 * MIN)))!;
+    expect(d.eventos[0]).toMatchObject({ autor: c.a1, tempoMs: 3 * MIN + 30_000 });
   });
 });
