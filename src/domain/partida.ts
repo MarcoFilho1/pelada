@@ -107,3 +107,41 @@ export function chanceDoA(jogosA: number, jogosB: number): number {
   if (jogosA === jogosB) return 0.5;
   return jogosA < jogosB ? CHANCE_DE_QUEM_JOGOU_MENOS : 1 - CHANCE_DE_QUEM_JOGOU_MENOS;
 }
+
+/** Um empate cujos dois times ainda não voltaram a jogar: a ordem entre eles é a moeda. */
+export type EmpateNaFila = { partidaId: number; x: number; y: number; desempate: Lado | null };
+
+/**
+ * A fila da noite e os empates que ainda importam: cada empate (com os dois times na fila) entra
+ * na lista e sai quando um dos dois joga de novo.
+ */
+export function filaDaNoite(
+  times: number[],
+  jogadas: (PartidaJogada & { id: number })[],
+): { fila: number[]; empates: EmpateNaFila[] } {
+  let fila = times;
+  let empates: EmpateNaFila[] = [];
+  for (const p of jogadas) {
+    empates = empates.filter((e) => ![p.timeA, p.timeB].some((t) => t === e.x || t === e.y));
+    fila = filaDepois(fila, p);
+    if (p.resultado === 'empate' && fila.includes(p.timeA) && fila.includes(p.timeB)) {
+      empates.push({ partidaId: p.id, x: p.timeA, y: p.timeB, desempate: p.desempate ?? null });
+    }
+  }
+  return { fila, empates };
+}
+
+/**
+ * A moeda da próxima partida: o empate em que um dos dois times entra agora e o outro espera (um
+ * nos dois primeiros da fila, o outro depois). `fixo` = o adversário já certo. `desempate` null =
+ * falta jogar; com lado, a moeda já foi jogada. Null: a próxima partida não depende de moeda.
+ */
+export function moedaDaProxima(fila: number[], empates: EmpateNaFila[]): (EmpateNaFila & { fixo: number }) | null {
+  for (const e of empates) {
+    const [px, py] = [fila.indexOf(e.x), fila.indexOf(e.y)];
+    if (Math.min(px, py) > 1 || Math.max(px, py) < 2) continue;
+    const fixo = fila.slice(0, 2).find((t) => t !== e.x && t !== e.y);
+    if (fixo !== undefined) return { ...e, fixo };
+  }
+  return null;
+}

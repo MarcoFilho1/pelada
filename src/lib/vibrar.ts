@@ -14,26 +14,22 @@ export const PADROES: Record<Vibracao, number | number[]> = {
   fim: [500, 150, 500, 150, 700],
 };
 
-let interruptor: HTMLLabelElement | null = null;
-
-/** O interruptor escondido do iPhone (criado uma vez). */
-function interruptorDoIphone(): HTMLLabelElement | null {
-  if (interruptor) return interruptor;
-  try {
-    const label = document.createElement('label');
-    label.setAttribute('aria-hidden', 'true');
-    label.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.setAttribute('switch', '');
-    input.tabIndex = -1;
-    label.appendChild(input);
-    document.body.appendChild(label);
-    interruptor = label;
-  } catch {
-    interruptor = null;
-  }
-  return interruptor;
+/**
+ * Um toque tátil no iPhone: cria um interruptor (`<input switch>`) dentro de um `<label>` escondido,
+ * clica no label (o iOS vibra ao mudar o interruptor) e tira tudo da página. Precisa estar dentro
+ * de um toque do usuário e com "Tato do sistema" ligado no iPhone.
+ */
+function toqueDoIphone(): void {
+  const label = document.createElement('label');
+  label.ariaHidden = 'true';
+  label.style.display = 'none';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.setAttribute('switch', '');
+  label.appendChild(input);
+  document.head.appendChild(label);
+  label.click();
+  label.remove();
 }
 
 /** Vibra no padrão pedido. Sem suporte, não faz nada. */
@@ -43,8 +39,10 @@ export function vibrar(tipo: Vibracao): void {
       navigator.vibrate(PADROES[tipo]);
       return;
     }
-    // iPhone: um toque tátil por clique no interruptor (o fim, fora de um toque, não vibra).
-    if (tipo !== 'fim') interruptorDoIphone()?.click();
+    // iPhone: toque tátil pelo interruptor (o fim, fora de um toque, não vibra). Assistência = dois toques.
+    if (tipo === 'fim') return;
+    toqueDoIphone();
+    if (tipo === 'assistencia') setTimeout(toqueDoIphone, 90);
   } catch {
     // Sem vibração: segue em silêncio.
   }

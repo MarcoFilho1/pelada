@@ -961,14 +961,35 @@ describe('moeda do empate', () => {
     return id;
   }
 
-  it('quem ganha na moeda volta primeiro para a fila', async () => {
+  it('4 times: a moeda aparece quando um dos empatados for entrar, e quem ganha entra', async () => {
     const c = await cenario();
     const id = await empate(c, c.azul, c.laranja, NOITE);
-    expect(await moedaDaNoite(db, c.peladaId)).toEqual({ partidaId: id, corA: 'azul', corB: 'laranja', resultado: null });
+    expect(await moedaDaNoite(db, c.peladaId)).toBeNull(); // a próxima é verde × preto
+    const v = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(2 * MIN));
+    await registrarLance(db, v, c.v1, 'gol');
+    await encerrarPartida(db, v, depois(3 * MIN));
+    expect(await moedaDaNoite(db, c.peladaId)).toEqual({
+      partidaId: id,
+      timeA: { id: c.azul, cor: 'azul' },
+      timeB: { id: c.laranja, cor: 'laranja' },
+      fixo: { id: c.verde, cor: 'verde' },
+      resultado: null,
+    });
     expect(await jogarMoeda(db, id, () => 0.99)).toBe('B');
     expect(await jogarMoeda(db, id, () => 0)).toBe('B'); // já jogada: não muda
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.preto, c.laranja, c.azul]);
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.laranja, c.azul, c.preto]);
     expect((await moedaDaNoite(db, c.peladaId))!.resultado).toBe('B');
+  });
+
+  it('3 times: a moeda já vale para a partida seguinte ao empate', async () => {
+    const peladaId = await novaPelada('2026-11-18');
+    const [x, y, z] = await criar(['Ivo', 'Jó', 'Kim']);
+    await salvarTimesDefinitivos(db, peladaId, [[x], [y], [z]]);
+    const [t1, t2, t3] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
+    const quarta = new Date('2026-11-18T20:40:00-03:00');
+    const id = await iniciarPartida(db, peladaId, t1, t2, quarta);
+    await encerrarPartida(db, id, new Date(quarta.getTime() + MIN));
+    expect(await moedaDaNoite(db, peladaId)).toMatchObject({ partidaId: id, fixo: { id: t3 }, resultado: null });
   });
 
   it('quem jogou menos na noite tem 70%; mesmo número, 50%', async () => {

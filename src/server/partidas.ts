@@ -3,7 +3,8 @@ import type { DB } from '@/db/client';
 import { jogadores, lances, partidaJogadores, partidas, peladas, timeCompletes, timeJogadores, times } from '@/db/schema';
 import {
   chanceDoA,
-  filaDepois,
+  filaDaNoite,
+  moedaDaProxima,
   placar,
   resultadoDoPlacar,
   sugerirEncerrar,
@@ -692,27 +693,34 @@ export async function historicoDaPelada(db: DB, peladaId: number): Promise<Parti
   });
 }
 
-/**
- * Os times da pelada na ordem da fila de espera: começa na ordem do sorteio e cada partida
- * encerrada aplica a regra (quem perde sai; empate, saem os dois). Os dois primeiros são a
- * próxima partida sugerida. A partida em andamento ainda não conta.
- */
-export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
+/** A fila da noite e os empates que ainda importam (ver `filaDaNoite`). */
+async function noiteDaFila(db: DB, peladaId: number) {
   const [ts, jogadas] = await Promise.all([
-    db.select({ id: times.id }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))).orderBy(asc(times.ordem)),
     db
-      .select({ timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado, desempate: partidas.desempate })
+      .select({ id: times.id, cor: times.cor })
+      .from(times)
+      .where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm)))
+      .orderBy(asc(times.ordem)),
+    db
+      .select({ id: partidas.id, timeA: partidas.timeAId, timeB: partidas.timeBId, resultado: partidas.resultado, desempate: partidas.desempate })
       .from(partidas)
       .where(and(eq(partidas.peladaId, peladaId), isNotNull(partidas.encerradaEm)))
       .orderBy(asc(partidas.id)),
   ]);
   const atuais = new Set(ts.map((t) => t.id));
-  return jogadas
+  const validas = jogadas
     .filter((p) => atuais.has(p.timeA) && atuais.has(p.timeB))
-    .reduce(
-      (fila, p) => filaDepois(fila, { timeA: p.timeA, timeB: p.timeB, resultado: p.resultado!, desempate: p.desempate }),
-      ts.map((t) => t.id),
-    );
+    .map((p) => ({ id: p.id, timeA: p.timeA, timeB: p.timeB, resultado: p.resultado!, desempate: p.desempate }));
+  return { ...filaDaNoite(ts.map((t) => t.id), validas), cores: new Map(ts.map((t) => [t.id, t.cor])) };
+}
+
+/**
+ * Os times da pelada na ordem da fila de espera: começa na ordem do sorteio e cada partida
+ * encerrada aplica a regra (quem perde sai; empate, saem os dois, e a moeda decide a ordem). Os
+ * dois primeiros são a próxima partida sugerida. A partida em andamento ainda não conta.
+ */
+export async function filaDeTimes(db: DB, peladaId: number): Promise<number[]> {
+  return (await noiteDaFila(db, peladaId)).fila;
 }
 
 /**
@@ -736,25 +744,26 @@ export async function jogarMoeda(db: DB, partidaId: number, sortear: () => numbe
   });
 }
 
-export type MoedaDaNoite = { partidaId: number; corA: Cor; corB: Cor; resultado: Lado | null };
+export type MoedaDaNoite = {
+  partidaId: number;
+  /** Os dois times do empate: o A é cara, o B é coroa. */
+  timeA: { id: number; cor: Cor };
+  timeB: { id: number; cor: Cor };
+  /** Quem já está na próxima partida, esperando o adversário da moeda. */
+  fixo: { id: number; cor: Cor };
+  /** Null: falta jogar (o Iniciar espera); com lado, a moeda já caiu. */
+  resultado: Lado | null;
+};
 
 /**
- * A moeda que a tela da noite mostra: a da última partida encerrada, se ela empatou, a pelada tem
- * 3 times ou mais (com 2, os dois jogam de novo) e os dois times ainda existem. `resultado` null:
- * falta jogar (e o Iniciar espera); com resultado, a tela mostra quem volta primeiro.
+ * A moeda da próxima partida: aparece quando um dos dois times de um empate vai entrar e o outro
+ * espera (com 3 times, logo depois do empate; com 4, uma partida depois). Null: a próxima partida
+ * não depende de moeda.
  */
 export async function moedaDaNoite(db: DB, peladaId: number): Promise<MoedaDaNoite | null> {
-  const [[ultima], atuais] = await Promise.all([
-    db
-      .select()
-      .from(partidas)
-      .where(and(eq(partidas.peladaId, peladaId), isNotNull(partidas.encerradaEm)))
-      .orderBy(desc(partidas.id))
-      .limit(1),
-    db.select({ id: times.id, cor: times.cor }).from(times).where(and(eq(times.peladaId, peladaId), isNull(times.arquivadoEm))),
-  ]);
-  if (!ultima || ultima.resultado !== 'empate' || atuais.length < 3) return null;
-  const cor = new Map(atuais.map((t) => [t.id, t.cor]));
-  if (!cor.has(ultima.timeAId) || !cor.has(ultima.timeBId)) return null;
-  return { partidaId: ultima.id, corA: cor.get(ultima.timeAId)!, corB: cor.get(ultima.timeBId)!, resultado: ultima.desempate };
+  const { fila, empates, cores } = await noiteDaFila(db, peladaId);
+  const m = moedaDaProxima(fila, empates);
+  if (!m) return null;
+  const time = (id: number) => ({ id, cor: cores.get(id)! });
+  return { partidaId: m.partidaId, timeA: time(m.x), timeB: time(m.y), fixo: time(m.fixo), resultado: m.desempate };
 }

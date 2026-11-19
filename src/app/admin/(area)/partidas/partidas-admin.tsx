@@ -90,7 +90,7 @@ export function PartidasAdmin(p: Props) {
             </Aviso>
           )
         ) : (
-          <ProximaPartida key={p.fila.join(',')} {...p} />
+          <ProximaPartida {...p} />
         )}
       </div>
 
@@ -159,14 +159,26 @@ function ProximaPartida(p: Props) {
   const ordem = new Map(p.fila.map((id, i) => [id, i]));
   const times = [...p.times].sort((a, b) => (ordem.get(a.id) ?? 99) - (ordem.get(b.id) ?? 99));
   const sugeridos = times.slice(0, 2).map((t) => t.id);
-  const [escolhidos, setEscolhidos] = useState<number[]>(sugeridos);
+  // A escolha e os passos de quem completa valem para a fila em que foram feitos: quando a fila
+  // muda (partida encerrada, moeda jogada), voltam para a sugestão. Sem remontar o bloco, para a
+  // moeda no meio do voo não ser recriada pela atualização de 5 s.
+  const chaveDaFila = p.fila.join(',');
+  const [escolha, setEscolha] = useState<{ fila: string; ids: number[] }>({ fila: chaveDaFila, ids: sugeridos });
+  const escolhidos = escolha.fila === chaveDaFila ? escolha.ids : sugeridos;
+  const setEscolhidos = (f: number[] | ((es: number[]) => number[])) =>
+    setEscolha({ fila: chaveDaFila, ids: typeof f === 'function' ? f(escolhidos) : f });
   const [erro, setErro] = useState<string | null>(null);
   const [iniciando, startIniciar] = useTransition();
   const [carregando, startCarregar] = useTransition();
-  const [completando, setCompletando] = useState<Completando | null>(null);
+  const [passos, setPassos] = useState<{ fila: string; c: Completando } | null>(null);
+  const completando = passos?.fila === chaveDaFila ? passos.c : null;
+  const setCompletando = (c: Completando | null) => setPassos(c && { fila: chaveDaFila, c });
   const [a, b] = times.filter((t) => escolhidos.includes(t.id)); // na ordem da fila
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
-  const faltaMoeda = p.moeda !== null && p.moeda.resultado === null;
+  // Moeda pendente: a vaga do adversário fica travada até jogar (ou até escolher sem moeda).
+  const [semMoeda, setSemMoeda] = useState<number | null>(null);
+  const moedaNaTela = p.moeda && semMoeda !== p.moeda.partidaId ? p.moeda : null;
+  const faltaMoeda = moedaNaTela !== null && moedaNaTela.resultado === null;
   const comComplete = [a, b].filter((t) => t?.completes.length);
 
   // Goleiros: a sugestão vale para o par escolhido até a pessoa mexer (a escolha fica presa ao par).
@@ -250,9 +262,14 @@ function ProximaPartida(p: Props) {
           <p className="mt-1 hidden text-base text-meta lg:block">Escolha livre. Clique para trocar.</p>
         </>
       )}
-      {p.moeda && <Desempate key={p.moeda.partidaId} {...p.moeda} />}
+      {moedaNaTela && <Desempate key={moedaNaTela.partidaId} moeda={moedaNaTela} />}
+      {faltaMoeda && (
+        <button type="button" className={`-mx-3 mt-1 ${TEXTO}`} onClick={() => setSemMoeda(moedaNaTela.partidaId)}>
+          Escolher os times sem a moeda
+        </button>
+      )}
       {/* No PC, os times da fila numa linha só quando a coluna tem largura para quatro. */}
-      <div className="mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4">
+      <div className={`mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4 ${faltaMoeda ? 'hidden' : ''}`}>
         {times.map((t, i) => {
           const marcado = escolhidos.includes(t.id);
           return (
@@ -281,12 +298,12 @@ function ProximaPartida(p: Props) {
           );
         })}
       </div>
-      {!ehSugestao && (
+      {!ehSugestao && !faltaMoeda && (
         <button type="button" className={`-mx-3 mt-1 ${TEXTO}`} onClick={() => setEscolhidos(sugeridos)}>
           Voltar para a sugerida
         </button>
       )}
-      {a && b && (
+      {a && b && !faltaMoeda && (
         <GoleirosDaPartida
           cores={{ A: a.cor, B: b.cor }}
           valor={goleiros}

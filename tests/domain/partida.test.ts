@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DURACAO_MS,
+  filaDaNoite,
   filaDepois,
+  moedaDaProxima,
   GOLS_PARA_VENCER,
   placar,
   proximaPartidaSugerida,
@@ -198,5 +200,43 @@ describe('chanceDoA', () => {
     expect(chanceDoA(3, 3)).toBe(0.5);
     expect(chanceDoA(2, 4)).toBe(0.7);
     expect(chanceDoA(5, 4)).toBeCloseTo(0.3);
+  });
+});
+
+describe('filaDaNoite e moedaDaProxima', () => {
+  const j = (id: number, timeA: number, timeB: number, resultado: 'A' | 'B' | 'empate', desempate: 'A' | 'B' | null = null) => ({
+    id,
+    timeA,
+    timeB,
+    resultado,
+    desempate,
+  });
+
+  it('3 times: depois do empate, a próxima já precisa da moeda (o 3º entra, um dos empatados espera)', () => {
+    const { fila, empates } = filaDaNoite([1, 2, 3], [j(10, 1, 2, 'empate')]);
+    expect(fila).toEqual([3, 1, 2]);
+    expect(moedaDaProxima(fila, empates)).toEqual({ partidaId: 10, x: 1, y: 2, desempate: null, fixo: 3 });
+  });
+
+  it('4 times: a moeda só aparece quando um dos empatados for entrar', () => {
+    let r = filaDaNoite([1, 2, 3, 4], [j(10, 1, 2, 'empate')]);
+    expect(r.fila).toEqual([3, 4, 1, 2]);
+    expect(moedaDaProxima(r.fila, r.empates)).toBeNull(); // 3 × 4 não depende da moeda
+    r = filaDaNoite([1, 2, 3, 4], [j(10, 1, 2, 'empate'), j(11, 3, 4, 'A')]);
+    expect(r.fila).toEqual([3, 1, 2, 4]);
+    expect(moedaDaProxima(r.fila, r.empates)).toMatchObject({ partidaId: 10, fixo: 3 });
+  });
+
+  it('moeda jogada: continua aparecendo (com o resultado) até o time entrar; depois some', () => {
+    let r = filaDaNoite([1, 2, 3], [j(10, 1, 2, 'empate', 'B')]);
+    expect(r.fila).toEqual([3, 2, 1]);
+    expect(moedaDaProxima(r.fila, r.empates)).toMatchObject({ desempate: 'B', fixo: 3 });
+    r = filaDaNoite([1, 2, 3], [j(10, 1, 2, 'empate', 'B'), j(11, 3, 2, 'A')]);
+    expect(moedaDaProxima(r.fila, r.empates)).toBeNull();
+  });
+
+  it('2 times: os dois jogam de novo, sem moeda', () => {
+    const r = filaDaNoite([1, 2], [j(10, 1, 2, 'empate')]);
+    expect(moedaDaProxima(r.fila, r.empates)).toBeNull();
   });
 });
