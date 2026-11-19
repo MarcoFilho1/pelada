@@ -7,6 +7,7 @@ import {
   proximaPartidaSugerida,
   resultadoDoPlacar,
   acrescimo,
+  chanceDoA,
   minutoDoLance,
   sugerirEncerrar,
   tempoDeJogoMs,
@@ -181,5 +182,21 @@ describe('minutoDoLance', () => {
     expect(minutoDoLance(59_999)).toBe(0);
     expect(minutoDoLance(2 * MIN + 9_000)).toBe(2);
     expect(minutoDoLance(8 * MIN + 30_000)).toBe(8);
+  });
+});
+
+describe('filaDepois com moeda', () => {
+  it('empate: quem ganhou na moeda volta primeiro', () => {
+    expect(filaDepois([1, 2, 3], { timeA: 1, timeB: 2, resultado: 'empate', desempate: 'B' })).toEqual([3, 2, 1]);
+    expect(filaDepois([1, 2, 3], { timeA: 1, timeB: 2, resultado: 'empate', desempate: 'A' })).toEqual([3, 1, 2]);
+    expect(filaDepois([1, 2, 3], { timeA: 1, timeB: 2, resultado: 'empate', desempate: null })).toEqual([3, 1, 2]);
+  });
+});
+
+describe('chanceDoA', () => {
+  it('meio a meio com o mesmo número de partidas; 70% para quem jogou menos', () => {
+    expect(chanceDoA(3, 3)).toBe(0.5);
+    expect(chanceDoA(2, 4)).toBe(0.7);
+    expect(chanceDoA(5, 4)).toBeCloseTo(0.3);
   });
 });

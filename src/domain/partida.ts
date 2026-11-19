@@ -9,8 +9,11 @@ export type Lado = 'A' | 'B';
 export type TipoLance = 'gol' | 'assistencia';
 export type Resultado = 'A' | 'B' | 'empate';
 export type Placar = { A: number; B: number };
-/** Uma partida encerrada, do jeito que a fila precisa: quem jogou e quem venceu. */
-export type PartidaJogada = { timeA: number; timeB: number; resultado: Resultado };
+/**
+ * Uma partida encerrada, do jeito que a fila precisa: quem jogou e quem venceu. `desempate`: no
+ * empate, o lado que ganhou na moeda e volta primeiro (sem moeda, o A).
+ */
+export type PartidaJogada = { timeA: number; timeB: number; resultado: Resultado; desempate?: Lado | null };
 
 /**
  * Placar = soma dos gols dos jogadores de cada lado (não existe gol contra). Assistência não
@@ -70,13 +73,14 @@ export function sugerirEncerrar(p: Placar, tempoMs: number): null | 'tres_gols' 
 /**
  * A fila depois de uma partida (`fila` = ordem antes dela, os primeiros entram antes). Quem perde
  * sai: o vencedor vai para a frente e o perdedor para o fim. Se empatar, saem os dois e vão para
- * o fim (A, depois B). A partida pode ter sido qualquer uma (o admin escolhe livremente).
+ * o fim: primeiro quem ganhou na moeda (sem moeda, o A). A partida pode ter sido qualquer uma (o
+ * admin escolhe livremente).
  */
 export function filaDepois(fila: number[], partida: PartidaJogada): number[] {
   const { timeA, timeB, resultado } = partida;
   const resto = fila.filter((t) => t !== timeA && t !== timeB);
   const naFila = (ts: number[]) => ts.filter((t) => fila.includes(t));
-  if (resultado === 'empate') return [...resto, ...naFila([timeA, timeB])];
+  if (resultado === 'empate') return [...resto, ...naFila(partida.desempate === 'B' ? [timeB, timeA] : [timeA, timeB])];
   const [vencedor, perdedor] = resultado === 'A' ? [timeA, timeB] : [timeB, timeA];
   return [...naFila([vencedor]), ...resto, ...naFila([perdedor])];
 }
@@ -90,4 +94,16 @@ export function proximaPartidaSugerida(times: number[], ultima: PartidaJogada | 
   if (times.length < 2) throw new Error('proximaPartidaSugerida: precisa de pelo menos 2 times');
   const fila = ultima ? filaDepois(times, ultima) : times;
   return [fila[0], fila[1]];
+}
+
+/** Chance de quem jogou menos partidas na noite ganhar na moeda (o outro fica com o resto). */
+export const CHANCE_DE_QUEM_JOGOU_MENOS = 0.7;
+
+/**
+ * A moeda do empate, que na tela é cara ou coroa: a chance do lado A ganhar. Com o mesmo número
+ * de partidas na noite é meio a meio; senão, quem jogou menos tem 70%.
+ */
+export function chanceDoA(jogosA: number, jogosB: number): number {
+  if (jogosA === jogosB) return 0.5;
+  return jogosA < jogosB ? CHANCE_DE_QUEM_JOGOU_MENOS : 1 - CHANCE_DE_QUEM_JOGOU_MENOS;
 }

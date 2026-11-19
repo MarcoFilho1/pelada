@@ -14,6 +14,8 @@ import {
   goleirosDaNoite,
   historicoDaPelada,
   iniciarPartida,
+  jogarMoeda,
+  moedaDaNoite,
   partidaAoVivo,
   partidaEmAndamento,
   partidasAbertasDeOutrasPeladas,
@@ -949,5 +951,60 @@ describe('detalhesDaPartida', () => {
     await encerrarPartida(db, id, depois(8 * MIN));
     const d = (await detalhesDaPartida(db, id, depois(9 * MIN)))!;
     expect(d.eventos[0]).toMatchObject({ autor: c.a1, tempoMs: 3 * MIN + 30_000 });
+  });
+});
+
+describe('moeda do empate', () => {
+  async function empate(c: Awaited<ReturnType<typeof cenario>>, a: number, b: number, inicio: Date) {
+    const id = await iniciarPartida(db, c.peladaId, a, b, inicio);
+    await encerrarPartida(db, id, new Date(inicio.getTime() + MIN));
+    return id;
+  }
+
+  it('quem ganha na moeda volta primeiro para a fila', async () => {
+    const c = await cenario();
+    const id = await empate(c, c.azul, c.laranja, NOITE);
+    expect(await moedaDaNoite(db, c.peladaId)).toEqual({ partidaId: id, corA: 'azul', corB: 'laranja', resultado: null });
+    expect(await jogarMoeda(db, id, () => 0.99)).toBe('B');
+    expect(await jogarMoeda(db, id, () => 0)).toBe('B'); // já jogada: não muda
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.preto, c.laranja, c.azul]);
+    expect((await moedaDaNoite(db, c.peladaId))!.resultado).toBe('B');
+  });
+
+  it('quem jogou menos na noite tem 70%; mesmo número, 50%', async () => {
+    const c = await cenario();
+    await empate(c, c.azul, c.verde, NOITE); // azul: 1 jogo
+    const id = await empate(c, c.laranja, c.azul, depois(2 * MIN)); // laranja 1, azul 2
+    // laranja (A) jogou menos: ganha com sorteio < 0.7
+    expect(await jogarMoeda(db, id, () => 0.69)).toBe('A');
+    // verde (A, 2 jogos) contra preto (B, 1 jogo): o verde só ganha com sorteio < 0.3
+    const outra = await empate(c, c.verde, c.preto, depois(4 * MIN));
+    expect(await jogarMoeda(db, outra, () => 0.31)).toBe('B');
+    // mesmo número de jogos: meio a meio
+    const meio = await empate(c, c.laranja, c.preto, depois(6 * MIN)); // laranja 2, preto 2
+    expect(await jogarMoeda(db, meio, () => 0.49)).toBe('A');
+    expect((await db.select().from(partidas).where(eq(partidas.id, meio)))[0].desempate).toBe('A');
+  });
+
+  it('sem moeda: vitória, partida aberta ou só 2 times', async () => {
+    const c = await cenario();
+    const aberta = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    expect(await motivo(jogarMoeda(db, aberta))).toBe('sem_empate');
+    await registrarLance(db, aberta, c.a1, 'gol');
+    await encerrarPartida(db, aberta, depois(MIN));
+    expect(await motivo(jogarMoeda(db, aberta))).toBe('sem_empate');
+    expect(await moedaDaNoite(db, c.peladaId)).toBeNull();
+
+    const outra = await novaPelada('2026-11-18');
+    const [x, y, z, w] = await criar(['Ivo', 'Jó', 'Kim', 'Lia']);
+    await salvarTimesDefinitivos(db, outra, [
+      [x, y],
+      [z, w],
+    ]);
+    const [t1, t2] = (await timesDaPelada(db, outra)).map((t) => t.id);
+    const quarta = new Date('2026-11-18T20:40:00-03:00');
+    const id = await iniciarPartida(db, outra, t1, t2, quarta);
+    await encerrarPartida(db, id, new Date(quarta.getTime() + MIN));
+    expect(await moedaDaNoite(db, outra)).toBeNull();
   });
 });

@@ -8,11 +8,12 @@ import { MSG_ALGO_DEU_ERRADO } from '@/domain/mensagens';
 import type { Placar, Resultado } from '@/domain/partida';
 import type { Cor, JogadorNota } from '@/domain/sorteio';
 import { useAutoRefresh } from '@/lib/useAutoRefresh';
-import type { GoleiroPossivel } from '@/server/partidas';
+import type { GoleiroPossivel, MoedaDaNoite } from '@/server/partidas';
 import { iniciar, quemCompleta } from './acoes';
 import { GoleirosDaPartida } from './escolher-goleiro';
 import { ConferirQuemCompleta, QuemCompleta } from './escolher-quem-completa';
 import { sugerirGoleiros, type Anterior, type Goleiros } from './goleiros';
+import { Desempate } from './moeda';
 import { completamDe, escolhidosFora, proximaVaga, vagasDaPartida, type Completam, type Resposta, type Vaga } from './quem-completa';
 
 type Time = { id: number; cor: Cor; jogadores: JogadorNota[]; completes: { id: number; nota: number }[] };
@@ -32,6 +33,8 @@ type Props = {
   historico: Jogada[];
   /** Para a escolha de goleiro: os ativos (quem costuma agarrar primeiro) e os goleiros da última partida. */
   goleiros: { jogadores: GoleiroPossivel[]; anteriores: Anterior[] };
+  /** Depois de um empate (com 3 times ou mais): a moeda que decide quem volta primeiro. */
+  moeda: MoedaDaNoite | null;
   /** Partidas abertas de peladas anteriores ('DD/MM'): ninguém encerrou. */
   esquecidas: Esquecida[];
   /** Entrou pelo link de anotar: sem os atalhos para as telas de organizador. */
@@ -163,6 +166,7 @@ function ProximaPartida(p: Props) {
   const [completando, setCompletando] = useState<Completando | null>(null);
   const [a, b] = times.filter((t) => escolhidos.includes(t.id)); // na ordem da fila
   const ehSugestao = sugeridos.every((id) => escolhidos.includes(id));
+  const faltaMoeda = p.moeda !== null && p.moeda.resultado === null;
   const comComplete = [a, b].filter((t) => t?.completes.length);
 
   // Goleiros: a sugestão vale para o par escolhido até a pessoa mexer (a escolha fica presa ao par).
@@ -246,6 +250,7 @@ function ProximaPartida(p: Props) {
           <p className="mt-1 hidden text-base text-meta lg:block">Escolha livre. Clique para trocar.</p>
         </>
       )}
+      {p.moeda && <Desempate key={p.moeda.partidaId} {...p.moeda} />}
       {/* No PC, os times da fila numa linha só quando a coluna tem largura para quatro. */}
       <div className="mt-3 grid grid-cols-2 gap-2 @[40rem]:grid-cols-4">
         {times.map((t, i) => {
@@ -296,8 +301,8 @@ function ProximaPartida(p: Props) {
       <p role="alert" className={`text-base font-medium text-erro ${erro ? 'mt-3' : 'sr-only'}`}>
         {erro}
       </p>
-      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={!a || !b || iniciando || carregando} onClick={tocarIniciar}>
-        {iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
+      <button type="button" className={`mt-4 ${PILULA} lg:w-auto lg:px-8`} disabled={!a || !b || iniciando || carregando || faltaMoeda} onClick={tocarIniciar}>
+        {faltaMoeda ? 'Jogue a moeda primeiro' : iniciando ? 'Iniciando…' : carregando ? 'Carregando…' : a && b ? `Iniciar ${NOME_DA_COR[a.cor]} × ${NOME_DA_COR[b.cor]}` : 'Escolha dois times'}
       </button>
       {a && b && comComplete.length > 0 && (
         <p className="mt-2 text-base text-meta">
