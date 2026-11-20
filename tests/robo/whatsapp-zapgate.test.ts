@@ -1,4 +1,4 @@
-// O robô pelo motor-wa: tradução dos eventos (sem rede) e, se houver o binário do motor-wa, um
+// O robô pelo ZapGate: tradução dos eventos (sem rede) e, se houver o binário do ZapGate, um
 // teste de ponta a ponta com o motor no WhatsApp FALSO (nada chega ao WhatsApp, nenhum contato).
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -6,8 +6,8 @@ import { createServer as netServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { MessageReceived } from '@/robo/motor-wa';
-import { conectarMotor, explicarErro, lerEventoDoMotor } from '@/robo/whatsapp-motor';
+import type { MessageReceived } from '@/robo/zapgate';
+import { conectarMotor, explicarErro, lerEventoDoZapGate } from '@/robo/whatsapp-zapgate';
 import type { MensagemRecebida } from '@/robo/responder';
 import type { WhatsApp } from '@/robo/whatsapp';
 
@@ -30,16 +30,16 @@ const base: MessageReceived = {
   offline: false,
 };
 
-describe('lerEventoDoMotor', () => {
+describe('lerEventoDoZapGate', () => {
   it('traduz uma mensagem de grupo', () => {
-    const m = lerEventoDoMotor(base, [ROBO, ROBO_LID], AGORA)!;
+    const m = lerEventoDoZapGate(base, [ROBO, ROBO_LID], AGORA)!;
     expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false });
     expect(m.privado).toBeUndefined();
     expect(m.quando.getTime()).toBe(1_800_000_000_000);
   });
 
   it('tira a marcação do robô (por LID) e troca a de outra pessoa por @alguém', () => {
-    const m = lerEventoDoMotor(
+    const m = lerEventoDoZapGate(
       { ...base, text: '@100000000000001 bora?  @5583222220000 vem', mentions: [ROBO_LID, '5583222220000@s.whatsapp.net'], mentions_me: true },
       [ROBO, ROBO_LID],
       AGORA,
@@ -49,34 +49,34 @@ describe('lerEventoDoMotor', () => {
   });
 
   it('privado com LID: telefone vem do sender_alt', () => {
-    const m = lerEventoDoMotor({ ...base, chat: '247416506831075@lid', sender: '247416506831075@lid', sender_alt: '5583111110000@s.whatsapp.net', is_group: false }, [ROBO], AGORA)!;
+    const m = lerEventoDoZapGate({ ...base, chat: '247416506831075@lid', sender: '247416506831075@lid', sender_alt: '5583111110000@s.whatsapp.net', is_group: false }, [ROBO], AGORA)!;
     expect(m.privado).toBe(true);
     expect(m.remetenteTelefone).toBe('5583111110000');
   });
 
   it('resposta a uma mensagem do robô', () => {
-    expect(lerEventoDoMotor({ ...base, reply_to: 'B1', reply_to_sender: ROBO_LID, replies_to_me: true }, [ROBO], AGORA)!.respondeAoRobo).toBe(true);
+    expect(lerEventoDoZapGate({ ...base, reply_to: 'B1', reply_to_sender: ROBO_LID, replies_to_me: true }, [ROBO], AGORA)!.respondeAoRobo).toBe(true);
   });
 
   it('sem texto (figurinha, áudio): ignorada', () => {
-    expect(lerEventoDoMotor({ ...base, text: undefined }, [ROBO], AGORA)).toBeNull();
+    expect(lerEventoDoZapGate({ ...base, text: undefined }, [ROBO], AGORA)).toBeNull();
   });
 
   it('mantém as quebras de linha (o importar lê linha a linha)', () => {
-    expect(lerEventoDoMotor({ ...base, text: 'Time A:\n  João   e Zé\n\n\n\nTime B' }, [ROBO], AGORA)!.texto).toBe('Time A:\nJoão e Zé\n\nTime B');
+    expect(lerEventoDoZapGate({ ...base, text: 'Time A:\n  João   e Zé\n\n\n\nTime B' }, [ROBO], AGORA)!.texto).toBe('Time A:\nJoão e Zé\n\nTime B');
   });
 });
 
 describe('mensagens atrasadas', () => {
   it('mais de 10 minutos de atraso: o robô não trata (nem mexe na lista)', () => {
-    expect(lerEventoDoMotor({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 601)).toBeNull();
-    expect(lerEventoDoMotor({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 300)).not.toBeNull();
+    expect(lerEventoDoZapGate({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 601)).toBeNull();
+    expect(lerEventoDoZapGate({ ...base, text: 'anotar Zé' }, [ROBO], AGORA + 300)).not.toBeNull();
   });
 });
 
-// ---------- ponta a ponta com o binário do motor-wa (WhatsApp falso) ----------
+// ---------- ponta a ponta com o binário do ZapGate (WhatsApp falso) ----------
 
-const BIN = process.env.MOTOR_WA_BIN ?? join(process.env.HOME ?? '', 'Desktop/things/motor-wa/target/debug/motor-wa');
+const BIN = process.env.ZAPGATE_BIN ?? join(process.env.HOME ?? '', 'Desktop/things/motor-wa/target/debug/zapgate');
 const temMotor = existsSync(BIN);
 
 const portaLivre = () =>
@@ -87,7 +87,7 @@ const portaLivre = () =>
     });
   });
 
-describe.skipIf(!temMotor)('ponta a ponta com o motor-wa (WhatsApp falso)', () => {
+describe.skipIf(!temMotor)('ponta a ponta com o ZapGate (WhatsApp falso)', () => {
   const ADMIN = 'pelada-admin-key-0123456789';
   const ROBO_KEY = 'pelada-robo-key-01234567890';
   const SEGREDO = 'pelada-webhook-secret-0123';
@@ -108,7 +108,7 @@ describe.skipIf(!temMotor)('ponta a ponta com o motor-wa (WhatsApp falso)', () =
     url = `http://127.0.0.1:${portaApi}`;
     pasta = mkdtempSync(join(tmpdir(), 'pelada-motor-'));
     writeFileSync(
-      join(pasta, 'motor-wa.toml'),
+      join(pasta, 'zapgate.toml'),
       `data_dir = "${pasta}/data"
 [[sessions]]
 id = "pelada"
@@ -134,7 +134,7 @@ key = "${ROBO_KEY}"
 scopes = ["read", "send"]
 `,
     );
-    motor = spawn(BIN, ['--config', join(pasta, 'motor-wa.toml'), 'run'], { stdio: 'ignore', env: { ...process.env, RUST_LOG: 'warn' } });
+    motor = spawn(BIN, ['--config', join(pasta, 'zapgate.toml'), 'run'], { stdio: 'ignore', env: { ...process.env, RUST_LOG: 'warn' } });
     for (let i = 0; i < 100 && !(await fetch(`${url}/v1/health`).catch(() => null))?.ok; i++) await new Promise((r) => setTimeout(r, 100));
     await evento({ type: 'connected', own: ROBO });
     await fetch(`${url}/v1/sessions/pelada/sending`, { method: 'PUT', headers: { Authorization: `Bearer ${ADMIN}`, 'Content-Type': 'application/json' }, body: '{"enabled":true}' });
@@ -147,7 +147,7 @@ scopes = ["read", "send"]
     rmSync(pasta, { recursive: true, force: true });
   });
 
-  it('a lista no grupo sai pelo motor-wa e só resolve com a confirmação', async () => {
+  it('a lista no grupo sai pelo ZapGate e só resolve com a confirmação', async () => {
     await wa.enviar(GRUPO, 'Lista da quarta');
     const e = await enviadas();
     expect(e.at(-1)).toMatchObject({ to: GRUPO, content: { body: 'Lista da quarta' } });

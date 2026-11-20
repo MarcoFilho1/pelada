@@ -82,28 +82,28 @@ function lerEstadoOuParar(arquivo: string) {
   }
 }
 
-/** `ROBO_MOTOR=motor-wa` no `.env`: o robô fala com o WhatsApp pelo motor-wa em vez da Baileys. */
-function usaMotorWa(): boolean {
-  return process.env.ROBO_MOTOR === 'motor-wa';
+/** `ROBO_MOTOR=zapgate` no `.env`: o robô fala com o WhatsApp pelo ZapGate em vez da Baileys. */
+function usaZapGate(): boolean {
+  return process.env.ROBO_MOTOR === 'zapgate';
 }
 
-/** Conexão pelo motor-wa (ver docs/motor-wa.md). Parear é com o próprio motor-wa: `motor-wa pair pelada`. */
-async function conectarPeloMotor(prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
-  const { conectarMotor } = await import('./whatsapp-motor');
+/** Conexão pelo ZapGate (ver docs/zapgate.md). Parear é com o próprio ZapGate: `zapgate pair pelada`. */
+async function conectarPeloZapGate(prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
+  const { conectarMotor } = await import('./whatsapp-zapgate');
   const { ErroFatalWhatsApp } = await import('./whatsapp');
   const arquivo = join(pasta, '.env');
   if (existsSync(arquivo)) process.loadEnvFile(arquivo); // o `configurar` não carrega o banco
-  const chave = process.env.MOTOR_WA_KEY;
-  const segredo = process.env.MOTOR_WA_WEBHOOK_SECRET;
+  const chave = process.env.ZAPGATE_KEY;
+  const segredo = process.env.ZAPGATE_WEBHOOK_SECRET;
   if (!chave || !segredo) {
-    parar('Com ROBO_MOTOR=motor-wa, o .env do robô precisa de MOTOR_WA_KEY e MOTOR_WA_WEBHOOK_SECRET (veja docs/motor-wa.md).');
+    parar('Com ROBO_MOTOR=zapgate, o .env do robô precisa de ZAPGATE_KEY e ZAPGATE_WEBHOOK_SECRET (veja docs/zapgate.md).');
   }
   try {
     return await conectarMotor({
-      url: process.env.MOTOR_WA_URL ?? 'http://127.0.0.1:8787',
+      url: process.env.ZAPGATE_URL ?? 'http://127.0.0.1:8787',
       chave: chave!,
-      sessao: process.env.MOTOR_WA_SESSAO ?? 'pelada',
-      portaWebhook: Number(process.env.MOTOR_WA_WEBHOOK_PORTA ?? 8788),
+      sessao: process.env.ZAPGATE_SESSAO ?? 'pelada',
+      portaWebhook: Number(process.env.ZAPGATE_WEBHOOK_PORTA ?? 8788),
       segredoWebhook: segredo!,
       prazoMs,
       log,
@@ -121,7 +121,7 @@ async function conectarPeloMotor(prazoMs?: number, aoReceber?: (m: MensagemReceb
 
 /** No laço, `prazoMs` evita ficar preso esperando a rede (a volta seguinte tenta de novo). */
 async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number, aoReceber?: (m: MensagemRecebida) => void): Promise<WhatsApp> {
-  if (usaMotorWa()) return conectarPeloMotor(prazoMs, aoReceber);
+  if (usaZapGate()) return conectarPeloZapGate(prazoMs, aoReceber);
   const { conectar, ErroFatalWhatsApp } = await import('./whatsapp');
   try {
     return await conectar({
@@ -163,8 +163,8 @@ async function ensaio(): Promise<void> {
  * guarda a pasta antiga ao lado e começa de novo com um QR novo, em vez de só repetir o aviso.
  */
 async function conectarParaConfigurar(): Promise<WhatsApp> {
-  // Com o motor-wa, o pareamento é dele (`motor-wa pair pelada`); aqui só se escolhe o grupo.
-  if (usaMotorWa()) return conectarPeloMotor();
+  // Com o ZapGate, o pareamento é dele (`zapgate pair pelada`); aqui só se escolhe o grupo.
+  if (usaZapGate()) return conectarPeloZapGate();
   const { ErroFatalWhatsApp, MSG_DESLOGADO } = await import('./whatsapp');
   try {
     return await conectarSemParar();
@@ -306,9 +306,9 @@ async function laco(): Promise<void> {
   const conversaDe = async (admin: string): Promise<string | null> => {
     const digitos = admin.replace(/\D/g, '');
     const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
-    // Pelo motor-wa, o aviso vai sempre para o telefone: é ele que está em `allow_initiate`
-    // (a conversa guardada pode ser um LID, que o motor-wa trataria como contato desconhecido).
-    if (usaMotorWa()) return `${comDdi}@s.whatsapp.net`;
+    // Pelo ZapGate, o aviso vai sempre para o telefone: é ele que está em `allow_initiate`
+    // (a conversa guardada pode ser um LID, que o ZapGate trataria como contato desconhecido).
+    if (usaZapGate()) return `${comDdi}@s.whatsapp.net`;
     for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
     return (await conexao!).conversaDoTelefone(comDdi);
   };

@@ -1,4 +1,4 @@
-// Vendored from motor-wa's TypeScript SDK (sdk/typescript/src/webhook.ts, motor-wa commit 6742498).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/webhook.ts, ZapGate commit 48ba7f4).
 // Replace with the npm package once it is published; do not edit here.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -7,7 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { WebhookEvent } from "./types.js";
 
 /**
- * Checks `X-Motor-Signature` (`t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`).
+ * Checks `X-ZapGate-Signature` (`t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`).
  * Rejects signatures older than `toleranceSec` (default 300) to prevent replays.
  * Pass the **raw** body, exactly as received (not re-serialized JSON).
  */
@@ -38,7 +38,7 @@ export function verifySignature(
 /** Verifies and parses an event. Throws if the signature is invalid. */
 export function parseEvent(secret: string, header: string | undefined | null, rawBody: string | Buffer): WebhookEvent {
   if (!verifySignature(secret, header, rawBody)) {
-    throw new Error("invalid motor-wa webhook signature");
+    throw new Error("invalid zapgate webhook signature");
   }
   return JSON.parse(rawBody.toString()) as WebhookEvent;
 }
@@ -50,7 +50,7 @@ export interface WebhookHandlerOptions {
   secret: string;
   /**
    * Called once per verified event. Deduplicate with `event.id` (delivery is at least once).
-   * **Return quickly** (well under motor-wa's 15 s delivery timeout): do slow work, like sending
+   * **Return quickly** (well under zapgate's 15 s delivery timeout): do slow work, like sending
    * a reply with `wait: "ack"`, in the background. While this runs, later events wait.
    */
   onEvent: (event: WebhookEvent) => void | Promise<void>;
@@ -60,12 +60,12 @@ export interface WebhookHandlerOptions {
 
 /**
  * A Node `http` request handler (also works as Express middleware on a route that has **not**
- * parsed the body). Answers 200 after `onEvent` resolves, 401 on a bad signature (motor-wa then
+ * parsed the body). Answers 200 after `onEvent` resolves, 401 on a bad signature (zapgate then
  * retries: a wrong secret loses nothing), 422 on an unparsable body and 500 if `onEvent` throws
- * (motor-wa retries those too).
+ * (zapgate retries those too).
  */
 export function createWebhookHandler(options: WebhookHandlerOptions) {
-  const onError = options.onError ?? ((err: unknown) => console.error("motor-wa webhook:", err));
+  const onError = options.onError ?? ((err: unknown) => console.error("zapgate webhook:", err));
   return (req: IncomingMessage, res: ServerResponse): void => {
     if (req.readableEnded || (req as { body?: unknown }).body !== undefined) {
       // A body parser (e.g. express.json()) already consumed the raw body: the signature cannot
@@ -91,7 +91,7 @@ export function createWebhookHandler(options: WebhookHandlerOptions) {
     req.on("end", () => {
       if (refused) return;
       const raw = Buffer.concat(chunks);
-      const sig = req.headers["x-motor-signature"];
+      const sig = req.headers["x-zapgate-signature"];
       if (!verifySignature(options.secret, Array.isArray(sig) ? sig[0] : sig, raw)) {
         onError(new Error("invalid signature"));
         res.writeHead(401).end();

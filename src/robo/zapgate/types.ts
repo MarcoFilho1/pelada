@@ -1,4 +1,4 @@
-// Vendored from motor-wa's TypeScript SDK (sdk/typescript/src/types.ts, motor-wa commit 6742498).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/types.ts, ZapGate commit 48ba7f4).
 // Replace with the npm package once it is published; do not edit here.
 
 // Types mirroring api/openapi.yaml (v1). Kept by hand for now; the contract is the source of truth.
@@ -48,6 +48,10 @@ export interface SendResult {
   status: MessageStatus;
   id?: string;
   to?: Address;
+  /** Ids of every part when the message went out as several (`id` is the first). */
+  parts?: string[];
+  /** Parts not sent because the situation changed midway. */
+  unsent_parts?: number;
   error?: ErrorBody;
 }
 
@@ -80,6 +84,53 @@ export interface MessageReceived {
   replies_to_me?: boolean;
   /** Arrived late (catch-up sync, replay): the gate will not let you answer it automatically. */
   offline: boolean;
+  /**
+   * The sender looks like another bot: `interactive` (buttons, menus, templates, Meta's AI),
+   * `official` (a company WhatsApp verified) or `business` (any business account). Present only
+   * when the session's `ignore_bots` rule lets such messages through.
+   */
+  automated?: "interactive" | "official" | "business";
+  /** A place (only with `[sessions.events] locations = true`). */
+  location?: { latitude: number; longitude: number; name?: string; address?: string; live: boolean };
+  /** Contact cards (only with `contacts = true`). */
+  contact?: { names: string[]; phones: string[] };
+  /** A poll (only with `polls = true`); votes are not delivered. */
+  poll?: { question: string; options: string[]; selectable: number };
+}
+
+/** Someone edited a message (only with `[sessions.events] edits = true`). Never answered. */
+export interface MessageEdited {
+  chat: string;
+  sender: string;
+  message_id: string;
+  text: string | null;
+  timestamp: number;
+}
+
+/** Someone deleted a message for everyone (only with `deletions = true`). */
+export interface MessageDeleted {
+  chat: string;
+  sender: string;
+  message_id: string;
+  timestamp: number;
+}
+
+/** Someone is calling (only with `calls = true`). ZapGate never answers calls. */
+export interface CallReceived {
+  from: string;
+  video: boolean;
+  timestamp: number;
+  offline: boolean;
+}
+
+/** Something changed in a group (only with `group_changes = true`). */
+export interface GroupChanged {
+  group: string;
+  change: "joined" | "left" | "promoted" | "demoted" | "subject" | "description" | "settings";
+  participants: string[];
+  by?: string;
+  text?: string;
+  timestamp: number;
 }
 
 export interface MessageStatusEvent {
@@ -108,6 +159,22 @@ export interface RiskEvent {
   ban_expires_in_s?: number;
 }
 
+/** Someone reacted to a message. Not a message: it never allows a reply on its own. */
+export interface MessageReaction {
+  id: string;
+  chat: string;
+  sender: string;
+  sender_alt?: string;
+  is_group: boolean;
+  /** The message that got the reaction. */
+  message_id: string;
+  /** Empty when the reaction was removed. */
+  emoji: string;
+  removed: boolean;
+  timestamp: number;
+  offline: boolean;
+}
+
 interface EventBase<T extends string, D> {
   id: string;
   type: T;
@@ -119,6 +186,11 @@ interface EventBase<T extends string, D> {
 
 export type WebhookEvent =
   | EventBase<"message.received", MessageReceived>
+  | EventBase<"message.reaction", MessageReaction>
+  | EventBase<"message.edited", MessageEdited>
+  | EventBase<"message.deleted", MessageDeleted>
+  | EventBase<"call.received", CallReceived>
+  | EventBase<"group.changed", GroupChanged>
   | EventBase<"message.status", MessageStatusEvent>
   | EventBase<"session.state", SessionStateEvent>
   | EventBase<"session.pairing", PairingEvent>

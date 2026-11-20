@@ -1,7 +1,7 @@
-// Vendored from motor-wa's TypeScript SDK (sdk/typescript/src/index.ts, motor-wa commit 6742498).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/index.ts, ZapGate commit 48ba7f4).
 // Replace with the npm package once it is published; do not edit here.
 
-export { MotorWa, MotorWaError } from "./client.js";
+export { ZapGate, ZapGateError } from "./client.js";
 export type { ClientOptions, SendOptions } from "./client.js";
 export { createWebhookHandler, parseEvent, verifySignature } from "./webhook.js";
 export type { WebhookHandlerOptions } from "./webhook.js";

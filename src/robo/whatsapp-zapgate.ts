@@ -1,25 +1,25 @@
-// O robô falando com o WhatsApp pelo motor-wa (em vez da Baileys): mesma interface `WhatsApp`.
+// O robô falando com o WhatsApp pelo ZapGate (em vez da Baileys): mesma interface `WhatsApp`.
 //
-// O motor-wa roda à parte (serviço próprio no Mac) e mantém a conexão. Ele passa cada envio pelas
+// O ZapGate roda à parte (serviço próprio no Mac) e mantém a conexão. Ele passa cada envio pelas
 // regras anti-ban (só responde a quem escreveu, grupos e organizadores liberados em
 // `allow_initiate`, limites, horário de silêncio, SAIR) e entrega o que chega por webhook assinado.
 // Aqui o robô só: abre um servidorzinho local para o webhook, traduz os eventos para
 // `MensagemRecebida` e manda pela API.
 import { createServer, type Server } from 'node:http';
-import { MotorWa, MotorWaError, createWebhookHandler, type MessageReceived, type SessionStatus } from './motor-wa';
+import { ZapGate, ZapGateError, createWebhookHandler, type MessageReceived, type SessionStatus } from './zapgate';
 import type { MensagemRecebida } from './responder';
 import { ErroFatalWhatsApp, type Grupo, type WhatsApp } from './whatsapp';
 
 export type OpcoesMotor = {
   /** Ex.: http://127.0.0.1:8787 */
   url: string;
-  /** Chave da API do motor-wa (escopos read + send). */
+  /** Chave da API do ZapGate (escopos read + send). */
   chave: string;
-  /** Sessão no motor-wa.toml (padrão "pelada"). */
+  /** Sessão no zapgate.toml (padrão "pelada"). */
   sessao: string;
-  /** Porta local do webhook (o motor-wa.toml aponta `[sessions.webhook] url` para ela). */
+  /** Porta local do webhook (o zapgate.toml aponta `[sessions.webhook] url` para ela). */
   portaWebhook: number;
-  /** Segredo do webhook (o mesmo do motor-wa.toml). */
+  /** Segredo do webhook (o mesmo do zapgate.toml). */
   segredoWebhook: string;
   /** Desiste se a sessão não estiver conectada neste tempo. Sem valor: espera o quanto for. */
   prazoMs?: number;
@@ -28,18 +28,18 @@ export type OpcoesMotor = {
   aoReceber?: (mensagem: MensagemRecebida) => void;
 };
 
-/** Quanto um envio espera o motor-wa reconectar depois de uma queda curta. */
+/** Quanto um envio espera o ZapGate reconectar depois de uma queda curta. */
 const ESPERA_RECONEXAO_MS = 60_000;
 
-/** Estados em que a sessão parou de vez no motor-wa (precisa de gente). */
+/** Estados em que a sessão parou de vez no ZapGate (precisa de gente). */
 const PARADOS = new Set(['wrong_number', 'logged_out', 'replaced', 'banned', 'failed']);
 
 const MSG_PARADO: Record<string, string> = {
-  wrong_number: 'O motor-wa está ligado a outro número. Pareie de novo o número do robô: `motor-wa pair pelada`.',
-  logged_out: 'O WhatsApp desconectou o motor-wa. Pareie de novo: `motor-wa pair pelada`.',
-  replaced: 'Outra conexão com este número tomou o lugar do motor-wa. Veja e rode `motor-wa resume pelada`.',
+  wrong_number: 'O ZapGate está ligado a outro número. Pareie de novo o número do robô: `zapgate pair pelada`.',
+  logged_out: 'O WhatsApp desconectou o ZapGate. Pareie de novo: `zapgate pair pelada`.',
+  replaced: 'Outra conexão com este número tomou o lugar do ZapGate. Veja e rode `zapgate resume pelada`.',
   banned: 'O WhatsApp baniu o número do robô.',
-  failed: 'O motor-wa parou com um erro que reconectar não resolve (veja o log dele).',
+  failed: 'O ZapGate parou com um erro que reconectar não resolve (veja o log dele).',
 };
 
 /** "5583...@s.whatsapp.net" → "5583..."; LID e grupo → null. */
@@ -54,14 +54,14 @@ const usuario = (endereco: string) => endereco.slice(0, endereco.indexOf('@'));
 export const ATRASO_MAXIMO_S = 600;
 
 /**
- * Evento `message.received` do motor-wa → mensagem do robô (mesma forma que vinha da Baileys).
+ * Evento `message.received` do ZapGate → mensagem do robô (mesma forma que vinha da Baileys).
  * `eu`: os endereços do robô (telefone e LID), para tirar a marcação dele do texto.
  *
  * Devolve `null` para o que o robô não deve tratar: sem texto, ou **atrasada** (enviada há mais de
  * 10 minutos). Um comando antigo ("anotar", "sai fulano") que chega depois de uma reconexão não
  * deve mexer na lista agora — foi um disparo assim, com mensagens antigas, que baniu o número.
  */
-export function lerEventoDoMotor(m: MessageReceived, eu: string[], agoraS = Date.now() / 1000): MensagemRecebida | null {
+export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Date.now() / 1000): MensagemRecebida | null {
   if (m.text == null) return null;
   if (agoraS - m.timestamp > ATRASO_MAXIMO_S) return null;
   const doRobo = new Set(eu.map(usuario));
@@ -87,41 +87,46 @@ export function lerEventoDoMotor(m: MessageReceived, eu: string[], agoraS = Date
   };
 }
 
-/** Explica em português uma recusa do motor-wa (o que fazer, se algo). */
+/** Explica em português uma recusa do ZapGate (o que fazer, se algo). */
 export function explicarErro(err: unknown): string {
-  if (!(err instanceof MotorWaError)) return (err as Error).message;
+  if (!(err instanceof ZapGateError)) return (err as Error).message;
   const motivo: Record<string, string> = {
-    receive_only: 'o envio está desligado no motor-wa (motor-wa sending pelada on)',
+    receive_only: 'o envio está desligado no ZapGate (ligue no painel: http://127.0.0.1:8787/panel/)',
+    recipient_not_allowed: 'essa conversa não está liberada no ZapGate (privado só para a lista, outro robô, ou grupo que ele não lê)',
+    loop_suspected: 'essa conversa responde mais rápido que uma pessoa, várias vezes seguidas (outro robô?); pausada por algumas horas',
+    hourly_limit: 'limite de mensagens por hora (o aquecimento reduz os limites nas duas primeiras semanas)',
+    daily_limit: 'limite de mensagens do dia',
+    first_contact_limit: 'limite de conversas novas',
     not_a_reply: 'a conversa não escreveu antes e não está em allow_initiate',
-    offline_message: 'a mensagem chegou atrasada; o motor-wa não deixa responder automaticamente',
+    offline_message: 'a mensagem chegou atrasada; o ZapGate não deixa responder automaticamente',
     opted_out: 'a pessoa pediu para sair',
     quiet_hours: 'horário de silêncio',
     cautious_mode: 'modo cauteloso (sinais de risco): só respostas',
-    not_connected: 'o motor-wa não está conectado agora',
+    not_connected: 'o ZapGate não está conectado agora',
     duplicate_content: 'o mesmo texto acabou de ir para esta conversa',
   };
-  return `motor-wa recusou (${err.code}): ${motivo[err.code] ?? err.message}`;
+  return `zapgate recusou (${err.code}): ${motivo[err.code] ?? err.message}`;
 }
 
-async function esperarConectado(wa: MotorWa, prazoMs: number | undefined, log: (l: string) => void): Promise<SessionStatus> {
+async function esperarConectado(wa: ZapGate, prazoMs: number | undefined, log: (l: string) => void): Promise<SessionStatus> {
   const fim = prazoMs ? Date.now() + prazoMs : Infinity;
   let avisou = false;
   for (;;) {
     const st = await wa.status().catch((e: unknown) => {
-      if (!avisou) log(`motor-wa ainda não responde (${(e as Error).message}); esperando...`);
+      if (!avisou) log(`zapgate ainda não responde (${(e as Error).message}); esperando...`);
       avisou = true;
       return null;
     });
     if (st?.state === 'connected') return st;
-    if (st && PARADOS.has(st.state)) throw new ErroFatalWhatsApp(MSG_PARADO[st.state] ?? `motor-wa: sessão ${st.state}`);
-    if (Date.now() > fim) throw new Error(`motor-wa: a sessão não conectou a tempo (estado: ${st?.state ?? 'sem resposta'})`);
+    if (st && PARADOS.has(st.state)) throw new ErroFatalWhatsApp(MSG_PARADO[st.state] ?? `ZapGate: sessão ${st.state}`);
+    if (Date.now() > fim) throw new Error(`ZapGate: a sessão não conectou a tempo (estado: ${st?.state ?? 'sem resposta'})`);
     await new Promise((r) => setTimeout(r, 2000));
   }
 }
 
-/** Abre o webhook local e espera a sessão conectada no motor-wa. */
+/** Abre o webhook local e espera a sessão conectada no ZapGate. */
 export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
-  const wa = new MotorWa({ baseUrl: op.url, apiKey: op.chave, session: op.sessao });
+  const wa = new ZapGate({ baseUrl: op.url, apiKey: op.chave, session: op.sessao });
   let eu: string[] = [];
   let fatal: ErroFatalWhatsApp | null = null;
   const falhar = (e: ErroFatalWhatsApp) => {
@@ -142,23 +147,23 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
               const st = await wa.status().catch(() => null);
               if (st) eu = [st.own_address, st.own_lid].filter((e): e is string => !!e);
             }
-            const m = lerEventoDoMotor(evento.data, eu);
+            const m = lerEventoDoZapGate(evento.data, eu);
             if (m) op.aoReceber?.(m);
             else if (evento.data.text != null) op.log(`mensagem ${evento.data.id} ignorada: chegou atrasada (enviada há mais de 10 min)`);
             break;
           }
           case 'session.state':
             if (PARADOS.has(evento.data.state)) falhar(new ErroFatalWhatsApp(MSG_PARADO[evento.data.state] ?? evento.data.state));
-            else op.log(`motor-wa: sessão ${evento.data.state}${evento.data.reason ? ` (${evento.data.reason})` : ''}`);
+            else op.log(`ZapGate: sessão ${evento.data.state}${evento.data.reason ? ` (${evento.data.reason})` : ''}`);
             break;
           case 'session.risk':
-            op.log(`motor-wa: risco ${evento.data.level} (${evento.data.signal})`);
+            op.log(`ZapGate: risco ${evento.data.level} (${evento.data.signal})`);
             break;
           default:
             break;
         }
       },
-      onError: (e) => op.log(`webhook do motor-wa: ${(e as Error).message}`),
+      onError: (e) => op.log(`webhook do ZapGate: ${(e as Error).message}`),
     }),
   );
   await new Promise<void>((ok, erro) => {
@@ -169,8 +174,8 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
   try {
     const st = await esperarConectado(wa, op.prazoMs, op.log);
     eu = [st.own_address, st.own_lid].filter((e): e is string => !!e);
-    op.log(`motor-wa conectado (${st.own_address}); envio: ${st.sending}.`);
-    if (st.sending === 'receive_only') op.log('Atenção: o envio está desligado no motor-wa. Para ligar: motor-wa sending pelada on');
+    op.log(`ZapGate conectado (${st.own_address}); envio: ${st.sending}.`);
+    if (st.sending === 'receive_only') op.log('Atenção: o envio está desligado no ZapGate. Para ligar: painel em http://127.0.0.1:8787/panel/ › Regras › Envio');
   } catch (err) {
     servidor.close();
     throw err;
@@ -185,16 +190,17 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     async enviar(conversa: string, texto: string): Promise<void> {
       if (fatal) throw fatal;
-      // Só resolve quando o servidor do WhatsApp confirma (wait=ack é o padrão). Sem `clientRef`:
-      // repetir o mesmo texto é legítimo (duas pessoas perguntando a mesma coisa); o motor-wa só
-      // recusa, com erro, o mesmo texto para a mesma conversa em 2 minutos.
-      const tentar = () => wa.sendText(conversa, texto);
+      // Só resolve quando o servidor do WhatsApp confirma (wait=ack é o padrão). O ZapGate lê,
+      // pensa e digita antes, e quebra respostas longas em partes: pode levar mais de um minuto,
+      // então espera até 3. Sem `clientRef`: repetir o mesmo texto é legítimo (duas pessoas
+      // perguntando a mesma coisa); o ZapGate só recusa o mesmo texto para a mesma conversa em 2 min.
+      const tentar = () => wa.sendText(conversa, texto, { timeoutS: 180 });
       try {
         await tentar();
       } catch (err) {
         // Queda curta: como a Baileys fazia, espera reconectar (até 1 min) e tenta mais uma vez.
         // Só quando nada saiu (não conectado); sem confirmação, a mensagem pode ter saído.
-        if (!(err instanceof MotorWaError && err.code === 'not_connected')) throw new Error(explicarErro(err));
+        if (!(err instanceof ZapGateError && err.code === 'not_connected')) throw new Error(explicarErro(err));
         try {
           await esperarConectado(wa, ESPERA_RECONEXAO_MS, op.log);
           await tentar();
@@ -207,7 +213,7 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       const r = await wa.lookup(tel);
       return r.exists ? (r.address ?? null) : null;
     },
-    // O motor-wa já espaça os envios (pausa sorteada entre mensagens); não há "digitando" à parte.
+    // O próprio ZapGate mostra "digitando…" pelo tempo que uma pessoa levaria, antes de cada parte.
     async digitando(): Promise<void> {},
     async fechar(): Promise<void> {
       await new Promise<void>((ok) => servidor.close(() => ok()));
