@@ -33,6 +33,13 @@ describe('estado do robô', () => {
     expect(lerEstado(arquivo)).toEqual({ ...cheio, proposta });
   });
 
+  it('resumo, lembrete e cobrança do Pix sobrevivem a um reinício', () => {
+    const cobranca = { data: '2026-11-25', ate: '2026-11-27T02:00:00.000Z', diaristas: [{ jogadorId: 1, nome: 'Caio' }], pagos: [], avisarDonoEm: null, analisadas: 2 };
+    const e = { ...cheio, resumoEnviado: '2026-11-25', lembreteEnviado: '2026-11-25', cobranca };
+    gravarEstado(arquivo, e);
+    expect(lerEstado(arquivo)).toEqual(e);
+  });
+
   it('arquivo inexistente: estado vazio', () => {
     expect(lerEstado(arquivo)).toEqual({ ultimo: null, aberturaEnviada: null, grupoId: null, grupoNome: null });
   });

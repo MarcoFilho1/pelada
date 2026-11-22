@@ -63,12 +63,17 @@ export const ATRASO_MAXIMO_S = 600;
  * deve mexer na lista agora — foi um disparo assim, com mensagens antigas, que baniu o número.
  */
 export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Date.now() / 1000): MensagemRecebida | null {
-  if (m.text == null) return null;
+  // Foto ou PDF (comprovante de Pix): entra mesmo sem legenda; o resto sem texto, não.
+  const midia =
+    m.media?.media_id && (m.media.kind === 'image' || m.media.kind === 'document')
+      ? { id: m.media.media_id, tipo: m.media.kind === 'image' ? ('imagem' as const) : ('documento' as const), mime: m.media.mime ?? null }
+      : undefined;
+  if (m.text == null && !midia) return null;
   if (agoraS - m.timestamp > ATRASO_MAXIMO_S) return null;
   const doRobo = new Set(eu.map(usuario));
   const outros = new Set(m.mentions.filter((j) => !eu.includes(j)).map(usuario));
   // No texto a marcação aparece como "@<usuário>": a do robô sai; a de outra pessoa vira "@alguém".
-  const textoLimpo = m.text.replace(/@(\d+)/g, (inteiro, u: string) => (doRobo.has(u) ? ' ' : outros.has(u) ? '@alguém' : inteiro));
+  const textoLimpo = (m.text ?? '').replace(/@(\d+)/g, (inteiro, u: string) => (doRobo.has(u) ? ' ' : outros.has(u) ? '@alguém' : inteiro));
   const privado = !m.is_group;
   return {
     grupoId: m.chat,
@@ -86,6 +91,7 @@ export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Da
     quando: new Date(m.timestamp * 1000),
     id: m.id,
     remetente: m.sender,
+    ...(midia ? { midia } : {}),
     ...(privado ? { privado: true } : {}),
   };
 }
@@ -253,6 +259,10 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
         await new Promise((ok) => setTimeout(ok, 300));
       }
       throw new Error('O servidor do WhatsApp não confirmou a mensagem a tempo.');
+    },
+    async baixarMidia(id: string): Promise<{ bytes: Buffer; mime: string }> {
+      const r = await wa.downloadMedia(id);
+      return { bytes: Buffer.from(await r.arrayBuffer()), mime: r.headers.get('content-type') ?? 'application/octet-stream' };
     },
     // A reação passa pelas mesmas regras do ZapGate (tem limite próprio por hora). Ao reagir ele
     // também marca a mensagem como lida. Espera só ser aceita na fila, não o ack.

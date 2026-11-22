@@ -38,6 +38,15 @@ describe('lerEventoDoZapGate', () => {
     expect(m.quando.getTime()).toBe(1_800_000_000_000);
   });
 
+  it('foto ou PDF entra mesmo sem legenda (comprovante); áudio sem texto não', () => {
+    const foto = lerEventoDoZapGate({ ...base, text: undefined, media: { media_id: 'MID1', kind: 'image', mime: 'image/jpeg' } }, [ROBO, ROBO_LID], AGORA)!;
+    expect(foto).toMatchObject({ texto: '', midia: { id: 'MID1', tipo: 'imagem', mime: 'image/jpeg' } });
+    const pdf = lerEventoDoZapGate({ ...base, text: 'pix', media: { media_id: 'MID2', kind: 'document', mime: 'application/pdf' } }, [ROBO, ROBO_LID], AGORA)!;
+    expect(pdf).toMatchObject({ texto: 'pix', midia: { tipo: 'documento' } });
+    expect(lerEventoDoZapGate({ ...base, text: undefined, media: { media_id: 'MID3', kind: 'audio' } }, [ROBO, ROBO_LID], AGORA)).toBeNull();
+    expect(lerEventoDoZapGate(base, [ROBO, ROBO_LID], AGORA)?.midia).toBeUndefined();
+  });
+
   it('tira a marcação do robô (por LID) e troca a de outra pessoa por @alguém', () => {
     const m = lerEventoDoZapGate(
       { ...base, text: '@100000000000001 bora?  @5583222220000 vem', mentions: [ROBO_LID, '5583222220000@s.whatsapp.net'], mentions_me: true },

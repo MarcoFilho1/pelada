@@ -32,6 +32,8 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
     ...(d.proposta ? { proposta: d.proposta } : {}),
     ...(d.anuncio ? { anuncio: d.anuncio } : {}),
     ...(d.resumoEnviado ? { resumoEnviado: d.resumoEnviado } : {}),
+    ...(d.lembreteEnviado ? { lembreteEnviado: d.lembreteEnviado } : {}),
+    ...(d.cobranca ? { cobranca: d.cobranca } : {}),
   };
 }
 

@@ -1,4 +1,5 @@
 import type { AnuncioGuardado, PropostaGuardada } from './sorteio-zap';
+import type { Cobranca } from './cobranca';
 import { aberturaLista, dataDe, inicioJogo, prazoMensalista } from '@/domain/tempo';
 import { haMudanca, mudancas, type FotoDaLista } from './foto';
 
@@ -20,6 +21,10 @@ export type EstadoDoRobo = {
   anuncio?: AnuncioGuardado | null;
   /** Data ('YYYY-MM-DD') do último resumo do fim da pelada (sai uma vez por noite). */
   resumoEnviado?: string | null;
+  /** Data do último lembrete do Pix aos diaristas. */
+  lembreteEnviado?: string | null;
+  /** O Pix dos diaristas da última pelada (comprovantes até o dia seguinte). */
+  cobranca?: Cobranca | null;
 };
 
 const MEIA_HORA_MS = 30 * 60 * 1000;

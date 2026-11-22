@@ -19,6 +19,8 @@ export interface WhatsApp {
    * espera, "lê" ou "digita"); aí resolve com `'cancelada'`. Ausente: este caminho não cancela.
    */
   enviarCancelavel?(conversa: string, texto: string | string[], cancelar?: () => boolean): Promise<'enviada' | 'cancelada'>;
+  /** Baixa a foto ou o PDF de uma mensagem recebida. Ausente: este caminho não baixa. */
+  baixarMidia?(id: string): Promise<{ bytes: Buffer; mime: string }>;
   /** Reage na mensagem `mensagemId` da conversa (`''` tira a reação). Ausente: este caminho não reage. */
   reagir?(conversa: string, mensagemId: string, emoji: string): Promise<void>;
   fechar(): Promise<void>;

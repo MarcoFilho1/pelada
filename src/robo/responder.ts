@@ -50,6 +50,8 @@ export type MensagemRecebida = {
   id?: string;
   /** Endereço de quem mandou (telefone ou LID), para juntar mensagens quebradas da mesma pessoa. */
   remetente?: string;
+  /** Foto ou PDF que veio na mensagem (o texto, se houver, é a legenda). */
+  midia?: { id: string; tipo: 'imagem' | 'documento'; mime: string | null };
 };
 
 /** Privado: chegou outra mensagem da pessoa enquanto a resposta era feita (ver `juntar.ts`). */
