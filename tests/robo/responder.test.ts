@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ERRO_IA } from '@/robo/ia';
+import { ErroDeLimite } from '@/robo/limite';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
@@ -1462,5 +1463,41 @@ describe('reações na mensagem (perguntas à IA)', () => {
     const c = ctx({ reagir: vi.fn() });
     await responder(msg('como tá a lista?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
     expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+});
+
+describe('limite de envio do ZapGate segurando a resposta', () => {
+  const limite = (tipo: 'minuto' | 'hora' | 'dia', esperarMs = 30_000) => new ErroDeLimite(`limite por ${tipo}`, tipo, esperarMs);
+
+  it('comando segurado: ⌛, espera, manda e tira a ⌛', async () => {
+    const esperas: number[] = [];
+    const enviar = vi.fn().mockRejectedValueOnce(limite('minuto', 20_000)).mockResolvedValue(undefined);
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async (ms: number) => void esperas.push(ms) });
+    const r = await responder(msg('lista'), c);
+    expect(r?.texto).toContain(LISTA);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(esperas).toEqual([22_000]);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+
+  it('pergunta à IA segurada: não repete a ⌛; no fim, a reação de sempre', async () => {
+    const enviar = vi.fn().mockRejectedValueOnce(limite('hora', 60_000)).mockResolvedValue(undefined);
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async () => {} });
+    await responder(msg('quem vai?'), c);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+
+  it('espera demais (ou limite do dia): desiste com ❌', async () => {
+    const longo = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('hora', 3_400_000))), esperar: async () => {} });
+    expect(await responder(msg('lista'), longo)).toBeNull();
+    expect(longo.reagir).toHaveBeenLastCalledWith('❌');
+    const sempre = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('minuto', 60_000))), esperar: async () => {} });
+    expect(await responder(msg('lista'), sempre)).toBeNull();
+    expect(sempre.enviar.mock.calls.length).toBeGreaterThan(5);
+    expect(sempre.reagir).toHaveBeenLastCalledWith('❌');
+    const dia = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('dia'))), esperar: async () => {} });
+    expect(await responder(msg('lista'), dia)).toBeNull();
+    expect(dia.enviar).toHaveBeenCalledTimes(1);
+    expect(dia.reagir).toHaveBeenLastCalledWith('❌');
   });
 });

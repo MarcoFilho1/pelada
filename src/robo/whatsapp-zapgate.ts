@@ -9,6 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { ZapGate, ZapGateError, createWebhookHandler, type MessageReceived, type SessionStatus } from './zapgate';
 import type { MensagemRecebida } from './responder';
 import { ErroFatalWhatsApp, type Grupo, type WhatsApp } from './whatsapp';
+import { ErroDeLimite, type TipoDeLimite } from './limite';
 
 export type OpcoesMotor = {
   /** Ex.: http://127.0.0.1:8787 */
@@ -86,6 +87,14 @@ export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Da
     id: m.id,
     ...(privado ? { privado: true } : {}),
   };
+}
+
+const LIMITES: Record<string, TipoDeLimite> = { rate_limited: 'minuto', hourly_limit: 'hora', daily_limit: 'dia' };
+
+/** Recusa por limite de envio → `ErroDeLimite` (o `responder` espera e tenta de novo); o resto, `null`. */
+export function erroDeLimite(err: unknown): ErroDeLimite | null {
+  if (!(err instanceof ZapGateError) || !LIMITES[err.code]) return null;
+  return new ErroDeLimite(explicarErro(err), LIMITES[err.code], (err.retryAfter ?? 60) * 1000);
 }
 
 /** Explica em português uma recusa do ZapGate (o que fazer, se algo). */
@@ -201,6 +210,8 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       } catch (err) {
         // Queda curta: como a Baileys fazia, espera reconectar (até 1 min) e tenta mais uma vez.
         // Só quando nada saiu (não conectado); sem confirmação, a mensagem pode ter saído.
+        const limite = erroDeLimite(err);
+        if (limite) throw limite;
         if (!(err instanceof ZapGateError && err.code === 'not_connected')) throw new Error(explicarErro(err));
         try {
           await esperarConectado(wa, ESPERA_RECONEXAO_MS, op.log);

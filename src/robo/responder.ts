@@ -30,6 +30,7 @@ import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from '.
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { ERRO_IA, MODELO_PADRAO, TEXTO_IA_FORA, TEXTO_MAX_MUDANCAS } from './ia';
+import { ErroDeLimite } from './limite';
 import { daQuarta, ehAdmin, MAX_TROCAS, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos, type TrocaNosTimes } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -86,6 +87,8 @@ export type ContextoDaResposta = {
    * respondeu) ou ❌ (deu erro).
    */
   reagir?: (emoji: string) => void;
+  /** Pausa enquanto o limite de envio segura a resposta (nos testes, instantânea). */
+  esperar?: (ms: number) => Promise<void>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
   perguntar: (
@@ -940,6 +943,36 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
   return r && { ...r, ehListaCompleta: false, gravar: undefined };
 }
 
+/** Quanto, no total, uma resposta espera o limite de envio liberar antes de desistir. */
+export const ESPERA_MAXIMA_LIMITE_MS = 10 * 60_000;
+
+const dormir = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
+
+/**
+ * Envia; se o limite de envio (por minuto ou por hora) segurar, põe a ⌛ na mensagem (uma vez) e tenta
+ * de novo quando o limite disser, até `ESPERA_MAXIMA_LIMITE_MS` no total. O limite do dia não espera.
+ */
+async function enviarEsperandoLimite(texto: string, c: ContextoDaResposta, ampulheta: { posta: boolean }): Promise<void> {
+  let esperou = 0;
+  for (;;) {
+    try {
+      return await c.enviar(texto);
+    } catch (err) {
+      if (!(err instanceof ErroDeLimite) || err.tipo === 'dia') throw err;
+      // Um pouco além do que o limite pede: a vaga abre de verdade e a próxima tentativa passa.
+      const espera = Math.max(5_000, err.esperarMs + 2_000);
+      if (esperou + espera > ESPERA_MAXIMA_LIMITE_MS) throw err;
+      if (!ampulheta.posta) {
+        c.reagir?.(REACAO_PENSANDO);
+        ampulheta.posta = true;
+      }
+      c.log(`resposta segurada pelo limite (por ${err.tipo}); tenta de novo em ${Math.round(espera / 1000)} s`);
+      await (c.esperar ?? dormir)(espera);
+      esperou += espera;
+    }
+  }
+}
+
 /** O comando já liberado: monta o texto, envia, registra no freio. */
 async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   let r: Omit<Resposta, 'ehListaCompleta'>;
@@ -1018,16 +1051,20 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
+  // Na pergunta à IA a ampulheta já está na mensagem; num comando, só aparece se o limite segurar.
+  const ampulheta = { posta: desfecho !== undefined };
   try {
-    if (emPartes) for (const parte of emPartes) await c.enviar(parte);
-    else await c.enviar(r.texto);
+    if (emPartes) for (const parte of emPartes) await enviarEsperandoLimite(parte, c, ampulheta);
+    else await enviarEsperandoLimite(r.texto, c, ampulheta);
   } catch (err) {
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
-    if (desfecho) c.reagir?.(REACAO_FINAL.erro);
+    // Segurada além da espera máxima (ou limite do dia): o ❌ diz que não vai sair, em vez de ⌛ para sempre.
+    if (ampulheta.posta || err instanceof ErroDeLimite) c.reagir?.(REACAO_FINAL.erro);
     return null;
   }
   // Depois da resposta (não antes: o ✅ não pode aparecer com o texto ainda sendo digitado).
   if (desfecho) c.reagir?.(REACAO_FINAL[desfecho]);
+  else if (ampulheta.posta) c.reagir?.(REACAO_FINAL.resposta);
   c.freio.registrarResposta();
   // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
   return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
