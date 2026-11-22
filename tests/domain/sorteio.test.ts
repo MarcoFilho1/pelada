@@ -1,0 +1,264 @@
+import { describe, expect, it } from 'vitest'
+import {
+  duplasJuntas,
+  diferenca,
+  diferencaMedia,
+  qtdDeTimes,
+  rotuloDaDiferenca,
+  sortearComCompletes,
+  sortearDaNoite,
+  sortearTimes,
+  type JogadorNota,
+} from '@/domain/sorteio'
+import { criarRng } from '../helpers/rng'
+
+function jogadores(notas: number[]): JogadorNota[] {
+  return notas.map((nota, i) => ({ id: i + 1, nome: `J${String(i + 1).padStart(2, '0')}`, nota }))
+}
+
+const ids = (times: { jogadores: JogadorNota[] }[]) =>
+  times.flatMap((t) => t.jogadores.map((j) => j.id)).sort((a, b) => a - b)
+
+describe('sortearTimes', () => {
+  it('16 jogadores: 4 times de 4, todos uma vez, diferença <= 1', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5, 1, 0.5])
+    const times = sortearTimes(js, { rng: criarRng(1) })
+    expect(times.map((t) => t.jogadores.length)).toEqual([4, 4, 4, 4])
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+    expect(diferenca(times)).toBeLessThanOrEqual(1)
+    for (const t of times) {
+      expect(t.soma).toBe(t.jogadores.reduce((s, j) => s + j.nota, 0))
+    }
+  })
+
+  it('nunca junta dois 5 quando dá para separar', () => {
+    const js = jogadores([5, 5, 5, 5, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3])
+    for (const semente of [1, 2, 3, 4, 5]) {
+      const times = sortearTimes(js, { rng: criarRng(semente) })
+      for (const t of times) {
+        expect(t.jogadores.filter((j) => j.nota === 5)).toHaveLength(1)
+      }
+    }
+  })
+
+  it('13 jogadores: tamanhos 4,3,3,3 e média equilibrada', () => {
+    const js = jogadores([5, 4, 4, 3.5, 3, 3, 3, 3, 2.5, 2, 2, 1.5, 1])
+    const times = sortearTimes(js, { rng: criarRng(7) })
+    expect(times.map((t) => t.jogadores.length)).toEqual([4, 3, 3, 3])
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+    expect(diferencaMedia(times)).toBeLessThanOrEqual(1)
+  })
+
+  it('sementes diferentes dão divisões diferentes quando há muitas equivalentes', () => {
+    const js = jogadores(Array(16).fill(3))
+    const a = sortearTimes(js, { rng: criarRng(1) })
+    const b = sortearTimes(js, { rng: criarRng(2) })
+    const chave = (ts: typeof a) => ts.map((t) => t.jogadores.map((j) => j.id).join(',')).join('|')
+    expect(chave(a)).not.toBe(chave(b))
+  })
+
+  it('mantém variedade com notas realistas (20 sementes)', () => {
+    const js = jogadores([4.5, 4.5, 4, 4, 4, 3.5, 3.5, 3.5, 3, 3, 3, 3, 2.5, 2.5, 2, 2])
+    const formas = new Map<string, number>()
+    for (let s = 1; s <= 20; s++) {
+      const times = sortearTimes(js, { rng: criarRng(s) })
+      const forma = times
+        .map((t) => t.jogadores.map((j) => j.nota).join(','))
+        .sort()
+        .join('|')
+      formas.set(forma, (formas.get(forma) ?? 0) + 1)
+    }
+    expect(formas.size).toBeGreaterThanOrEqual(8)
+    expect(Math.max(...formas.values())).toBeLessThanOrEqual(10)
+  })
+
+  it('é determinístico para a mesma semente', () => {
+    const js = jogadores([5, 4, 3, 3, 2, 1, 4, 3, 3, 2, 2, 5, 1, 3, 3, 4])
+    expect(sortearTimes(js, { rng: criarRng(9) })).toEqual(sortearTimes(js, { rng: criarRng(9) }))
+  })
+
+  it('jogadores dentro do time ficam por nota desc e depois nome', () => {
+    const js = jogadores([3, 3, 4, 2, 5, 1, 3, 3])
+    const times = sortearTimes(js, { times: 2, rng: criarRng(3) })
+    for (const t of times) {
+      const ordenado = [...t.jogadores].sort((x, y) => y.nota - x.nota || x.nome.localeCompare(y.nome))
+      expect(t.jogadores).toEqual(ordenado)
+    }
+  })
+
+  it('casos de borda: 0 jogadores e menos jogadores que times', () => {
+    expect(sortearTimes([])).toEqual([0, 1, 2, 3].map(() => ({ jogadores: [], completes: [], soma: 0 })))
+    const tres = sortearTimes(jogadores([3, 4, 5]), { rng: criarRng(1) })
+    expect(tres.map((t) => t.jogadores.length)).toEqual([1, 1, 1, 0])
+    expect(diferencaMedia(tres)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('3000 tentativas com 16 jogadores completam', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5, 1, 0.5])
+    const times = sortearTimes(js, { tentativas: 3000, rng: criarRng(11) })
+    expect(ids(times)).toHaveLength(16)
+  })
+})
+
+describe('diferenca', () => {
+  it('maior soma menos menor soma', () => {
+    expect(
+      diferenca([
+        { jogadores: [], completes: [], soma: 10 },
+        { jogadores: [], completes: [], soma: 7.5 },
+      ]),
+    ).toBe(2.5)
+  })
+})
+
+describe('rotuloDaDiferenca', () => {
+  const time = (notas: number[]) => ({ jogadores: jogadores(notas), completes: [] as number[], soma: notas.reduce((a, b) => a + b, 0) })
+
+  it('tamanhos iguais: diferença das somas', () => {
+    expect(rotuloDaDiferenca([time([4, 3]), time([3, 2.5])])).toBe('Diferença: 1,5')
+  })
+
+  it('tamanhos diferentes: diferença das médias, uma casa, por jogador', () => {
+    // médias 3,5 e 3,0 (somas 10,5 x 6): a soma diria 4,5
+    expect(rotuloDaDiferenca([time([4, 3.5, 3]), time([3, 3])])).toBe('Diferença: 0,5 por jogador')
+  })
+})
+
+describe('sortearComCompletes', () => {
+  const tamanhoDe = (t: { jogadores: unknown[]; completes: number[] }) => t.jogadores.length + t.completes.length
+
+  it('14 jogadores: 4 times de 4, 2 completes no total, ids reais uma vez', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5])
+    const times = sortearComCompletes(js, { rng: criarRng(3) })
+    expect(times.map(tamanhoDe)).toEqual([4, 4, 4, 4])
+    expect(times.flatMap((t) => t.completes)).toHaveLength(2)
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+    for (const t of times) expect(t.soma).toBeCloseTo(t.jogadores.reduce((s, j) => s + j.nota, 0) + t.completes.reduce((s, x) => s + x, 0))
+  })
+
+  it('nota de complete só 2,5, 3 ou 3,5', () => {
+    const js = jogadores([5, 1, 4, 2, 3, 3, 0.5, 4.5, 3.5, 2.5, 1.5])
+    for (const semente of [1, 2, 3]) {
+      for (const c of sortearComCompletes(js, { rng: criarRng(semente) }).flatMap((t) => t.completes)) {
+        expect([2.5, 3, 3.5]).toContain(c)
+      }
+    }
+  })
+
+  it('5 jogadores, 4 times: todo time tem jogador de verdade', () => {
+    const js = jogadores([5, 4, 3, 2, 1])
+    for (const semente of [1, 2, 3, 4]) {
+      const times = sortearComCompletes(js, { rng: criarRng(semente) })
+      expect(times).toHaveLength(4)
+      expect(times.map(tamanhoDe)).toEqual([4, 4, 4, 4])
+      for (const t of times) expect(t.jogadores.length).toBeGreaterThan(0)
+      expect(ids(times)).toEqual(js.map((j) => j.id))
+    }
+  })
+
+  it('16 jogadores: sem complete, igual a sortearTimes', () => {
+    const js = jogadores([5, 4.5, 4, 4, 3.5, 3.5, 3, 3, 3, 2.5, 2.5, 2, 2, 1.5, 1, 0.5])
+    const a = sortearComCompletes(js, { rng: criarRng(9) })
+    expect(a.flatMap((t) => t.completes)).toEqual([])
+    expect(a).toEqual(sortearTimes(js, { rng: criarRng(9) }))
+  })
+
+  it('14 de nota 2,0 → completes 2,5; 14 de 4,5 → completes 3,5', () => {
+    const baixos = sortearComCompletes(jogadores(Array(14).fill(2)), { rng: criarRng(5) })
+    expect(baixos.flatMap((t) => t.completes)).toEqual([2.5, 2.5])
+    const altos = sortearComCompletes(jogadores(Array(14).fill(4.5)), { rng: criarRng(5) })
+    expect(altos.flatMap((t) => t.completes)).toEqual([3.5, 3.5])
+  })
+
+  it('diferenca conta a nota dos completes', () => {
+    const t = (completes: number[], soma: number) => ({ jogadores: [], completes, soma })
+    expect(diferenca([t([3], 12), t([], 10)])).toBe(2)
+    expect(rotuloDaDiferenca([{ jogadores: [{ id: 1, nome: 'A', nota: 3 }], completes: [3], soma: 6 }, { jogadores: [{ id: 2, nome: 'B', nota: 3 }, { id: 3, nome: 'C', nota: 3 }], completes: [], soma: 6 }])).toBe('Diferença: 0,0')
+  })
+
+  it('empate de custo: vence a combinação de notas mais perto de 3,0', () => {
+    // 4 jogadores de 3,0, 2 times de 3: [3, 3] e [2,5, 3,5] (no mesmo time) empatam em custo 0
+    const js = jogadores([3, 3, 3, 3])
+    for (const semente of [1, 2, 3, 4, 5, 6]) {
+      const times = sortearComCompletes(js, { times: 2, porTime: 3, rng: criarRng(semente) })
+      expect(times.flatMap((t) => t.completes).sort()).toEqual([3, 3])
+    }
+  })
+})
+
+describe('qtdDeTimes', () => {
+  it('só 3 ou 4; qualquer outra coisa vira 4', () => {
+    expect(qtdDeTimes(3)).toBe(3)
+    expect(qtdDeTimes(4)).toBe(4)
+    for (const ruim of [undefined, null, 0, 2, 5, 3.5, '3', '4', NaN, [3], { times: 3 }]) expect(qtdDeTimes(ruim), String(ruim)).toBe(4)
+  })
+})
+
+describe('sortearDaNoite (a regra do site e do robô)', () => {
+  const tamanhos = (ts: { jogadores: unknown[] }[]) => ts.map((t) => t.jogadores.length).sort((a, b) => b - a)
+  const notas = (n: number) => jogadores(Array.from({ length: n }, (_, i) => [5, 4, 3.5, 3, 2.5, 2, 1.5][i % 7]))
+
+  it.each([
+    [12, [4, 4, 4], 0],
+    [13, [5, 4, 4], 0],
+    [15, [5, 5, 5], 0],
+    [11, [4, 4, 3], 1],
+  ])('%i jogadores em 3 times: tamanhos %j e %i COMPLETE', (n, esperado, completes) => {
+    const js = notas(n)
+    const times = sortearDaNoite(js, 3, criarRng(4))
+    expect(times).toHaveLength(3)
+    expect(tamanhos(times)).toEqual(esperado)
+    expect(times.flatMap((t) => t.completes)).toHaveLength(completes)
+    for (const t of times) expect(t.jogadores.length + t.completes.length).toBeGreaterThanOrEqual(4)
+    expect(ids(times)).toEqual(js.map((j) => j.id))
+  })
+
+  it('4 times continua como antes: 14 jogadores, 2 COMPLETE; 17 viram 5,4,4,4', () => {
+    expect(sortearDaNoite(notas(14), 4, criarRng(2)).flatMap((t) => t.completes)).toHaveLength(2)
+    expect(tamanhos(sortearDaNoite(notas(17), 4, criarRng(2)))).toEqual([5, 4, 4, 4])
+  })
+
+  it('com 2 jogadores e 3 times: só 2 times (nunca time sem jogador)', () => {
+    const times = sortearDaNoite(notas(2), 3, criarRng(1))
+    expect(times).toHaveLength(2)
+    for (const t of times) expect(t.jogadores.length).toBeGreaterThan(0)
+  })
+})
+
+describe('duplas separadas no sorteio da noite', () => {
+  const jogadores = Array.from({ length: 16 }, (_, i) => ({ id: i + 1, nome: `J${i + 1}`, nota: 2 + (i % 5) * 0.5 }))
+  const doMesmoTime = (times: { jogadores: { id: number }[] }[], a: number, b: number) =>
+    times.some((t) => t.jogadores.some((j) => j.id === a) && t.jogadores.some((j) => j.id === b))
+
+  it('a dupla nunca cai no mesmo time (3 e 4 times, com e sem COMPLETE, várias sementes)', () => {
+    for (let semente = 1; semente <= 40; semente++) {
+      for (const [qtd, n] of [[4, 16], [3, 13], [4, 14]] as const) {
+        const times = sortearDaNoite(jogadores.slice(0, n), qtd, criarRng(semente), [[1, 2], [3, 4]])
+        expect(doMesmoTime(times, 1, 2)).toBe(false)
+        expect(doMesmoTime(times, 3, 4)).toBe(false)
+        expect(times.flatMap((t) => t.jogadores)).toHaveLength(n)
+      }
+    }
+  })
+
+  it('dupla de quem não está jogando hoje não atrapalha', () => {
+    const times = sortearDaNoite(jogadores, 4, criarRng(3), [[1, 99]])
+    expect(times.flatMap((t) => t.jogadores)).toHaveLength(16)
+  })
+
+  it('impossível separar (2 times e 3 pessoas que se excluem): sorteia sem a regra e duplasJuntas mostra quem ficou junto', () => {
+    const tres = jogadores.slice(0, 4)
+    const separar = [[1, 2], [2, 3], [1, 3]] as const
+    const times = sortearDaNoite(tres, 3 as never, criarRng(5), separar)
+    expect(times.flatMap((t) => t.jogadores)).toHaveLength(4)
+    const doisTimes = sortearComCompletes(tres, { times: 2, porTime: 2, rng: criarRng(5), separar })
+    expect(doisTimes).toEqual([])
+    const semRegra = sortearComCompletes(tres, { times: 2, porTime: 2, rng: criarRng(5) })
+    expect(duplasJuntas(semRegra, separar).length).toBeGreaterThan(0)
+  })
+
+  it('duplasJuntas: só as duplas que estão no mesmo time', () => {
+    const times = [{ jogadores: [{ id: 1 }, { id: 2 }] }, { jogadores: [{ id: 3 }, { id: 4 }] }]
+    expect(duplasJuntas(times, [[1, 2], [1, 3], [4, 3]])).toEqual([[1, 2], [4, 3]])
+  })
+})

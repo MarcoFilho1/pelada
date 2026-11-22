@@ -1,0 +1,78 @@
+import { cookies } from 'next/headers';
+import type { DB } from '@/db/client';
+import { dadosSessaoJogador, validarSessaoAdmin, versaoSessaoAdmin, validarSessaoJogador, type SessaoJogador } from './auth';
+import { COOKIE_ANOTADOR, validarChaveAnotador } from './anotador';
+import { assinarToken, COOKIE_ADMIN, COOKIE_JOGADOR, verificarToken, type Token } from './token';
+
+const DIA = 24 * 60 * 60;
+const VALIDADE_JOGADOR = 365 * DIA;
+const VALIDADE_ADMIN = 30 * DIA;
+
+async function gravar(nome: string, payload: Token, validadeSeg: number) {
+  const token = await assinarToken(payload, validadeSeg);
+  (await cookies()).set(nome, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: validadeSeg,
+  });
+}
+
+/**
+ * Grava a sessão do jogador (365 dias) com a versão de sessão e o `precisaTrocar` atuais
+ * do banco. Chamar só em Server Function ou Route Handler.
+ */
+export async function criarSessaoJogador(db: DB, jogadorId: number): Promise<void> {
+  const dados = await dadosSessaoJogador(db, jogadorId);
+  if (!dados) throw new Error(`Jogador ${jogadorId} inativo ou inexistente`);
+  await gravar(
+    COOKIE_JOGADOR,
+    { tipo: 'jogador', jogadorId, precisaTrocar: dados.precisaTrocar, versao: dados.versao },
+    VALIDADE_JOGADOR,
+  );
+}
+
+/** Grava a sessão admin (30 dias), separada da do jogador, com a versão de sessão atual do banco. */
+export async function criarSessaoAdmin(db: DB, adminId: number): Promise<void> {
+  const versao = await versaoSessaoAdmin(db, adminId);
+  if (versao === null) throw new Error(`Admin ${adminId} inexistente`);
+  await gravar(COOKIE_ADMIN, { tipo: 'admin', adminId, versao }, VALIDADE_ADMIN);
+}
+
+/**
+ * Sessão do jogador conferida no banco: `null` (deslogado) se o cookie falta ou é inválido,
+ * se o jogador foi desativado ou se as sessões dele foram revogadas.
+ */
+export async function lerSessaoJogador(db: DB): Promise<SessaoJogador | null> {
+  const t = await verificarToken((await cookies()).get(COOKIE_JOGADOR)?.value);
+  return t?.tipo === 'jogador' ? validarSessaoJogador(db, t) : null;
+}
+
+/** Sessão admin conferida no banco: `null` se o cookie falta, é inválido ou o admin não existe. */
+export async function lerSessaoAdmin(db: DB): Promise<{ adminId: number } | null> {
+  const t = await verificarToken((await cookies()).get(COOKIE_ADMIN)?.value);
+  return t?.tipo === 'admin' ? validarSessaoAdmin(db, t) : null;
+}
+
+/** Quem pode mexer nas telas de partida: o admin (tudo) ou o anotador do link (só a pelada da chave). */
+export type AcessoPartidas = { tipo: 'admin' } | { tipo: 'anotador'; peladaId: number };
+
+/** Admin primeiro; sem ele, o cookie do link de anotar conferido no banco (vencido ou revogado = `null`). */
+export async function lerAcessoPartidas(db: DB, now: Date = new Date()): Promise<AcessoPartidas | null> {
+  if (await lerSessaoAdmin(db)) return { tipo: 'admin' };
+  const link = await validarChaveAnotador(db, (await cookies()).get(COOKIE_ANOTADOR)?.value, now);
+  return link ? { tipo: 'anotador', peladaId: link.peladaId } : null;
+}
+
+/** O acesso vale para esta pelada? O admin vale para todas; o anotador, só para a do link. */
+export const acessoNaPelada = (a: AcessoPartidas | null, peladaId: number | null): boolean =>
+  a !== null && (a.tipo === 'admin' || (peladaId !== null && a.peladaId === peladaId));
+
+/** Para onde vai quem não tem acesso: o anotador, para o aviso de link vencido; os outros, para o login. */
+export const destinoSemAcesso = (a: AcessoPartidas | null) => (a?.tipo === 'anotador' ? LINK_VENCIDO : '/admin/entrar');
+export const LINK_VENCIDO = '/anotar/vencido';
+
+export async function sair(tipo: 'jogador' | 'admin'): Promise<void> {
+  (await cookies()).delete(tipo === 'jogador' ? COOKIE_JOGADOR : COOKIE_ADMIN);
+}

@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793831528457,
+      "tag": "0000_jazzy_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793833476152,
+      "tag": "0001_sessao_versao",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793835197791,
+      "tag": "0002_wild_toad_men",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793851182386,
+      "tag": "0003_bright_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793885603972,
+      "tag": "0004_concerned_peter_quill",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794843159191,
+      "tag": "0005_same_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794851046369,
+      "tag": "0006_ancient_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795057419700,
+      "tag": "0007_dark_shinko_yamashiro",
+      "breakpoints": true
+    }
+  ]
+}

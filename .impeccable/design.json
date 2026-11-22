@@ -1,0 +1,281 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T22:56:44.833235+00:00",
+  "title": "Design System: Pelada",
+  "extensions": {
+    "colorMeta": {
+      "chao": {
+        "role": "neutral",
+        "displayName": "Chão de quadra à noite",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "#070707",
+          "#050505",
+          "#020202",
+          "#000000",
+          "#353535",
+          "#6d6d6d",
+          "#a4a4a4",
+          "#dddddd"
+        ]
+      },
+      "placa": {
+        "role": "neutral",
+        "displayName": "Placa",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "#0c0c0c",
+          "#0e0e0e",
+          "#0f0f0f",
+          "#111111",
+          "#424242",
+          "#767676",
+          "#aaaaaa",
+          "#dedede"
+        ]
+      },
+      "placa-alta": {
+        "role": "neutral",
+        "displayName": "Placa alta",
+        "canonical": "#2a2a2a",
+        "tonalRamp": [
+          "#141414",
+          "#1b1b1b",
+          "#222222",
+          "#2a2a2a",
+          "#565656",
+          "#848484",
+          "#b2b2b2",
+          "#e1e1e1"
+        ]
+      },
+      "tinta": {
+        "role": "neutral",
+        "displayName": "Tinta de placa",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#545454",
+          "#8c8c8c",
+          "#c4c4c4",
+          "#fcfcfc",
+          "#fdfdfd",
+          "#fbfbfb",
+          "#f8f8f8",
+          "#f6f6f6"
+        ]
+      },
+      "apagado": {
+        "role": "neutral",
+        "displayName": "Tinta gasta",
+        "canonical": "#b4b4b4",
+        "tonalRamp": [
+          "#3d3d3d",
+          "#646464",
+          "#8b8b8b",
+          "#b2b2b2",
+          "#c2c2c2",
+          "#d1d1d1",
+          "#e0e0e0",
+          "#eeeeee"
+        ]
+      },
+      "meta": {
+        "role": "neutral",
+        "displayName": "Giz",
+        "canonical": "#949494",
+        "tonalRamp": [
+          "#333333",
+          "#535353",
+          "#727272",
+          "#929292",
+          "#a9a9a9",
+          "#bfbfbf",
+          "#d5d5d5",
+          "#ebebeb"
+        ]
+      },
+      "lima": {
+        "role": "primary",
+        "displayName": "Lima de colete",
+        "canonical": "#c6f24e",
+        "tonalRamp": [
+          "#42501e",
+          "#6d852e",
+          "#98ba3d",
+          "#c3ef4d",
+          "#d0f372",
+          "#dbf398",
+          "#e6f4be",
+          "#f0f5e4"
+        ]
+      },
+      "erro": {
+        "role": "error",
+        "displayName": "Cartão vermelho",
+        "canonical": "#ff6166",
+        "tonalRamp": [
+          "#542426",
+          "#8c383b",
+          "#c44c50",
+          "#fc6065",
+          "#fd8185",
+          "#fba3a5",
+          "#f8c4c6",
+          "#f6e6e7"
+        ]
+      },
+      "erro-fundo": {
+        "role": "error",
+        "displayName": "Fundo de erro",
+        "canonical": "#2c1a1c",
+        "tonalRamp": [
+          "#140f0f",
+          "#1c1214",
+          "#241618",
+          "#2c1a1c",
+          "#57494b",
+          "#857b7c",
+          "#b3adae",
+          "#e1dfdf"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "titulo": {
+        "displayName": "Título",
+        "purpose": "h1 de cada tela, frase curta."
+      },
+      "numero": {
+        "displayName": "Número",
+        "purpose": "Dígito pintado na placa do PIN; depois placar e contagens."
+      },
+      "marca": {
+        "displayName": "Marca",
+        "purpose": "\"Pelada\" na barra do topo."
+      },
+      "linha": {
+        "displayName": "Linha",
+        "purpose": "Itens tocáveis, texto de campo, rótulo do botão."
+      },
+      "corpo": {
+        "displayName": "Corpo",
+        "purpose": "Descrições, rótulos e mensagens."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "pendurar",
+        "value": "pendurar 90ms steps(2, end)",
+        "purpose": "A placa pendurada: o número desce 6px em dois quadros. Desligado com prefers-reduced-motion."
+      },
+      {
+        "name": "cor-estado",
+        "value": "150ms ease",
+        "purpose": "Troca de fundo das placas e de cor dos links."
+      },
+      {
+        "name": "revelar-numero",
+        "value": "700ms",
+        "purpose": "Tempo que o dígito recém-digitado fica pintado antes de virar ponto."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "md",
+        "value": "768px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão primário",
+      "kind": "button",
+      "refersTo": "botao-primario",
+      "description": "A única ação primária da tela: pílula branca, texto preto.",
+      "html": "<button class=\"ds-btn-primario\">Entrar</button>",
+      "css": ".ds-btn-primario{height:56px;width:100%;border:0;border-radius:9999px;background:#fff;color:#000;font:600 18px/1.4 Inter,system-ui,sans-serif;transition:background-color .15s}.ds-btn-primario:hover{background:#b4b4b4}.ds-btn-primario:active{background:#949494}.ds-btn-primario:focus-visible{outline:2px solid #fff;outline-offset:3px}.ds-btn-primario:disabled{background:#2a2a2a;color:#b4b4b4}"
+    },
+    {
+      "name": "Campo",
+      "kind": "input",
+      "refersTo": "campo",
+      "description": "Campo de texto com rótulo acima, sem borda, na placa.",
+      "html": "<label class=\"ds-rotulo\" for=\"ds-nome\">Seu nome</label><input id=\"ds-nome\" class=\"ds-campo\" placeholder=\"Comece a digitar\">",
+      "css": ".ds-rotulo{display:block;color:#b4b4b4;font:500 16px/1.5 Inter,system-ui,sans-serif}.ds-campo{margin-top:8px;height:56px;width:100%;border:0;border-radius:10px;background:#111;color:#fff;padding:0 16px;font:400 18px/1.4 Inter,system-ui,sans-serif;caret-color:#c6f24e;outline:none}.ds-campo::placeholder{color:#949494}.ds-campo:focus{box-shadow:0 0 0 2px #fff}.ds-campo[aria-invalid=true]{box-shadow:0 0 0 2px #ff6166}"
+    },
+    {
+      "name": "Linha tocável",
+      "kind": "custom",
+      "refersTo": "linha-tocavel",
+      "description": "Nome sugerido: 56px, seta desenhada à direita.",
+      "html": "<button class=\"ds-linha\"><span>Caio</span><svg viewBox=\"0 0 20 20\" width=\"20\" height=\"20\" fill=\"none\" aria-hidden=\"true\"><path d=\"M7.5 4.5 13 10l-5.5 5.5\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button>",
+      "css": ".ds-linha{display:flex;align-items:center;justify-content:space-between;width:100%;height:56px;padding:0 16px;border:0;border-radius:10px;background:transparent;color:#fff;font:500 18px/1.4 Inter,system-ui,sans-serif;text-align:left}.ds-linha svg{color:#949494}.ds-linha:hover{background:#111}.ds-linha:active{background:#2a2a2a}.ds-linha:focus-visible{outline:2px solid #fff;outline-offset:3px}"
+    },
+    {
+      "name": "Barra do topo",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Marca à esquerda, no máximo um link de texto à direita, no fundo preto.",
+      "html": "<header class=\"ds-topo\"><a class=\"ds-marca\" href=\"#\">Pelada</a><a class=\"ds-link\" href=\"#\">Admin</a></header>",
+      "css": ".ds-topo{display:flex;align-items:center;justify-content:space-between;height:56px;background:#000;padding:0 20px}.ds-marca{color:#fff;text-decoration:none;font:600 24px/1 'Barlow Condensed',Inter,sans-serif}.ds-link{color:#b4b4b4;text-decoration:none;font:500 16px/1.5 Inter,system-ui,sans-serif;padding:12px;margin:-12px;transition:color .15s}.ds-link:hover{color:#fff}.ds-link:focus-visible{outline:2px solid #fff;outline-offset:3px}"
+    },
+    {
+      "name": "Placas do PIN",
+      "kind": "custom",
+      "refersTo": "placa-pin",
+      "description": "Assinatura: quatro placas de placar; vazia, atual, pendurada (número pintado e depois ponto) e erro.",
+      "html": "<div class=\"ds-placas\"><div class=\"ds-placa ds-pendurada\"><span class=\"ds-ponto\"></span></div><div class=\"ds-placa ds-pendurada\"><span class=\"ds-numero\">4</span></div><div class=\"ds-placa ds-atual\"><span class=\"ds-traco\"></span></div><div class=\"ds-placa\"><span class=\"ds-traco\"></span></div></div>",
+      "css": ".ds-placas{display:flex;gap:12px}.ds-placa{display:flex;align-items:center;justify-content:center;width:64px;height:76px;border-radius:10px;background:#111;transition:background-color .15s}.ds-pendurada{background:#2a2a2a}.ds-atual{box-shadow:inset 0 0 0 2px #fff}.ds-traco{width:24px;height:4px;border-radius:9999px;background:#2a2a2a}.ds-ponto{width:16px;height:16px;border-radius:9999px;background:#fff}.ds-numero{color:#fff;font:600 44px/1 'Barlow Condensed',Inter,sans-serif;animation:ds-pendurar 90ms steps(2,end)}@keyframes ds-pendurar{from{transform:translateY(-6px)}to{transform:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "O placar de várzea à noite",
+    "overview": "O placar de madeira ou de chapa da quadra de várzea: placas pretas penduradas à mão, números pintados de branco, refletor aceso e céu preto. O mundo empresta quatro coisas e só elas: o preto puro do fundo, as placas um degrau de luz acima, a letra condensada de pintor de placa para títulos e números, e um gesto-assinatura — pendurar a placa. A densidade é baixa e a escala é grande: uma tarefa por tela, alvos de toque de 56px, texto a 16px ou mais; tudo que importa fica no terço de cima, acima do teclado.",
+    "keyCharacteristics": [
+      "Fundo preto puro (#000); elevação só por luminosidade (#111, #2a2a2a), sem borda e sem sombra.",
+      "Duas letras: Barlow Condensed 600 para títulos, marca e números; Inter para o resto.",
+      "Lima só para estado; vermelho só para erro; nenhum dos dois em botão, aba ou navegação.",
+      "Ação principal por inversão: pílula branca com texto preto.",
+      "Uma tarefa por tela; o conteúdo começa no topo no celular e centraliza na altura em telas largas."
+    ],
+    "rules": [
+      {
+        "name": "A Regra do Sinal Raro",
+        "body": "Lima e vermelho só aparecem quando carregam significado: lima para algo pendurado ou confirmado, vermelho para erro. Uma tela em repouso é preto, branco e cinza.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra da Inversão",
+        "body": "A ação primária é a pílula branca com texto preto. A cor de destaque nunca preenche um botão.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra da Placa",
+        "body": "Barlow Condensed só em títulos, na marca e em números. Frases corridas, rótulos e botões são Inter. Caixa normal, sem letras espaçadas em maiúsculas.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra do Chão Plano",
+        "body": "Nada em repouso tem sombra, borda ou brilho. Se algo precisar flutuar (menu, folha), aí sim ganha sombra — e só ele.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do manter fundo #000 e separar superfícies só por luminosidade (#111, #2a2a2a).",
+      "Do usar a pílula branca com texto preto para a única ação primária da tela.",
+      "Do manter alvos de toque de 56px nos controles principais e nunca menos de 48px.",
+      "Do pôr o conteúdo no terço de cima no celular, acima do teclado.",
+      "Do usar Barlow Condensed 600 para títulos e números, Inter para frases.",
+      "Do escrever mensagens que digam o problema e a saída (\"PIN errado. Tente de novo.\" + \"Esqueceu o PIN? Peça ao admin para zerar.\")."
+    ],
+    "donts": [
+      "Don't usar lima ou vermelho em botões, abas ou navegação.",
+      "Don't pôr sombra, borda ou brilho em superfícies em repouso.",
+      "Don't usar fundo azul-marinho ou ardósia no lugar do preto.",
+      "Don't pôr rótulo pequeno acima do título, numeração 01/02/03 ou \"Passo 1 de 2\".",
+      "Don't usar emoji ou caractere Unicode como ícone; ícones são SVG de um traço só (1,75px).",
+      "Don't desabilitar o campo de PIN durante a conferência (fecha o teclado do celular)."
+    ]
+  }
+}

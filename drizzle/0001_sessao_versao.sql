@@ -1,0 +1,1 @@
+ALTER TABLE "jogadores" ADD COLUMN "sessao_versao" integer DEFAULT 0 NOT NULL;

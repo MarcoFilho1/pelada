@@ -1,0 +1,785 @@
+{
+  "id": "5fc0f195-57d7-4d16-bab9-b05c68496855",
+  "prevId": "5d5892b7-5931-4cca-8628-b6a257017fe3",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.admins": {
+      "name": "admins",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "usuario": {
+          "name": "usuario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "senha_hash": {
+          "name": "senha_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "erros": {
+          "name": "erros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bloqueado_ate": {
+          "name": "bloqueado_ate",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sessao_versao": {
+          "name": "sessao_versao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "admins_usuario_unique": {
+          "name": "admins_usuario_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "usuario"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.jogadores": {
+      "name": "jogadores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nota": {
+          "name": "nota",
+          "type": "numeric(2, 1)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'3.0'"
+        },
+        "pin_hash": {
+          "name": "pin_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pin_precisa_trocar": {
+          "name": "pin_precisa_trocar",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "pin_erros": {
+          "name": "pin_erros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bloqueado_ate": {
+          "name": "bloqueado_ate",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sessao_versao": {
+          "name": "sessao_versao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "jogadores_nome_lower_uniq": {
+          "name": "jogadores_nome_lower_uniq",
+          "columns": [
+            {
+              "expression": "lower(\"nome\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lances": {
+      "name": "lances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "partida_id": {
+          "name": "partida_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jogador_id": {
+          "name": "jogador_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "tipo_lance",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "lances_partida_id_partidas_id_fk": {
+          "name": "lances_partida_id_partidas_id_fk",
+          "tableFrom": "lances",
+          "tableTo": "partidas",
+          "columnsFrom": [
+            "partida_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lances_jogador_id_jogadores_id_fk": {
+          "name": "lances_jogador_id_jogadores_id_fk",
+          "tableFrom": "lances",
+          "tableTo": "jogadores",
+          "columnsFrom": [
+            "jogador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mensalistas_mes": {
+      "name": "mensalistas_mes",
+      "schema": "",
+      "columns": {
+        "mes": {
+          "name": "mes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jogador_id": {
+          "name": "jogador_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mensalistas_mes_jogador_id_jogadores_id_fk": {
+          "name": "mensalistas_mes_jogador_id_jogadores_id_fk",
+          "tableFrom": "mensalistas_mes",
+          "tableTo": "jogadores",
+          "columnsFrom": [
+            "jogador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "mensalistas_mes_mes_jogador_id_pk": {
+          "name": "mensalistas_mes_mes_jogador_id_pk",
+          "columns": [
+            "mes",
+            "jogador_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.partida_jogadores": {
+      "name": "partida_jogadores",
+      "schema": "",
+      "columns": {
+        "partida_id": {
+          "name": "partida_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jogador_id": {
+          "name": "jogador_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lado": {
+          "name": "lado",
+          "type": "lado_partida",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partida_jogadores_partida_id_partidas_id_fk": {
+          "name": "partida_jogadores_partida_id_partidas_id_fk",
+          "tableFrom": "partida_jogadores",
+          "tableTo": "partidas",
+          "columnsFrom": [
+            "partida_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partida_jogadores_jogador_id_jogadores_id_fk": {
+          "name": "partida_jogadores_jogador_id_jogadores_id_fk",
+          "tableFrom": "partida_jogadores",
+          "tableTo": "jogadores",
+          "columnsFrom": [
+            "jogador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "partida_jogadores_partida_id_jogador_id_pk": {
+          "name": "partida_jogadores_partida_id_jogador_id_pk",
+          "columns": [
+            "partida_id",
+            "jogador_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.partidas": {
+      "name": "partidas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pelada_id": {
+          "name": "pelada_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_a_id": {
+          "name": "time_a_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_b_id": {
+          "name": "time_b_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iniciada_em": {
+          "name": "iniciada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "encerrada_em": {
+          "name": "encerrada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resultado": {
+          "name": "resultado",
+          "type": "resultado_partida",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partidas_pelada_id_peladas_id_fk": {
+          "name": "partidas_pelada_id_peladas_id_fk",
+          "tableFrom": "partidas",
+          "tableTo": "peladas",
+          "columnsFrom": [
+            "pelada_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partidas_time_a_id_times_id_fk": {
+          "name": "partidas_time_a_id_times_id_fk",
+          "tableFrom": "partidas",
+          "tableTo": "times",
+          "columnsFrom": [
+            "time_a_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "partidas_time_b_id_times_id_fk": {
+          "name": "partidas_time_b_id_times_id_fk",
+          "tableFrom": "partidas",
+          "tableTo": "times",
+          "columnsFrom": [
+            "time_b_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.peladas": {
+      "name": "peladas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado_manual": {
+          "name": "estado_manual",
+          "type": "estado_manual",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "peladas_data_unique": {
+          "name": "peladas_data_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "data"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.presencas": {
+      "name": "presencas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pelada_id": {
+          "name": "pelada_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jogador_id": {
+          "name": "jogador_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "tipo_presenca",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "status_presenca",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entrou_em": {
+          "name": "entrou_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "atualizado_em": {
+          "name": "atualizado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "presencas_pelada_jogador_uniq": {
+          "name": "presencas_pelada_jogador_uniq",
+          "columns": [
+            {
+              "expression": "pelada_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "jogador_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presencas_pelada_id_peladas_id_fk": {
+          "name": "presencas_pelada_id_peladas_id_fk",
+          "tableFrom": "presencas",
+          "tableTo": "peladas",
+          "columnsFrom": [
+            "pelada_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "presencas_jogador_id_jogadores_id_fk": {
+          "name": "presencas_jogador_id_jogadores_id_fk",
+          "tableFrom": "presencas",
+          "tableTo": "jogadores",
+          "columnsFrom": [
+            "jogador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.time_jogadores": {
+      "name": "time_jogadores",
+      "schema": "",
+      "columns": {
+        "time_id": {
+          "name": "time_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jogador_id": {
+          "name": "jogador_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "time_jogadores_time_id_times_id_fk": {
+          "name": "time_jogadores_time_id_times_id_fk",
+          "tableFrom": "time_jogadores",
+          "tableTo": "times",
+          "columnsFrom": [
+            "time_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "time_jogadores_jogador_id_jogadores_id_fk": {
+          "name": "time_jogadores_jogador_id_jogadores_id_fk",
+          "tableFrom": "time_jogadores",
+          "tableTo": "jogadores",
+          "columnsFrom": [
+            "jogador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "time_jogadores_time_id_jogador_id_pk": {
+          "name": "time_jogadores_time_id_jogador_id_pk",
+          "columns": [
+            "time_id",
+            "jogador_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.times": {
+      "name": "times",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pelada_id": {
+          "name": "pelada_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cor": {
+          "name": "cor",
+          "type": "cor_time",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordem": {
+          "name": "ordem",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "times_pelada_id_peladas_id_fk": {
+          "name": "times_pelada_id_peladas_id_fk",
+          "tableFrom": "times",
+          "tableTo": "peladas",
+          "columnsFrom": [
+            "pelada_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.cor_time": {
+      "name": "cor_time",
+      "schema": "public",
+      "values": [
+        "azul",
+        "laranja",
+        "verde",
+        "preto"
+      ]
+    },
+    "public.estado_manual": {
+      "name": "estado_manual",
+      "schema": "public",
+      "values": [
+        "aberta",
+        "fechada",
+        "cancelada"
+      ]
+    },
+    "public.lado_partida": {
+      "name": "lado_partida",
+      "schema": "public",
+      "values": [
+        "A",
+        "B"
+      ]
+    },
+    "public.resultado_partida": {
+      "name": "resultado_partida",
+      "schema": "public",
+      "values": [
+        "A",
+        "B",
+        "empate"
+      ]
+    },
+    "public.status_presenca": {
+      "name": "status_presenca",
+      "schema": "public",
+      "values": [
+        "pendente",
+        "confirmado",
+        "removido"
+      ]
+    },
+    "public.tipo_lance": {
+      "name": "tipo_lance",
+      "schema": "public",
+      "values": [
+        "gol",
+        "assistencia"
+      ]
+    },
+    "public.tipo_presenca": {
+      "name": "tipo_presenca",
+      "schema": "public",
+      "values": [
+        "M",
+        "D"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
