@@ -1,11 +1,15 @@
-import { aberturaLista, inicioJogo, proximaQuarta } from '@/domain/tempo';
+import { inicioJogo, proximaQuarta } from '@/domain/tempo';
+import { inicioDaSemana } from './segunda';
 
 const HORA_MS = 60 * 60 * 1000;
 const SEMANA_MS = 7 * 24 * HORA_MS;
 
-/** Janela em que o robô trabalha: segunda 14:00 → quarta 20:30 (Recife) da semana da quarta. */
+/**
+ * Janela em que o robô trabalha: segunda 14:00 (ou o bom dia / a lista configurados) → quarta 20:30
+ * (Recife) da semana da quarta.
+ */
 export function janelaDaSemana(dataQuarta: string): { inicio: Date; fim: Date } {
-  return { inicio: new Date(aberturaLista(dataQuarta).getTime() + 14 * HORA_MS), fim: inicioJogo(dataQuarta) };
+  return { inicio: inicioDaSemana(dataQuarta), fim: inicioJogo(dataQuarta) };
 }
 
 export function dentroDaJanela(now: Date): boolean {
