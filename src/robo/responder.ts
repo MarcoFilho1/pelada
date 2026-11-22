@@ -30,7 +30,7 @@ import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from '.
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
 import { ERRO_IA, MODELO_PADRAO, TEXTO_IA_FORA, TEXTO_MAX_MUDANCAS } from './ia';
-import { ErroDeLimite } from './limite';
+import { EnvioIncerto, ErroDeLimite } from './limite';
 import { daQuarta, ehAdmin, MAX_TROCAS, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos, type TrocaNosTimes } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -1116,8 +1116,8 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       }
     }
   } catch (err) {
-    // Parte da resposta já chegou: não é erro para quem pediu (nada de ❌); o resto fica só no log.
-    if (enviadas > 0) {
+    // Parte da resposta já chegou (ou pode ter chegado): não é erro para quem pediu (nada de ❌).
+    if (enviadas > 0 || err instanceof EnvioIncerto) {
       c.log(`resposta saiu pela metade (${enviadas} de ${partes.length} partes): ${(err as Error).message}`);
       return terminar();
     }

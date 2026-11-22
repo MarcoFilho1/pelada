@@ -1,7 +1,7 @@
 // A IA olha uma foto ou PDF mandado no grupo e diz se é um comprovante de Pix concluído, quem
 // pagou e quanto. Uma pergunta curta, sem ferramentas.
 import type Anthropic from '@anthropic-ai/sdk';
-import type { ClienteIA } from './ia';
+import type { ClienteIA, UsoDaIA } from './ia';
 
 export type LeituraDoComprovante = { ehComprovante: boolean; pagador: string | null; valor: number | null };
 
@@ -28,7 +28,13 @@ export function lerResposta(texto: string): LeituraDoComprovante {
   }
 }
 
-export async function lerComprovante(cliente: ClienteIA, modelo: string, bytes: Buffer, mime: string): Promise<LeituraDoComprovante> {
+export async function lerComprovante(
+  cliente: ClienteIA,
+  modelo: string,
+  bytes: Buffer,
+  mime: string,
+  aoUsar?: (u: UsoDaIA) => void,
+): Promise<LeituraDoComprovante> {
   const tipo = mime.split(';')[0].trim().toLowerCase();
   let anexo: Anthropic.ContentBlockParam;
   if (IMAGENS.has(tipo)) {
@@ -43,6 +49,8 @@ export async function lerComprovante(cliente: ClienteIA, modelo: string, bytes: 
     max_tokens: 200,
     messages: [{ role: 'user', content: [anexo, { type: 'text', text: PERGUNTA }] }],
   });
+  const u = r.usage;
+  if (u) aoUsar?.({ entrada: u.input_tokens ?? 0, cacheLido: u.cache_read_input_tokens ?? 0, cacheGravado: u.cache_creation_input_tokens ?? 0, saida: u.output_tokens ?? 0 });
   const texto = r.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
   return lerResposta(texto);
 }

@@ -9,7 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { ZapGate, ZapGateError, createWebhookHandler, type MessageReceived, type SessionStatus } from './zapgate';
 import type { MensagemRecebida } from './responder';
 import { ErroFatalWhatsApp, type Grupo, type WhatsApp } from './whatsapp';
-import { ErroDeLimite, type TipoDeLimite } from './limite';
+import { EnvioIncerto, ErroDeLimite, type TipoDeLimite } from './limite';
 
 export type OpcoesMotor = {
   /** Ex.: http://127.0.0.1:8787 */
@@ -251,14 +251,15 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       while (Date.now() < fim) {
         if (!tentouCancelar && cancelar?.()) {
           tentouCancelar = true;
-          if (await wa.cancel(ref)) return 'cancelada';
+          // Cancelar falhou (rede): segue acompanhando; a mensagem pode sair normalmente.
+          if (await wa.cancel(ref).catch(() => false)) return 'cancelada';
         }
         const st = await wa.message(ref).catch(() => null);
         if (st?.status === 'acked' || st?.status === 'delivered' || st?.status === 'read') return 'enviada';
         if (st?.status === 'failed') throw new Error(`zapgate: a mensagem falhou (${(st as { error?: { code?: string } }).error?.code ?? '?'})`);
         await new Promise((ok) => setTimeout(ok, 300));
       }
-      throw new Error('O servidor do WhatsApp não confirmou a mensagem a tempo.');
+      throw new EnvioIncerto('O servidor do WhatsApp não confirmou a mensagem a tempo; ela pode ter saído.');
     },
     async baixarMidia(id: string): Promise<{ bytes: Buffer; mime: string }> {
       const r = await wa.downloadMedia(id);

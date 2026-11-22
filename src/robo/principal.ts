@@ -35,7 +35,7 @@ import { PedidosDoPrivado } from './juntar';
 import { MAX_ANALISES, casarDiarista, cobrancaAtiva, horaDeAvisarDono, jaPagou, novaCobranca, proximaManha, registrarPagamento, textoDoLembrete, textoParaODono, type Pix } from './cobranca';
 import { lerComprovante } from './comprovante';
 import { marcaDe } from '@/domain/lista';
-import { horaDeTentarResumo, textosDoResumo } from './resumo-da-noite';
+import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -291,6 +291,12 @@ async function laco(): Promise<void> {
   };
   // Uma conexão só, aberta abaixo; mensagens que chegam enquanto ela abre esperam por ela.
   let conexao: Promise<WhatsApp> | null = null;
+  /** Resumo e lembrete do fim da pelada: no grupo, até as 23:15 (passam do silêncio das 23:00). */
+  const enviarNaNoite = async (texto: string) => {
+    const wa = await conexao!;
+    if (new Date() >= fimDaNoite(dataDe(new Date()))) throw new Error('passou das 23:15; o fim da noite não sai mais');
+    await wa.enviar(grupoId, texto);
+  };
   /** Envio com ack, só no grupo configurado; a conexão pode ter demorado: nada depois das 23:00. */
   const enviarNoGrupo = async (texto: string) => {
     const wa = await conexao!;
@@ -498,13 +504,14 @@ async function laco(): Promise<void> {
     const wa = await conexao!;
     if (!wa.baixarMidia) return;
     const arquivo = await wa.baixarMidia(m.midia.id);
-    const leitura = await lerComprovante(clienteIA, ia.modelo || 'claude-haiku-5-5', arquivo.bytes, m.midia.mime ?? arquivo.mime);
+    const leitura = await lerComprovante(clienteIA, ia.modelo || 'claude-haiku-5-5', arquivo.bytes, m.midia.mime ?? arquivo.mime, registrarUso);
     estado = { ...estado, cobranca: { ...c, analisadas: c.analisadas + 1 } };
     gravar(estado);
     if (!leitura.ehComprovante) return;
     const atual = estado.cobranca!;
     const d = pelosNomes ?? casarDiarista(atual, [leitura.pagador]);
     reagirEm(m.grupoId, m.id)('✅');
+    reacoes.delete(m.id);
     if (d && jaPagou(atual, d.jogadorId)) return;
     const nome = d?.nome ?? m.remetenteNome?.trim() ?? 'alguém';
     estado = {
@@ -515,10 +522,14 @@ async function laco(): Promise<void> {
     log(`comprovante de ${nome}${d ? '' : ' (não sei qual diarista é)'}`);
   };
 
-  /** O lembrete do Pix, logo depois do resumo da noite, para os diaristas da lista. */
+  /**
+   * O lembrete do Pix para os diaristas da lista: logo depois do resumo da noite ou, se o resumo
+   * ficou esperando uma partida aberta, a partir das 22:55 de qualquer jeito.
+   */
   const talvezLembrete = async (now: Date) => {
     const hoje = dataDe(now);
-    if (!pix || estado.lembreteEnviado === hoje || estado.resumoEnviado !== hoje || emSilencio(now)) return;
+    if (!pix || !horaDeTentarResumo(now, estado.lembreteEnviado)) return;
+    if (estado.resumoEnviado !== hoje && now < paraDeEsperar(hoje)) return;
     const marcar = (cobranca?: ReturnType<typeof novaCobranca>) => {
       estado = { ...estado, lembreteEnviado: hoje, ...(cobranca ? { cobranca } : {}) };
       gravar(estado);
@@ -533,7 +544,7 @@ async function laco(): Promise<void> {
       log('lembrete do Pix: nenhum diarista na lista de hoje');
       return marcar();
     }
-    await enviarNoGrupo(textoDoLembrete(diaristas, pix));
+    await enviarNaNoite(textoDoLembrete(diaristas, pix));
     marcar(novaCobranca(hoje, diaristas));
     log(`lembrete do Pix mandado (${diaristas.length} diaristas)`);
   };
@@ -559,7 +570,7 @@ async function laco(): Promise<void> {
 
   const aoReceber = (m: MensagemRecebida) => {
     // Foto ou PDF no grupo (sem marcar o robô): pode ser comprovante de Pix.
-    if (m.midia && !m.privado && m.grupoId === grupoId && !m.mencionaORobo) {
+    if (m.midia && !m.privado && m.grupoId === grupoId && !m.mencionaORobo && !m.respondeAoRobo) {
       void emFila(() => talvezComprovante(m)).catch((err) => log(`comprovante: ${(err as Error).message}`));
       return;
     }
@@ -600,7 +611,8 @@ async function laco(): Promise<void> {
     };
     const peladaId = await idDaPeladaDaData(db, hoje);
     if (peladaId === null) return marcar();
-    if ((await partidaEmAndamento(db, peladaId)) !== null) {
+    // Partida aberta: espera terminar, mas só até 22:55 (alguém pode ter esquecido de encerrar).
+    if (now < paraDeEsperar(hoje) && (await partidaEmAndamento(db, peladaId)) !== null) {
       if (!esperandoPartida) log('resumo da noite: esperando a partida em andamento terminar');
       esperandoPartida = true;
       return;
@@ -614,10 +626,10 @@ async function laco(): Promise<void> {
     }
     for (const [i, texto] of textos.entries()) {
       try {
-        await enviarNoGrupo(texto);
+        await enviarNaNoite(texto);
       } catch (err) {
         log(`resumo da noite: a mensagem ${i + 1} de ${textos.length} não saiu (${(err as Error).message})`);
-        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:00)
+        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:15)
         continue;
       }
       if (i === 0) marcar();

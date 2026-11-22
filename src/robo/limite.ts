@@ -3,6 +3,14 @@
 
 export type TipoDeLimite = 'minuto' | 'hora' | 'dia';
 
+/** A mensagem foi para a fila do ZapGate, mas não deu para confirmar o fim: pode ter saído (toda ou em parte). */
+export class EnvioIncerto extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = 'EnvioIncerto';
+  }
+}
+
 export class ErroDeLimite extends Error {
   constructor(
     mensagem: string,

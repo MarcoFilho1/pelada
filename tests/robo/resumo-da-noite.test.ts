@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LinhaRanking } from '@/domain/ranking';
-import { horaDeTentarResumo, horaDoResumo, tabelasGerais, textoDaNoite, textosDoResumo } from '@/robo/resumo-da-noite';
+import { fimDaNoite, horaDeTentarResumo, horaDoResumo, paraDeEsperar, tabelasGerais, textoDaNoite, textosDoResumo } from '@/robo/resumo-da-noite';
 
 let id = 0;
 function linha(nome: string, n: Partial<Pick<LinhaRanking, 'gols' | 'assistencias' | 'vitorias'>> = {}): LinhaRanking {
@@ -32,12 +32,15 @@ describe('horaDoResumo', () => {
 describe('horaDeTentarResumo', () => {
   const data = '2026-11-25';
   const alvo = horaDoResumo(data);
-  it('antes da hora, não; depois, sim; mandado hoje ou depois das 23:00, não', () => {
+  it('antes da hora, não; depois, sim; mandado hoje ou depois das 23:15, não', () => {
     expect(horaDeTentarResumo(new Date(alvo.getTime() - 1000), null)).toBe(false);
     expect(horaDeTentarResumo(alvo, null)).toBe(true);
     expect(horaDeTentarResumo(t('2026-11-25T22:55:00-03:00'), '2026-11-18')).toBe(true);
     expect(horaDeTentarResumo(t('2026-11-25T22:55:00-03:00'), data)).toBe(false);
-    expect(horaDeTentarResumo(t('2026-11-25T23:00:00-03:00'), null)).toBe(false);
+    expect(horaDeTentarResumo(t('2026-11-25T23:05:00-03:00'), null)).toBe(true);
+    expect(horaDeTentarResumo(t('2026-11-25T23:15:00-03:00'), null)).toBe(false);
+    expect(fimDaNoite(data).toISOString()).toBe('2026-11-26T02:15:00.000Z');
+    expect(paraDeEsperar(data).toISOString()).toBe('2026-11-26T01:55:00.000Z');
     expect(horaDeTentarResumo(t('2026-11-25T15:00:00-03:00'), null)).toBe(false);
   });
 });
