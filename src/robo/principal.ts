@@ -9,7 +9,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
-import { dataDe } from '@/domain/tempo';
+import { dataDe, proximaQuarta } from '@/domain/tempo';
 import { estadoDaPelada, estadoDaSemana, estadoDaSemanaSemCriar, restaurarPresenca } from '@/server/presencas';
 import { idDaPeladaDaData } from '@/server/pelada';
 import { partidaEmAndamento } from '@/server/partidas';
@@ -36,6 +36,7 @@ import { MAX_ANALISES, casarDiarista, cobrancaAtiva, horaDeAvisarDono, jaPagou, 
 import { lerComprovante } from './comprovante';
 import { marcaDe } from '@/domain/lista';
 import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
+import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -277,6 +278,8 @@ async function laco(): Promise<void> {
   // Um cliente da Anthropic para o robô todo; a chave nunca vai para o log.
   const clienteIA = ia ? criarCliente(ia.chave) : null;
   const freio = new Freio(() => new Date());
+  // Horários de segunda (lista e bom dia) do .env do robô.
+  configurarSegunda(process.env);
   // A proposta de times volta do estado depois de um reinício (com os votos e a validade).
   const proposta = { atual: deGuardada(estado.proposta) as Proposta | null };
   let propostaGravada = proposta.atual;
@@ -652,6 +655,18 @@ async function laco(): Promise<void> {
       if (estavaDentro !== true) log('janela aberta: o Mac fica acordado até quarta 20:30.');
       manterAcordado(true);
       await emFila(async () => {
+        // Bom dia de segunda, antes da primeira lista (só se ROBO_BOM_DIA_HORARIO estiver configurado).
+        const quarta = proximaQuarta(now);
+        if (horaDeMandarBomDia(now, quarta, estado.bomDiaEnviado)) {
+          try {
+            await enviarNoGrupo(textoDoBomDia(quarta));
+            estado = { ...estado, bomDiaEnviado: quarta };
+            gravar(estado);
+            log('bom dia de segunda mandado');
+          } catch (err) {
+            log(`bom dia de segunda não saiu (tenta de novo no próximo minuto): ${(err as Error).message}`);
+          }
+        }
         estado = await umaVolta(now, estado, {
           lerLista: (n) => estadoDaSemana(db, n),
           enviar: enviarNoGrupo,
