@@ -1,6 +1,7 @@
 import type { AnuncioGuardado, PropostaGuardada } from './sorteio-zap';
 import type { Cobranca } from './cobranca';
-import { aberturaLista, dataDe, inicioJogo, prazoMensalista } from '@/domain/tempo';
+import { horaDaLista } from './segunda';
+import { dataDe, inicioJogo, prazoMensalista } from '@/domain/tempo';
 import { haMudanca, mudancas, type FotoDaLista } from './foto';
 
 export type TipoMensagem = 'abertura' | 'primeira' | 'rodada' | 'lembrete' | 'prazo' | 'cancelada' | 'voltou' | 'pendentes';
@@ -21,6 +22,8 @@ export type EstadoDoRobo = {
   anuncio?: AnuncioGuardado | null;
   /** Data ('YYYY-MM-DD') do último resumo do fim da pelada (sai uma vez por noite). */
   resumoEnviado?: string | null;
+  /** `dataQuarta` da semana cujo bom dia de segunda já saiu. */
+  bomDiaEnviado?: string | null;
   /** Data do último lembrete do Pix aos diaristas. */
   lembreteEnviado?: string | null;
   /** O Pix dos diaristas da última pelada (comprovantes até o dia seguinte). */
@@ -48,7 +51,8 @@ export function emSilencio(now: Date): boolean {
 
 export function decidir(now: Date, foto: FotoDaLista, estado: EstadoDoRobo): TipoMensagem | null {
   const data = foto.dataQuarta;
-  const segunda14 = new Date(aberturaLista(data).getTime() + 14 * HORA_MS);
+  // A primeira lista da semana: segunda 14:00, ou a faixa de ROBO_LISTA_HORARIO.
+  const segunda14 = horaDaLista(data);
   if (now < segunda14 || now >= inicioJogo(data)) return null;
   if (emSilencio(now)) return null;
 
