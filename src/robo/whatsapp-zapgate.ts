@@ -228,6 +228,29 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     // O próprio ZapGate mostra "digitando…" pelo tempo que uma pessoa levaria, antes de cada parte.
     async digitando(): Promise<void> {},
+    async enviarCancelavel(conversa: string, texto: string, cancelar: () => boolean): Promise<'enviada' | 'cancelada'> {
+      if (fatal) throw fatal;
+      let ref: string;
+      try {
+        ref = (await wa.sendText(conversa, texto, { wait: 'queued' })).ref;
+      } catch (err) {
+        throw erroDeLimite(err) ?? new Error(explicarErro(err));
+      }
+      // Acompanha até sair; se a pessoa escrever de novo antes, cancela no ZapGate.
+      const fim = Date.now() + 180_000;
+      let tentouCancelar = false;
+      while (Date.now() < fim) {
+        if (!tentouCancelar && cancelar()) {
+          tentouCancelar = true;
+          if (await wa.cancel(ref)) return 'cancelada';
+        }
+        const st = await wa.message(ref).catch(() => null);
+        if (st?.status === 'acked' || st?.status === 'delivered' || st?.status === 'read') return 'enviada';
+        if (st?.status === 'failed') throw new Error(`zapgate: a mensagem falhou (${(st as { error?: { code?: string } }).error?.code ?? '?'})`);
+        await new Promise((ok) => setTimeout(ok, 300));
+      }
+      throw new Error('O servidor do WhatsApp não confirmou a mensagem a tempo.');
+    },
     // A reação passa pelas mesmas regras do ZapGate (tem limite próprio por hora). Ao reagir ele
     // também marca a mensagem como lida. Espera só ser aceita na fila, não o ack.
     async reagir(conversa: string, mensagemId: string, emoji: string): Promise<void> {

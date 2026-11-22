@@ -126,8 +126,11 @@ export type ContextoDaResposta = {
   urlSite: string;
   /** Cadastra jogadores novos (quem confere se é organizador é o `responder`). */
   cadastrar: (pessoas: PessoaPedida[], now: Date) => Promise<{ texto: string; mudou: boolean }>;
-  /** Resolve só com o envio confirmado pelo WhatsApp. */
-  enviar: (texto: string) => Promise<void>;
+  /**
+   * Resolve só com o envio confirmado pelo WhatsApp. `cancelavel` (privado, 1ª parte): enquanto
+   * nada saiu, a mensagem é cancelada se isto ficar verdadeiro; aí resolve com `'cancelada'`.
+   */
+  enviar: (texto: string, op?: { cancelavel?: () => boolean }) => Promise<void | 'cancelada'>;
   log: (linha: string) => void;
 };
 
@@ -967,11 +970,16 @@ const dormir = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
  * Envia; se o limite de envio (por minuto ou por hora) segurar, põe a ⌛ na mensagem (uma vez) e tenta
  * de novo quando o limite disser, até `ESPERA_MAXIMA_LIMITE_MS` no total. O limite do dia não espera.
  */
-async function enviarEsperandoLimite(texto: string, c: ContextoDaResposta, ampulheta: { posta: boolean }): Promise<void> {
+async function enviarEsperandoLimite(
+  texto: string,
+  c: ContextoDaResposta,
+  ampulheta: { posta: boolean },
+  cancelavel?: () => boolean,
+): Promise<void | 'cancelada'> {
   let esperou = 0;
   for (;;) {
     try {
-      return await c.enviar(texto);
+      return await (cancelavel ? c.enviar(texto, { cancelavel }) : c.enviar(texto));
     } catch (err) {
       if (!(err instanceof ErroDeLimite) || err.tipo === 'dia') throw err;
       // Um pouco além do que o limite pede: a vaga abre de verdade e a próxima tentativa passa.
@@ -1066,17 +1074,24 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
-  // Chegou mais mensagem da pessoa: se nada foi feito, a resposta sai depois, com tudo junto.
-  if (c.cancelar?.pedido() && SO_LEITURA.has(cmd.tipo) && desfecho !== 'acao') {
-    c.cancelar.cancelou = true;
+  // Chegou mais mensagem da pessoa: se nada foi feito, a resposta sai depois, com tudo junto. Vale
+  // até a 1ª parte sair (o ZapGate cancela a mensagem enquanto ela "lê" ou "digita").
+  const cancelar = c.cancelar;
+  const cancelavel = cancelar && SO_LEITURA.has(cmd.tipo) && desfecho !== 'acao' ? () => cancelar.pedido() : undefined;
+  const descartar = () => {
+    cancelar!.cancelou = true;
     c.log('resposta descartada: chegou outra mensagem da pessoa; refaz com tudo junto');
     return null;
-  }
+  };
+  if (cancelavel?.()) return descartar();
   // Na pergunta à IA a ampulheta já está na mensagem; num comando, só aparece se o limite segurar.
   const ampulheta = { posta: desfecho !== undefined };
   try {
-    if (emPartes) for (const parte of emPartes) await enviarEsperandoLimite(parte, c, ampulheta);
-    else await enviarEsperandoLimite(r.texto, c, ampulheta);
+    const partes = emPartes ?? [r.texto];
+    for (const [i, parte] of partes.entries()) {
+      const saiu = await enviarEsperandoLimite(parte, c, ampulheta, i === 0 ? cancelavel : undefined);
+      if (saiu === 'cancelada') return descartar();
+    }
   } catch (err) {
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
     // Segurada além da espera máxima (ou limite do dia): o ❌ diz que não vai sair, em vez de ⌛ para sempre.

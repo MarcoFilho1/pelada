@@ -295,8 +295,13 @@ async function laco(): Promise<void> {
    * Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). Antes de cada
    * mensagem, "digitando…" por um tempo que cresce com o tamanho (como gente), entre 0,6 e 2,5 s.
    */
-  const enviarNoPrivado = (conversa: string) => async (texto: string) => {
+  const enviarNoPrivado = (conversa: string) => async (texto: string, op?: { cancelavel?: () => boolean }) => {
     const wa = await conexao!;
+    // Pelo ZapGate, ele mesmo "lê" e "digita" (e a mensagem pode ser cancelada até sair).
+    if (wa.enviarCancelavel) {
+      if (op?.cancelavel) return (await wa.enviarCancelavel(conversa, texto, op.cancelavel)) === 'cancelada' ? 'cancelada' : undefined;
+      return wa.enviar(conversa, texto);
+    }
     await wa.digitando(conversa);
     await new Promise((ok) => setTimeout(ok, Math.min(2500, 600 + texto.length * 15)));
     await wa.enviar(conversa, texto);

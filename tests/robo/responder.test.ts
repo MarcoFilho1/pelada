@@ -1540,3 +1540,39 @@ describe('privado: resposta descartada quando chega outra mensagem', () => {
     expect(c.enviar).toHaveBeenCalled();
   });
 });
+
+describe('privado: 1ª parte cancelada no ZapGate quando chega outra mensagem', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('cancelada antes de sair: descarta para refazer (sem ❌ nem resto das partes)', async () => {
+    let chegou = false;
+    const cancelar = { pedido: () => chegou, cancelou: false };
+    const enviar = vi.fn(async (_t: string, op?: { cancelavel?: () => boolean }) => {
+      chegou = true; // a pessoa escreveu enquanto a 1ª parte "digitava"
+      return op?.cancelavel?.() ? ('cancelada' as const) : undefined;
+    });
+    const c = ctx({ cancelar, enviar, reagir: vi.fn(), perguntar: vi.fn(async () => ['Oxe, faço um bocado de coisa', 'Quer começar por qual?']) });
+    expect(await responder(msg('o que você faz?', PRIV), c)).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(c.reagir).not.toHaveBeenCalledWith('❌');
+  });
+
+  it('só a 1ª parte é cancelável; ação feita pela IA nunca é', async () => {
+    const enviar = vi.fn(async (...args: [string, { cancelavel?: () => boolean }?]) => void args);
+    const c = ctx({ cancelar: { pedido: () => false, cancelou: false }, enviar, perguntar: vi.fn(async () => ['a', 'b']) });
+    await responder(msg('oi', PRIV), c);
+    expect(enviar.mock.calls.map((x) => typeof x[1]?.cancelavel)).toEqual(['function', 'undefined']);
+    const acao = vi.fn(async (...args: [string, { cancelavel?: () => boolean }?]) => void args);
+    const d = ctx({
+      cancelar: { pedido: () => true, cancelou: false },
+      enviar: acao,
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito';
+      }),
+    });
+    await responder(msg('me tira', PRIV), d);
+    expect(acao.mock.calls[0][1]).toBeUndefined();
+  });
+});

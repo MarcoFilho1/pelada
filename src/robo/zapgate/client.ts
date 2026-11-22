@@ -1,4 +1,4 @@
-// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit 48ba7f4).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit c4a0751).
 // Replace with the npm package once it is published; do not edit here.
 
 import type { Address, ErrorBody, Group, MediaKind, SendResult, SessionStatus } from "./types.js";
@@ -244,6 +244,20 @@ export class ZapGate {
   }
 
   /** Status of a message sent through the API. */
+  /**
+   * Cancels a message this key sent while none of it has gone out (waiting, "reading" or
+   * "typing"). `true` if cancelled; `false` if it already went out or finished.
+   */
+  async cancel(ref: string): Promise<boolean> {
+    try {
+      await this.request("DELETE", `/v1/sessions/${this.session}/messages/${encodeURIComponent(ref)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof ZapGateError && e.code === "already_sending") return false;
+      throw e;
+    }
+  }
+
   async message(ref: string): Promise<SendResult> {
     return (await this.request<SendResult>("GET", `/v1/sessions/${this.session}/messages/${encodeURIComponent(ref)}`)).data;
   }
