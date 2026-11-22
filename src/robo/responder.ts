@@ -52,6 +52,14 @@ export type MensagemRecebida = {
   remetente?: string;
 };
 
+/** Privado: chegou outra mensagem da pessoa enquanto a resposta era feita (ver `juntar.ts`). */
+export type Cancelamento = {
+  /** Se a resposta em andamento deve ser descartada (para refazer com a mensagem nova junto). */
+  pedido: () => boolean;
+  /** O responder marca quando descartou (só descarta se nada foi feito, só lido ou respondido). */
+  cancelou: boolean;
+};
+
 export type ContextoDaResposta = {
   estadoGrupoId: string | null;
   freio: Freio;
@@ -89,6 +97,8 @@ export type ContextoDaResposta = {
    * respondeu) ou ❌ (deu erro).
    */
   reagir?: (emoji: string) => void;
+  /** Privado: descartar a resposta se chegar mais mensagem da pessoa antes dela sair. */
+  cancelar?: Cancelamento;
   /** Pausa enquanto o limite de envio segura a resposta (nos testes, instantânea). */
   esperar?: (ms: number) => Promise<void>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
@@ -945,6 +955,9 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
   return r && { ...r, ehListaCompleta: false, gravar: undefined };
 }
 
+/** Comandos que não mudam nada: podem ser descartados e refeitos (a pergunta, só se a IA não agiu). */
+const SO_LEITURA = new Set<Comando['tipo']>(['lista', 'notas', 'site', 'falta', 'fila', 'ajuda', 'artilheiro', 'garcom', 'ranking', 'times', 'pergunta', 'recusa']);
+
 /** Quanto, no total, uma resposta espera o limite de envio liberar antes de desistir. */
 export const ESPERA_MAXIMA_LIMITE_MS = 10 * 60_000;
 
@@ -1053,6 +1066,12 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
+  // Chegou mais mensagem da pessoa: se nada foi feito, a resposta sai depois, com tudo junto.
+  if (c.cancelar?.pedido() && SO_LEITURA.has(cmd.tipo) && desfecho !== 'acao') {
+    c.cancelar.cancelou = true;
+    c.log('resposta descartada: chegou outra mensagem da pessoa; refaz com tudo junto');
+    return null;
+  }
   // Na pergunta à IA a ampulheta já está na mensagem; num comando, só aparece se o limite segurar.
   const ampulheta = { posta: desfecho !== undefined };
   try {

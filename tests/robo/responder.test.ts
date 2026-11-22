@@ -1502,3 +1502,41 @@ describe('limite de envio do ZapGate segurando a resposta', () => {
     expect(dia.reagir).toHaveBeenLastCalledWith('❌');
   });
 });
+
+describe('privado: resposta descartada quando chega outra mensagem', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('pergunta ou consulta: descarta sem enviar', async () => {
+    const cancelar = { pedido: () => true, cancelou: false };
+    const c = ctx({ cancelar });
+    expect(await responder(msg('como tá a lista?', PRIV), c)).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+    expect(c.enviar).not.toHaveBeenCalled();
+  });
+
+  it('a IA fez uma ação ou é comando de mudança: não descarta', async () => {
+    const acao = { pedido: () => true, cancelou: false };
+    const c = ctx({
+      cancelar: acao,
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito';
+      }),
+    });
+    expect(await responder(msg('me tira aí', PRIV), c)).not.toBeNull();
+    expect(acao.cancelou).toBe(false);
+    const cmd = { pedido: () => true, cancelou: false };
+    const d = ctx({ cancelar: cmd });
+    await responder(msg('remover Ana', PRIV), d);
+    expect(cmd.cancelou).toBe(false);
+    expect(d.enviar).toHaveBeenCalled();
+  });
+
+  it('sem mensagem nova: envia normal', async () => {
+    const cancelar = { pedido: () => false, cancelou: false };
+    const c = ctx({ cancelar });
+    await responder(msg('como tá a lista?', PRIV), c);
+    expect(cancelar.cancelou).toBe(false);
+    expect(c.enviar).toHaveBeenCalled();
+  });
+});

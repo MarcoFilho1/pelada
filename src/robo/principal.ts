@@ -26,9 +26,9 @@ import { ConversasPrivadas } from './conversa-privada';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
-import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
+import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type Cancelamento, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
-import { JuntarMensagens } from './juntar';
+import { PedidosDoPrivado } from './juntar';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -363,18 +363,21 @@ async function laco(): Promise<void> {
   // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
   const memoria = new ConversasPrivadas();
 
-  /** Trata o pedido e, no fim, nunca deixa a ⌛ da mensagem para trás (ignorada, limite, erro). */
-  const tratar = async (m: MensagemRecebida) => {
+  /**
+   * Trata o pedido e, no fim, nunca deixa a ⌛ da mensagem para trás (ignorada, limite, erro), a não
+   * ser que a resposta tenha sido descartada para refazer com a mensagem nova (aí a ⌛ continua).
+   */
+  const tratar = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
     try {
-      await tratarPedido(m);
+      await tratarPedido(m, cancelar);
     } finally {
-      if (m.id) {
+      if (m.id && !cancelar?.cancelou) {
         if (reacoes.get(m.id) === '⏳') reagirEm(m.grupoId, m.id)('');
         reacoes.delete(m.id);
       }
     }
   };
-  const tratarPedido = async (m: MensagemRecebida) => {
+  const tratarPedido = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     try {
       const r = await responder(m, {
@@ -421,6 +424,7 @@ async function laco(): Promise<void> {
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
+        ...(cancelar ? { cancelar } : {}),
         log,
       });
       if (proposta.atual !== propostaGravada || anuncio.atual !== anuncioGravado) {
@@ -439,22 +443,20 @@ async function laco(): Promise<void> {
       log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
     }
   };
-  /** Se o robô vai mesmo atender: só então a ⌛ aparece antes de juntar as mensagens. */
-  const vaiAtender = (m: MensagemRecebida) =>
-    m.privado ? m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, admins) : m.grupoId === grupoId && m.mencionaORobo && !emSilencio(m.quando);
-  // Mensagens quebradas da mesma pessoa viram um pedido só (espera uns segundos pelas próximas).
-  const juntar = new JuntarMensagens({
+  // Privado: a ⌛ aparece já na primeira mensagem (só para organizador, que é quem o robô atende).
+  const pedidosDoPrivado = new PedidosDoPrivado({
+    agendar: (tarefa) => void emFila(tarefa),
+    tratar,
     aoComecar: (m) => {
-      if (m.id && vaiAtender(m)) reagirEm(m.grupoId, m.id)('⏳');
+      if (m.id && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, admins)) reagirEm(m.grupoId, m.id)('⏳');
     },
-    aoJuntar: (m) => void emFila(() => tratar(m)),
   });
   const aoReceber = (m: MensagemRecebida) => {
-    // Filtro barato antes da fila: só marcação (ou resposta ao robô) começa um pedido; depois, as
-    // próximas da mesma pessoa entram nele. A de outro grupo vai ao `responder` só para deixar a
-    // linha "marcação ignorada (outro grupo)" no log. No privado não precisa marcar: o `responder`
-    // atende só os organizadores.
-    juntar.receber(m, m.privado === true || m.mencionaORobo || m.respondeAoRobo);
+    // No privado não precisa marcar (o `responder` atende só os organizadores); mensagens seguidas
+    // da mesma pessoa viram um pedido só. No grupo, só marcação (ou resposta ao robô), cada uma
+    // sozinha; a de outro grupo vai ao `responder` só para deixar a linha "marcação ignorada" no log.
+    if (m.privado) pedidosDoPrivado.receber(m);
+    else if (m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).

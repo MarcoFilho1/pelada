@@ -1,75 +1,95 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { JuntarMensagens, juntarMensagens } from '@/robo/juntar';
-import type { MensagemRecebida } from '@/robo/responder';
+import { describe, expect, it } from 'vitest';
+import { PedidosDoPrivado, juntarMensagens } from '@/robo/juntar';
+import type { Cancelamento, MensagemRecebida } from '@/robo/responder';
 
-const GRUPO = '120363000000000000@g.us';
+const CONVERSA = '5583111110000@s.whatsapp.net';
 const msg = (texto: string, over: Partial<MensagemRecebida> = {}): MensagemRecebida => ({
-  grupoId: GRUPO,
-  remetente: 'zeca@lid',
-  remetenteTelefone: null,
+  grupoId: CONVERSA,
+  remetente: CONVERSA,
+  remetenteTelefone: '5583111110000',
   remetenteNome: 'Zeca',
   texto,
   mencionaORobo: false,
   respondeAoRobo: false,
   quando: new Date(),
+  privado: true,
   ...over,
 });
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
-
-function montar() {
-  const comecos: MensagemRecebida[] = [];
-  const pedidos: MensagemRecebida[] = [];
-  const j = new JuntarMensagens({ aoComecar: (m) => comecos.push(m), aoJuntar: (m) => pedidos.push(m) });
-  return { j, comecos, pedidos };
+/** Fila manual: cada tarefa só roda quando o teste manda. */
+function montar(tratar: (m: MensagemRecebida, c: Cancelamento) => Promise<void>) {
+  const fila: (() => Promise<void>)[] = [];
+  const comecos: string[] = [];
+  const p = new PedidosDoPrivado({ agendar: (t) => void fila.push(t), tratar, aoComecar: (m) => void comecos.push(m.texto) });
+  const rodar = async () => {
+    while (fila.length) await fila.shift()!();
+  };
+  return { p, fila, comecos, rodar };
 }
 
-describe('JuntarMensagens', () => {
-  it('mensagens quebradas da mesma pessoa viram um pedido só, 8 s depois da última', () => {
-    const { j, comecos, pedidos } = montar();
-    j.receber(msg('fala mano', { mencionaORobo: true, id: 'A' }), true);
-    expect(comecos.map((m) => m.id)).toEqual(['A']);
-    vi.advanceTimersByTime(5_000);
-    j.receber(msg('O que voce consegue fazer?'), false);
-    vi.advanceTimersByTime(6_000);
-    j.receber(msg('Me manda a lista ai'), false);
-    vi.advanceTimersByTime(7_999);
-    expect(pedidos).toEqual([]);
-    vi.advanceTimersByTime(1);
-    expect(pedidos).toHaveLength(1);
-    expect(pedidos[0]).toMatchObject({ id: 'A', texto: 'fala mano\nO que voce consegue fazer?\nMe manda a lista ai', mencionaORobo: true });
+describe('PedidosDoPrivado', () => {
+  it('uma mensagem: trata na hora (sem esperar)', async () => {
+    const tratados: string[] = [];
+    const { p, comecos, rodar } = montar(async (m) => void tratados.push(m.texto));
+    p.receber(msg('lista'));
+    expect(comecos).toEqual(['lista']);
+    await rodar();
+    expect(tratados).toEqual(['lista']);
   });
 
-  it('sem marcação, não começa pedido; outra pessoa ou outra conversa não entra', () => {
-    const { j, pedidos } = montar();
-    j.receber(msg('bom dia'), false);
-    vi.advanceTimersByTime(60_000);
-    expect(pedidos).toEqual([]);
-    j.receber(msg('lista', { mencionaORobo: true }), true);
-    j.receber(msg('eu vou', { remetente: 'ana@lid', remetenteNome: 'Ana' }), false);
-    j.receber(msg('oi', { grupoId: 'outro@g.us' }), false);
-    vi.advanceTimersByTime(8_000);
-    expect(pedidos.map((p) => p.texto)).toEqual(['lista']);
+  it('chegou outra enquanto ainda estava na fila: entra no mesmo pedido', async () => {
+    const tratados: string[] = [];
+    const { p, rodar } = montar(async (m) => void tratados.push(m.texto));
+    p.receber(msg('fala mano'));
+    p.receber(msg('O que voce consegue fazer?'));
+    await rodar();
+    expect(tratados).toEqual(['fala mano\nO que voce consegue fazer?']);
   });
 
-  it('quem não para de escrever: responde em até 30 s; e no máximo 6 mensagens', () => {
-    const { j, pedidos } = montar();
-    j.receber(msg('1', { mencionaORobo: true }), true);
-    for (let i = 2; i <= 5; i++) {
-      vi.advanceTimersByTime(7_000);
-      j.receber(msg(String(i)), false);
-    }
-    vi.advanceTimersByTime(2_000);
-    expect(pedidos.map((p) => p.texto)).toEqual(['1\n2\n3\n4\n5']);
-    for (let i = 1; i <= 6; i++) j.receber(msg(String(i), { mencionaORobo: i === 1 }), i === 1);
-    expect(pedidos.at(-1)?.texto).toBe('1\n2\n3\n4\n5\n6');
+  it('chegou outra durante a resposta: descarta e refaz com tudo junto', async () => {
+    const tratados: string[] = [];
+    const ref: { p?: PedidosDoPrivado } = {};
+    const m = montar(async (pedido, cancelar) => {
+      tratados.push(pedido.texto);
+      if (tratados.length === 1) ref.p!.receber(msg('Me manda a lista ai'));
+      if (cancelar.pedido()) cancelar.cancelou = true;
+    });
+    ref.p = m.p;
+    m.p.receber(msg('fala mano'));
+    await m.rodar();
+    expect(tratados).toEqual(['fala mano', 'fala mano\nMe manda a lista ai']);
+    expect(m.comecos).toEqual(['fala mano']);
   });
 
-  it('juntarMensagens: ignora textos vazios e usa a hora da última', () => {
-    const a = msg('oi', { quando: new Date(1_000), respondeAoRobo: true });
+  it('a resposta já tinha feito uma ação (não descartou): a mensagem nova vira o próximo pedido', async () => {
+    const tratados: string[] = [];
+    const ref: { p?: PedidosDoPrivado } = {};
+    const m = montar(async (pedido) => {
+      tratados.push(pedido.texto);
+      if (tratados.length === 1) ref.p!.receber(msg('e confirma a Ana'));
+    });
+    ref.p = m.p;
+    m.p.receber(msg('tira o João'));
+    await m.rodar();
+    expect(tratados).toEqual(['tira o João', 'e confirma a Ana']);
+    expect(m.comecos).toEqual(['tira o João', 'e confirma a Ana']);
+  });
+
+  it('pessoas diferentes não se misturam', async () => {
+    const tratados: string[] = [];
+    const { p, rodar } = montar(async (m) => void tratados.push(m.texto));
+    p.receber(msg('oi'));
+    p.receber(msg('lista', { grupoId: 'outro@s.whatsapp.net', remetente: 'outro@s.whatsapp.net' }));
+    await rodar();
+    expect(tratados).toEqual(['oi', 'lista']);
+  });
+});
+
+describe('juntarMensagens', () => {
+  it('ignora textos vazios e usa a hora da última', () => {
+    const a = msg('oi', { quando: new Date(1_000), respondeAoRobo: true, id: 'A' });
     const b = msg('  ', { quando: new Date(2_000) });
     const c = msg('lista', { quando: new Date(3_000) });
-    expect(juntarMensagens([a, b, c])).toMatchObject({ texto: 'oi\nlista', respondeAoRobo: true, quando: new Date(3_000) });
+    expect(juntarMensagens([a, b, c])).toMatchObject({ id: 'A', texto: 'oi\nlista', respondeAoRobo: true, quando: new Date(3_000) });
   });
 });
