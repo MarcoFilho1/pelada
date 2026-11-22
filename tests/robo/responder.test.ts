@@ -1491,9 +1491,10 @@ describe('limite de envio do ZapGate segurando a resposta', () => {
     const longo = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('hora', 3_400_000))), esperar: async () => {} });
     expect(await responder(msg('lista'), longo)).toBeNull();
     expect(longo.reagir).toHaveBeenLastCalledWith('❌');
-    const sempre = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('minuto', 60_000))), esperar: async () => {} });
+    const enviarSempre = vi.fn(async () => Promise.reject(limite('minuto', 60_000)));
+    const sempre = ctx({ reagir: vi.fn(), enviar: enviarSempre, esperar: async () => {} });
     expect(await responder(msg('lista'), sempre)).toBeNull();
-    expect(sempre.enviar.mock.calls.length).toBeGreaterThan(5);
+    expect(enviarSempre.mock.calls.length).toBeGreaterThan(5);
     expect(sempre.reagir).toHaveBeenLastCalledWith('❌');
     const dia = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('dia'))), esperar: async () => {} });
     expect(await responder(msg('lista'), dia)).toBeNull();
