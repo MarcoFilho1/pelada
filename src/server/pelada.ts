@@ -112,3 +112,9 @@ export async function peladaPorId(db: DB, id: number): Promise<Pelada | null> {
   const [p] = await db.select().from(peladas).where(eq(peladas.id, id));
   return p ? { id: p.id, data: p.data, estadoManual: p.estadoManual } : null;
 }
+
+/** O id da pelada da data ('YYYY-MM-DD'), sem criar; `null` se não houve pelada nesse dia. */
+export async function idDaPeladaDaData(db: DB, data: string): Promise<number | null> {
+  const [p] = await db.select({ id: peladas.id }).from(peladas).where(eq(peladas.data, data));
+  return p?.id ?? null;
+}
