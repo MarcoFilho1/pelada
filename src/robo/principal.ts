@@ -473,7 +473,15 @@ async function laco(): Promise<void> {
   // ---- Pix dos diaristas: lembrete no fim da pelada, comprovantes no grupo, aviso ao dono ----
   const pix: Pix | null = process.env.ROBO_PIX_VALOR && process.env.ROBO_PIX_CHAVE ? { valor: process.env.ROBO_PIX_VALOR, chave: process.env.ROBO_PIX_CHAVE } : null;
   const dono = (process.env.ROBO_DONO ?? '').replace(/\D/g, '');
-  const conversaDoDono = dono ? `${dono.startsWith('55') ? dono : `55${dono}`}@s.whatsapp.net` : null;
+  const telefoneDoDono = dono ? (dono.startsWith('55') ? dono : `55${dono}`) : null;
+  // O endereço de verdade do dono no WhatsApp: muito número antigo está registrado sem o 9, e uma
+  // mensagem para o endereço com o 9 é aceita pelo servidor mas não chega a ninguém.
+  let conversaDoDono: string | null = null;
+  const enderecoDoDono = async (): Promise<string | null> => {
+    if (!telefoneDoDono) return null;
+    conversaDoDono ??= await (await conexao!).conversaDoTelefone(telefoneDoDono);
+    return conversaDoDono;
+  };
   const apelidos = apelidosDoEnv(process.env);
 
   /** Foto ou PDF no grupo enquanto o Pix da noite está aberto: a IA confere; comprovante ganha ✅. */
@@ -533,9 +541,11 @@ async function laco(): Promise<void> {
   /** Quem pagou e quem falta, no privado do dono; de madrugada, guarda para a manhã. */
   const talvezAvisarDono = async (now: Date) => {
     const c = estado.cobranca;
-    if (!conversaDoDono || !c || !horaDeAvisarDono(c, now)) return;
+    if (!telefoneDoDono || !c || !horaDeAvisarDono(c, now)) return;
     try {
-      await (await conexao!).enviar(conversaDoDono, textoParaODono(c));
+      const destino = await enderecoDoDono();
+      if (!destino) throw new Error('o número do dono (ROBO_DONO) não tem WhatsApp');
+      await (await conexao!).enviar(destino, textoParaODono(c));
       estado = { ...estado, cobranca: { ...c, avisarDonoEm: null } };
       log('aviso do Pix mandado ao dono da pelada');
     } catch (err) {
