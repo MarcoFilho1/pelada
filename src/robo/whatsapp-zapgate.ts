@@ -228,11 +228,14 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     // O próprio ZapGate mostra "digitando…" pelo tempo que uma pessoa levaria, antes de cada parte.
     async digitando(): Promise<void> {},
-    async enviarCancelavel(conversa: string, texto: string, cancelar: () => boolean): Promise<'enviada' | 'cancelada'> {
+    // Um texto ou várias partes (uma mensagem cada, uma só no limite). Cancela no ZapGate se
+    // `cancelar()` ficar verdadeiro antes da 1ª sair.
+    async enviarCancelavel(conversa: string, texto: string | string[], cancelar?: () => boolean): Promise<'enviada' | 'cancelada'> {
       if (fatal) throw fatal;
       let ref: string;
       try {
-        ref = (await wa.sendText(conversa, texto, { wait: 'queued' })).ref;
+        const opcoes = { wait: 'queued' as const };
+        ref = (Array.isArray(texto) ? await wa.sendParts(conversa, texto, opcoes) : await wa.sendText(conversa, texto, opcoes)).ref;
       } catch (err) {
         throw erroDeLimite(err) ?? new Error(explicarErro(err));
       }
@@ -240,7 +243,7 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       const fim = Date.now() + 180_000;
       let tentouCancelar = false;
       while (Date.now() < fim) {
-        if (!tentouCancelar && cancelar()) {
+        if (!tentouCancelar && cancelar?.()) {
           tentouCancelar = true;
           if (await wa.cancel(ref)) return 'cancelada';
         }

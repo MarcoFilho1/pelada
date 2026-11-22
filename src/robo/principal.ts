@@ -319,6 +319,12 @@ async function laco(): Promise<void> {
     })().catch((err) => log(`reação ${emoji || '(tirar)'} não saiu: ${(err as Error).message}`));
   };
 
+  /** Pelo ZapGate: as partes da resposta numa entrega só (uma no limite; canceláveis até a 1ª sair). */
+  const enviarPartesNoPrivado = (conversa: string) => async (partes: string[], op?: { cancelavel?: () => boolean }) => {
+    const wa = await conexao!;
+    return (await wa.enviarCancelavel!(conversa, partes, op?.cancelavel)) === 'cancelada' ? ('cancelada' as const) : undefined;
+  };
+
   // A conversa privada de cada organizador: a que ele já usou com o robô ou a que o WhatsApp informa.
   const conversas = new Map<string, string>();
   const conversaDe = async (admin: string): Promise<string | null> => {
@@ -428,6 +434,7 @@ async function laco(): Promise<void> {
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
+        ...(m.privado && usaZapGate() ? { enviarPartes: enviarPartesNoPrivado(m.grupoId) } : {}),
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         ...(cancelar ? { cancelar } : {}),
         log,

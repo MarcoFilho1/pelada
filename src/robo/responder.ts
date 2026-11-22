@@ -131,6 +131,11 @@ export type ContextoDaResposta = {
    * nada saiu, a mensagem é cancelada se isto ficar verdadeiro; aí resolve com `'cancelada'`.
    */
   enviar: (texto: string, op?: { cancelavel?: () => boolean }) => Promise<void | 'cancelada'>;
+  /**
+   * Várias mensagens numa entrega só (o ZapGate digita uma depois da outra, conta como uma no
+   * limite e cancela todas enquanto a 1ª não saiu). Ausente: uma `enviar` por parte.
+   */
+  enviarPartes?: (partes: string[], op?: { cancelavel?: () => boolean }) => Promise<void | 'cancelada'>;
   log: (linha: string) => void;
 };
 
@@ -971,15 +976,14 @@ const dormir = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
  * de novo quando o limite disser, até `ESPERA_MAXIMA_LIMITE_MS` no total. O limite do dia não espera.
  */
 async function enviarEsperandoLimite(
-  texto: string,
+  enviar: () => Promise<void | 'cancelada'>,
   c: ContextoDaResposta,
   ampulheta: { posta: boolean },
-  cancelavel?: () => boolean,
 ): Promise<void | 'cancelada'> {
   let esperou = 0;
   for (;;) {
     try {
-      return await (cancelavel ? c.enviar(texto, { cancelavel }) : c.enviar(texto));
+      return await enviar();
     } catch (err) {
       if (!(err instanceof ErroDeLimite) || err.tipo === 'dia') throw err;
       // Um pouco além do que o limite pede: a vaga abre de verdade e a próxima tentativa passa.
@@ -1096,12 +1100,18 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
     return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
   };
   const partes = emPartes ?? [r.texto];
+  const op = cancelavel ? { cancelavel } : undefined;
   let enviadas = 0;
   try {
-    for (const [i, parte] of partes.entries()) {
-      const saiu = await enviarEsperandoLimite(parte, c, ampulheta, i === 0 ? cancelavel : undefined);
-      if (saiu === 'cancelada') return descartar();
-      enviadas++;
+    if (partes.length > 1 && c.enviarPartes) {
+      const enviarPartes = c.enviarPartes;
+      if ((await enviarEsperandoLimite(() => (op ? enviarPartes(partes, op) : enviarPartes(partes)), c, ampulheta)) === 'cancelada') return descartar();
+    } else {
+      for (const [i, parte] of partes.entries()) {
+        const enviar = () => (i === 0 && op ? c.enviar(parte, op) : c.enviar(parte));
+        if ((await enviarEsperandoLimite(enviar, c, ampulheta)) === 'cancelada') return descartar();
+        enviadas++;
+      }
     }
   } catch (err) {
     // Parte da resposta já chegou: não é erro para quem pediu (nada de ❌); o resto fica só no log.

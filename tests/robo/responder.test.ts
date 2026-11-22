@@ -1587,3 +1587,33 @@ describe('resposta que saiu pela metade', () => {
     expect(c.log).toHaveBeenCalledWith(expect.stringContaining('resposta saiu pela metade (1 de 2 partes)'));
   });
 });
+
+describe('privado com enviarPartes (ZapGate): uma entrega só', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('as partes vão juntas, canceláveis; cancelada: descarta para refazer', async () => {
+    const enviarPartes = vi.fn(async (...args: [string[], { cancelavel?: () => boolean }?]) => (args[1]?.cancelavel?.() ? ('cancelada' as const) : undefined));
+    let chegou = false;
+    const c = ctx({ enviarPartes, cancelar: { pedido: () => chegou, cancelou: false }, perguntar: vi.fn(async () => ['Oxe', 'Quer qual?']) });
+    await responder(msg('o que você faz?', PRIV), c);
+    expect(enviarPartes).toHaveBeenCalledTimes(1);
+    expect(enviarPartes.mock.calls[0][0]).toEqual(['Oxe', 'Quer qual?']);
+    expect(c.enviar).not.toHaveBeenCalled();
+    chegou = true;
+    const d = ctx({ enviarPartes, cancelar: { pedido: () => false, cancelou: false }, perguntar: vi.fn(async () => {
+      chegou = true;
+      return ['a', 'b'];
+    }) });
+    const cancelar = { pedido: () => chegou, cancelou: false };
+    expect(await responder(msg('oi', PRIV), { ...d, cancelar })).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+  });
+
+  it('uma parte só: usa enviar', async () => {
+    const enviarPartes = vi.fn(async () => undefined);
+    const c = ctx({ enviarPartes });
+    await responder(msg('como tá a lista?', PRIV), c);
+    expect(enviarPartes).not.toHaveBeenCalled();
+    expect(c.enviar).toHaveBeenCalled();
+  });
+});

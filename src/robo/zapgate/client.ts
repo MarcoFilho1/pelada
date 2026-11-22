@@ -1,4 +1,4 @@
-// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit c4a0751).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit fb52a85).
 // Replace with the npm package once it is published; do not edit here.
 
 import type { Address, ErrorBody, Group, MediaKind, SendResult, SessionStatus } from "./types.js";
@@ -152,6 +152,15 @@ export class ZapGate {
    */
   sendText(to: Address, text: string, options?: SendOptions): Promise<SendResult> {
     return this.send(to, { type: "text", body: text }, options);
+  }
+
+  /**
+   * Sends text already split into 2 to 10 parts: each goes out as its own message, in order,
+   * while the whole counts as one message for the limits (and `cancel` works until the first
+   * part leaves).
+   */
+  sendParts(to: Address, parts: string[], options?: SendOptions): Promise<SendResult> {
+    return this.send(to, { type: "text", parts }, options);
   }
 
   /**
