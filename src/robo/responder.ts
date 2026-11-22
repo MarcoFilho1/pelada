@@ -29,7 +29,8 @@ import { fotografar, haMudanca, juntarNomes, mudancas, type FotoDaLista } from '
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
-import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
+import { ERRO_IA, MODELO_PADRAO, TEXTO_IA_FORA, TEXTO_MAX_MUDANCAS } from './ia';
+import { ErroDeLimite } from './limite';
 import { daQuarta, ehAdmin, MAX_TROCAS, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos, type TrocaNosTimes } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -45,6 +46,18 @@ export type MensagemRecebida = {
   quando: Date;
   /** Conversa privada (não grupo): `grupoId` é a conversa; só os organizadores são atendidos. */
   privado?: boolean;
+  /** Id da mensagem no WhatsApp (para reagir nela); ausente: o robô não reage. */
+  id?: string;
+  /** Endereço de quem mandou (telefone ou LID), para juntar mensagens quebradas da mesma pessoa. */
+  remetente?: string;
+};
+
+/** Privado: chegou outra mensagem da pessoa enquanto a resposta era feita (ver `juntar.ts`). */
+export type Cancelamento = {
+  /** Se a resposta em andamento deve ser descartada (para refazer com a mensagem nova junto). */
+  pedido: () => boolean;
+  /** O responder marca quando descartou (só descarta se nada foi feito, só lido ou respondido). */
+  cancelou: boolean;
 };
 
 export type ContextoDaResposta = {
@@ -78,6 +91,16 @@ export type ContextoDaResposta = {
   anunciarNoGrupo: (texto: string) => Promise<void>;
   /** A lista mandada no grupo pelo privado vira a "última lista" do grupo (a próxima mostra o que mudou desde ela). */
   listaMandadaNoGrupo?: (gravar: NonNullable<Resposta['gravar']>) => void;
+  /**
+   * Reage na mensagem que chegou (melhor esforço: quem chama não espera nem vê erro). `''` tira a
+   * reação. Usado só nas perguntas à IA: ⌛ enquanto pensa; depois ✅ (fez uma ação), nada (só
+   * respondeu) ou ❌ (deu erro).
+   */
+  reagir?: (emoji: string) => void;
+  /** Privado: descartar a resposta se chegar mais mensagem da pessoa antes dela sair. */
+  cancelar?: Cancelamento;
+  /** Pausa enquanto o limite de envio segura a resposta (nos testes, instantânea). */
+  esperar?: (ms: number) => Promise<void>;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
   perguntar: (
@@ -103,8 +126,16 @@ export type ContextoDaResposta = {
   urlSite: string;
   /** Cadastra jogadores novos (quem confere se é organizador é o `responder`). */
   cadastrar: (pessoas: PessoaPedida[], now: Date) => Promise<{ texto: string; mudou: boolean }>;
-  /** Resolve só com o envio confirmado pelo WhatsApp. */
-  enviar: (texto: string) => Promise<void>;
+  /**
+   * Resolve só com o envio confirmado pelo WhatsApp. `cancelavel` (privado, 1ª parte): enquanto
+   * nada saiu, a mensagem é cancelada se isto ficar verdadeiro; aí resolve com `'cancelada'`.
+   */
+  enviar: (texto: string, op?: { cancelavel?: () => boolean }) => Promise<void | 'cancelada'>;
+  /**
+   * Várias mensagens numa entrega só (o ZapGate digita uma depois da outra, conta como uma no
+   * limite e cancela todas enquanto a 1ª não saiu). Ausente: uma `enviar` por parte.
+   */
+  enviarPartes?: (partes: string[], op?: { cancelavel?: () => boolean }) => Promise<void | 'cancelada'>;
   log: (linha: string) => void;
 };
 
@@ -422,12 +453,32 @@ async function respostaMandar(m: MensagemRecebida, c: ContextoDaResposta): Promi
   return TEXTO_MANDADOS;
 }
 
-/** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
-async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string[]> {
-  if (!c.ia) return [m.privado ? TEXTO_AJUDA_PRIVADO : TEXTO_AJUDA];
-  if (!c.freio.podePerguntar()) return [TEXTO_LIMITE];
+/** Como terminou uma pergunta à IA, para a reação final na mensagem. */
+export type Desfecho = 'acao' | 'resposta' | 'erro';
+
+/** A reação que fica na mensagem depois da resposta: ✅ fez algo, nada se só respondeu, ❌ erro. */
+export const REACAO_FINAL: Record<Desfecho, string> = { acao: '✅', resposta: '', erro: '❌' };
+export const REACAO_PENSANDO = '⏳';
+
+/** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. `desfecho` só quando a IA foi chamada. */
+async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ partes: string[]; desfecho?: Desfecho }> {
+  if (!c.ia) return { partes: [m.privado ? TEXTO_AJUDA_PRIVADO : TEXTO_AJUDA] };
+  if (!c.freio.podePerguntar()) return { partes: [TEXTO_LIMITE] };
   const marca = { entrouOuConfirmou: false };
-  const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
+  // Uma ação que rodou sem erro vira ✅ no fim (as de leitura não contam: não estão aqui).
+  let fez = false;
+  const acoes = (m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca)).map(
+    (f): Ferramenta => ({
+      ...f,
+      executar: async (args) => {
+        const r = await f.executar(args);
+        fez = true;
+        return r;
+      },
+    }),
+  );
+  // A IA leva alguns segundos: a ampulheta mostra logo que a mensagem foi vista.
+  c.reagir?.(REACAO_PENSANDO);
   // No privado, a IA vê as últimas falas: "troca o Caio pelo Jonas" e "desfaz" dependem do que veio antes.
   const historico = m.privado && m.remetenteTelefone ? c.memoria?.historico(m.remetenteTelefone, m.quando) : undefined;
   const r = await c.perguntar(texto, {
@@ -441,10 +492,11 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
   });
   c.freio.registrarPergunta();
   const partes = Array.isArray(r) ? r : [r];
-  if (!marca.entrouOuConfirmou) return partes;
+  const desfecho: Desfecho = fez ? 'acao' : partes.length === 1 && (partes[0] === ERRO_IA || partes[0] === TEXTO_IA_FORA) ? 'erro' : 'resposta';
+  if (!marca.entrouOuConfirmou) return { partes, desfecho };
   // Entrou ou confirmou alguém: a lista atual vai junto, se a resposta ainda não a trouxe.
   const lista = await listaAtual(m, c);
-  return partes.some((p) => p.includes(lista)) ? partes : [...partes, lista];
+  return { partes: partes.some((p) => p.includes(lista)) ? partes : [...partes, lista], desfecho };
 }
 
 /** Quem pediu, para o "pedido por" (nunca o telefone). */
@@ -911,10 +963,48 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
   return r && { ...r, ehListaCompleta: false, gravar: undefined };
 }
 
+/** Comandos que não mudam nada: podem ser descartados e refeitos (a pergunta, só se a IA não agiu). */
+const SO_LEITURA = new Set<Comando['tipo']>(['lista', 'notas', 'site', 'falta', 'fila', 'ajuda', 'artilheiro', 'garcom', 'ranking', 'times', 'pergunta', 'recusa']);
+
+/** Quanto, no total, uma resposta espera o limite de envio liberar antes de desistir. */
+export const ESPERA_MAXIMA_LIMITE_MS = 10 * 60_000;
+
+const dormir = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
+
+/**
+ * Envia; se o limite de envio (por minuto ou por hora) segurar, põe a ⌛ na mensagem (uma vez) e tenta
+ * de novo quando o limite disser, até `ESPERA_MAXIMA_LIMITE_MS` no total. O limite do dia não espera.
+ */
+async function enviarEsperandoLimite(
+  enviar: () => Promise<void | 'cancelada'>,
+  c: ContextoDaResposta,
+  ampulheta: { posta: boolean },
+): Promise<void | 'cancelada'> {
+  let esperou = 0;
+  for (;;) {
+    try {
+      return await enviar();
+    } catch (err) {
+      if (!(err instanceof ErroDeLimite) || err.tipo === 'dia') throw err;
+      // Um pouco além do que o limite pede: a vaga abre de verdade e a próxima tentativa passa.
+      const espera = Math.max(5_000, err.esperarMs + 2_000);
+      if (esperou + espera > ESPERA_MAXIMA_LIMITE_MS) throw err;
+      if (!ampulheta.posta) {
+        c.reagir?.(REACAO_PENSANDO);
+        ampulheta.posta = true;
+      }
+      c.log(`resposta segurada pelo limite (por ${err.tipo}); tenta de novo em ${Math.round(espera / 1000)} s`);
+      await (c.esperar ?? dormir)(espera);
+      esperou += espera;
+    }
+  }
+}
+
 /** O comando já liberado: monta o texto, envia, registra no freio. */
 async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   let r: Omit<Resposta, 'ehListaCompleta'>;
   let emPartes: string[] | null = null;
+  let desfecho: Desfecho | undefined;
   switch (cmd.tipo) {
     case 'lista':
       r = await respostaLista(m, c);
@@ -972,7 +1062,9 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       r = { texto: await respostaTimes(m, c) };
       break;
     case 'pergunta': {
-      const partes = await respostaPergunta(cmd.texto, m, c);
+      const pergunta = await respostaPergunta(cmd.texto, m, c);
+      const partes = pergunta.partes;
+      desfecho = pergunta.desfecho;
       r = { texto: partes.join('\n\n') };
       // No privado, a resposta sai em mensagens curtas, uma depois da outra (como gente no WhatsApp).
       if (m.privado && partes.length > 1) emPartes = partes;
@@ -986,14 +1078,51 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
 
+  // Chegou mais mensagem da pessoa: se nada foi feito, a resposta sai depois, com tudo junto. Vale
+  // até a 1ª parte sair (o ZapGate cancela a mensagem enquanto ela "lê" ou "digita").
+  const cancelar = c.cancelar;
+  const cancelavel = cancelar && SO_LEITURA.has(cmd.tipo) && desfecho !== 'acao' ? () => cancelar.pedido() : undefined;
+  const descartar = () => {
+    cancelar!.cancelou = true;
+    c.log('resposta descartada: chegou outra mensagem da pessoa; refaz com tudo junto');
+    return null;
+  };
+  if (cancelavel?.()) return descartar();
+  // Na pergunta à IA a ampulheta já está na mensagem; num comando, só aparece se o limite segurar.
+  const ampulheta = { posta: desfecho !== undefined };
+  /** A resposta saiu (inteira ou em parte): a reação final e o freio. */
+  const terminar = (): Resposta => {
+    // Depois da resposta (não antes: o ✅ não pode aparecer com o texto ainda sendo digitado).
+    if (desfecho) c.reagir?.(REACAO_FINAL[desfecho]);
+    else if (ampulheta.posta) c.reagir?.(REACAO_FINAL.resposta);
+    c.freio.registrarResposta();
+    // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
+    return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
+  };
+  const partes = emPartes ?? [r.texto];
+  const op = cancelavel ? { cancelavel } : undefined;
+  let enviadas = 0;
   try {
-    if (emPartes) for (const parte of emPartes) await c.enviar(parte);
-    else await c.enviar(r.texto);
+    if (partes.length > 1 && c.enviarPartes) {
+      const enviarPartes = c.enviarPartes;
+      if ((await enviarEsperandoLimite(() => (op ? enviarPartes(partes, op) : enviarPartes(partes)), c, ampulheta)) === 'cancelada') return descartar();
+    } else {
+      for (const [i, parte] of partes.entries()) {
+        const enviar = () => (i === 0 && op ? c.enviar(parte, op) : c.enviar(parte));
+        if ((await enviarEsperandoLimite(enviar, c, ampulheta)) === 'cancelada') return descartar();
+        enviadas++;
+      }
+    }
   } catch (err) {
+    // Parte da resposta já chegou: não é erro para quem pediu (nada de ❌); o resto fica só no log.
+    if (enviadas > 0) {
+      c.log(`resposta saiu pela metade (${enviadas} de ${partes.length} partes): ${(err as Error).message}`);
+      return terminar();
+    }
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
+    // Segurada além da espera máxima (ou limite do dia): o ❌ diz que não vai sair, em vez de ⌛ para sempre.
+    if (ampulheta.posta || err instanceof ErroDeLimite) c.reagir?.(REACAO_FINAL.erro);
     return null;
   }
-  c.freio.registrarResposta();
-  // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
-  return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
+  return terminar();
 }

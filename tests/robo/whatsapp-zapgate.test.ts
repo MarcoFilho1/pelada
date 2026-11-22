@@ -6,8 +6,8 @@ import { createServer as netServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { MessageReceived } from '@/robo/zapgate';
-import { conectarMotor, explicarErro, lerEventoDoZapGate } from '@/robo/whatsapp-zapgate';
+import { ZapGateError, type MessageReceived } from '@/robo/zapgate';
+import { conectarMotor, erroDeLimite, explicarErro, lerEventoDoZapGate } from '@/robo/whatsapp-zapgate';
 import type { MensagemRecebida } from '@/robo/responder';
 import type { WhatsApp } from '@/robo/whatsapp';
 
@@ -33,7 +33,7 @@ const base: MessageReceived = {
 describe('lerEventoDoZapGate', () => {
   it('traduz uma mensagem de grupo', () => {
     const m = lerEventoDoZapGate(base, [ROBO, ROBO_LID], AGORA)!;
-    expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false });
+    expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false, id: 'M1', remetente: '5583111110000@s.whatsapp.net' });
     expect(m.privado).toBeUndefined();
     expect(m.quando.getTime()).toBe(1_800_000_000_000);
   });
@@ -196,5 +196,14 @@ scopes = ["read", "send"]
 
   it('explicarErro traduz as recusas', () => {
     expect(explicarErro(new Error('x'))).toBe('x');
+  });
+
+  it('erroDeLimite: limite por minuto, hora e dia, com a espera pedida pelo ZapGate', () => {
+    const z = (code: string, retry_after_s?: number) => new ZapGateError(429, { code, detail: 'x', ...(retry_after_s ? { retry_after_s } : {}) });
+    expect(erroDeLimite(z('rate_limited', 12))).toMatchObject({ tipo: 'minuto', esperarMs: 12_000 });
+    expect(erroDeLimite(z('hourly_limit', 600))).toMatchObject({ tipo: 'hora', esperarMs: 600_000 });
+    expect(erroDeLimite(z('daily_limit'))).toMatchObject({ tipo: 'dia', esperarMs: 60_000 });
+    expect(erroDeLimite(z('quiet_hours', 5))).toBeNull();
+    expect(erroDeLimite(new Error('x'))).toBeNull();
   });
 });

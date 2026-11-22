@@ -1,4 +1,4 @@
-// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit 48ba7f4).
+// Vendored from ZapGate's TypeScript SDK (sdk/typescript/src/client.ts, ZapGate commit fb52a85).
 // Replace with the npm package once it is published; do not edit here.
 
 import type { Address, ErrorBody, Group, MediaKind, SendResult, SessionStatus } from "./types.js";
@@ -155,6 +155,15 @@ export class ZapGate {
   }
 
   /**
+   * Sends text already split into 2 to 10 parts: each goes out as its own message, in order,
+   * while the whole counts as one message for the limits (and `cancel` works until the first
+   * part leaves).
+   */
+  sendParts(to: Address, parts: string[], options?: SendOptions): Promise<SendResult> {
+    return this.send(to, { type: "text", parts }, options);
+  }
+
+  /**
    * Uploads a file to send later (kept 24 h). Streams on the server side; limit 64 MB.
    * Returns the `mediaId` to pass to {@link sendMedia}.
    */
@@ -244,6 +253,20 @@ export class ZapGate {
   }
 
   /** Status of a message sent through the API. */
+  /**
+   * Cancels a message this key sent while none of it has gone out (waiting, "reading" or
+   * "typing"). `true` if cancelled; `false` if it already went out or finished.
+   */
+  async cancel(ref: string): Promise<boolean> {
+    try {
+      await this.request("DELETE", `/v1/sessions/${this.session}/messages/${encodeURIComponent(ref)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof ZapGateError && e.code === "already_sending") return false;
+      throw e;
+    }
+  }
+
   async message(ref: string): Promise<SendResult> {
     return (await this.request<SendResult>("GET", `/v1/sessions/${this.session}/messages/${encodeURIComponent(ref)}`)).data;
   }

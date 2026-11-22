@@ -14,6 +14,13 @@ export interface WhatsApp {
   conversaDoTelefone(telefone: string): Promise<string | null>;
   /** Mostra "digitando…" na conversa (melhor esforço: falha não importa). */
   digitando(conversa: string): Promise<void>;
+  /**
+   * Como `enviar`, mas cancela a mensagem se `cancelar()` ficar verdadeiro antes de ela sair (enquanto
+   * espera, "lê" ou "digita"); aí resolve com `'cancelada'`. Ausente: este caminho não cancela.
+   */
+  enviarCancelavel?(conversa: string, texto: string | string[], cancelar?: () => boolean): Promise<'enviada' | 'cancelada'>;
+  /** Reage na mensagem `mensagemId` da conversa (`''` tira a reação). Ausente: este caminho não reage. */
+  reagir?(conversa: string, mensagemId: string, emoji: string): Promise<void>;
   fechar(): Promise<void>;
 }
 

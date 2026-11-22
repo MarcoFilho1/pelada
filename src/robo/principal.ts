@@ -29,8 +29,9 @@ import { ConversasPrivadas } from './conversa-privada';
 import { dentroDaJanela, proximaJanela } from './janela';
 import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
-import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
+import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type Cancelamento, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
+import { PedidosDoPrivado } from './juntar';
 import { horaDeTentarResumo, textosDoResumo } from './resumo-da-noite';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
@@ -298,11 +299,34 @@ async function laco(): Promise<void> {
    * Resposta no privado: na própria conversa e a qualquer hora (só responde a quem escreveu). Antes de cada
    * mensagem, "digitando…" por um tempo que cresce com o tamanho (como gente), entre 0,6 e 2,5 s.
    */
-  const enviarNoPrivado = (conversa: string) => async (texto: string) => {
+  const enviarNoPrivado = (conversa: string) => async (texto: string, op?: { cancelavel?: () => boolean }) => {
     const wa = await conexao!;
+    // Pelo ZapGate, ele mesmo "lê" e "digita" (e a mensagem pode ser cancelada até sair).
+    if (wa.enviarCancelavel) {
+      if (op?.cancelavel) return (await wa.enviarCancelavel(conversa, texto, op.cancelavel)) === 'cancelada' ? 'cancelada' : undefined;
+      return wa.enviar(conversa, texto);
+    }
     await wa.digitando(conversa);
     await new Promise((ok) => setTimeout(ok, Math.min(2500, 600 + texto.length * 15)));
     await wa.enviar(conversa, texto);
+  };
+
+  // A reação que está em cada mensagem (só enquanto ela é tratada): não manda a mesma de novo.
+  const reacoes = new Map<string, string>();
+  /** Reação na mensagem recebida, sem esperar: uma reação que não sai só fica no log. */
+  const reagirEm = (conversa: string, id: string) => (emoji: string) => {
+    if ((reacoes.get(id) ?? '') === emoji) return;
+    reacoes.set(id, emoji);
+    void (async () => {
+      const wa = await conexao!;
+      await wa.reagir?.(conversa, id, emoji);
+    })().catch((err) => log(`reação ${emoji || '(tirar)'} não saiu: ${(err as Error).message}`));
+  };
+
+  /** Pelo ZapGate: as partes da resposta numa entrega só (uma no limite; canceláveis até a 1ª sair). */
+  const enviarPartesNoPrivado = (conversa: string) => async (partes: string[], op?: { cancelavel?: () => boolean }) => {
+    const wa = await conexao!;
+    return (await wa.enviarCancelavel!(conversa, partes, op?.cancelavel)) === 'cancelada' ? ('cancelada' as const) : undefined;
   };
 
   // A conversa privada de cada organizador: a que ele já usou com o robô ou a que o WhatsApp informa.
@@ -354,7 +378,21 @@ async function laco(): Promise<void> {
   // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
   const memoria = new ConversasPrivadas();
 
-  const tratar = async (m: MensagemRecebida) => {
+  /**
+   * Trata o pedido e, no fim, nunca deixa a ⌛ da mensagem para trás (ignorada, limite, erro), a não
+   * ser que a resposta tenha sido descartada para refazer com a mensagem nova (aí a ⌛ continua).
+   */
+  const tratar = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
+    try {
+      await tratarPedido(m, cancelar);
+    } finally {
+      if (m.id && !cancelar?.cancelou) {
+        if (reacoes.get(m.id) === '⏳') reagirEm(m.grupoId, m.id)('');
+        reacoes.delete(m.id);
+      }
+    }
+  };
+  const tratarPedido = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     try {
       const r = await responder(m, {
@@ -400,6 +438,9 @@ async function laco(): Promise<void> {
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
+        ...(m.privado && usaZapGate() ? { enviarPartes: enviarPartesNoPrivado(m.grupoId) } : {}),
+        ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
+        ...(cancelar ? { cancelar } : {}),
         log,
       });
       if (proposta.atual !== propostaGravada || anuncio.atual !== anuncioGravado) {
@@ -418,11 +459,20 @@ async function laco(): Promise<void> {
       log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
     }
   };
+  // Privado: a ⌛ aparece já na primeira mensagem (só para organizador, que é quem o robô atende).
+  const pedidosDoPrivado = new PedidosDoPrivado({
+    agendar: (tarefa) => void emFila(tarefa),
+    tratar,
+    aoComecar: (m) => {
+      if (m.id && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, admins)) reagirEm(m.grupoId, m.id)('⏳');
+    },
+  });
   const aoReceber = (m: MensagemRecebida) => {
-    // Filtro barato antes da fila: só marcação (ou resposta ao robô). A de outro grupo vai ao
-    // `responder` só para deixar a linha "marcação ignorada (outro grupo)" no log.
-    // No privado não precisa marcar: o `responder` atende só os organizadores.
-    if (m.privado || m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
+    // No privado não precisa marcar (o `responder` atende só os organizadores); mensagens seguidas
+    // da mesma pessoa viram um pedido só. No grupo, só marcação (ou resposta ao robô), cada uma
+    // sozinha; a de outro grupo vai ao `responder` só para deixar a linha "marcação ignorada" no log.
+    if (m.privado) pedidosDoPrivado.receber(m);
+    else if (m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).

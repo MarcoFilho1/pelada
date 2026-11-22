@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ERRO_IA } from '@/robo/ia';
+import { ErroDeLimite } from '@/robo/limite';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
@@ -1398,5 +1400,220 @@ describe('privado: memória da conversa, troca nos times e desfazer', () => {
       { de: 'Ana', por: 'Bia' },
     ]);
     expect(lerTrocas('só o Caio')).toEqual([]);
+  });
+});
+
+describe('reações na mensagem (perguntas à IA)', () => {
+  it('⌛ antes de perguntar; só respondeu: tira a ampulheta depois do envio', async () => {
+    const ordem: string[] = [];
+    const c = ctx({
+      reagir: vi.fn((e: string) => void ordem.push(`reagir ${e}`)),
+      perguntar: vi.fn(async () => {
+        ordem.push('perguntar');
+        return 'O João está na lista.';
+      }),
+      enviar: vi.fn(async () => void ordem.push('enviar')),
+    });
+    await responder(msg('quem vai?'), c);
+    expect(ordem).toEqual(['reagir ⏳', 'perguntar', 'enviar', 'reagir ']);
+  });
+
+  it('a IA fez uma ação: ✅ no fim', async () => {
+    const c = ctx({
+      reagir: vi.fn(),
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito.';
+      }),
+    });
+    await responder(msg('me tira'), c);
+    expect(c.reagir).toHaveBeenNthCalledWith(1, '⏳');
+    expect(c.reagir).toHaveBeenLastCalledWith('✅');
+  });
+
+  it('ação que falhou não vale ✅', async () => {
+    const c = ctx({
+      reagir: vi.fn(),
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'cadastrar_jogadores')!.executar({ pessoas: 'Pedro' }).catch(() => {});
+        return 'Faltou a nota.';
+      }),
+    });
+    await responder(msg('bota o Pedro no sistema aí', { remetenteTelefone: ADMIN }), c);
+    expect(c.reagir).toHaveBeenLastCalledWith('');
+  });
+
+  it('IA com erro, ou a resposta não saiu: ❌', async () => {
+    const erro = ctx({ reagir: vi.fn(), perguntar: vi.fn(async () => ERRO_IA) });
+    await responder(msg('quem vai?'), erro);
+    expect(erro.reagir).toHaveBeenLastCalledWith('❌');
+    const semEnvio = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(new Error('caiu'))) });
+    await responder(msg('quem vai?'), semEnvio);
+    expect(semEnvio.reagir).toHaveBeenLastCalledWith('❌');
+  });
+
+  it('comando pronto (sem IA) ou limite de perguntas: não reage', async () => {
+    const c = ctx({ reagir: vi.fn() });
+    await responder(msg('lista'), c);
+    await responder(msg('artilheiro'), c);
+    expect(c.reagir).not.toHaveBeenCalled();
+  });
+
+  it('no privado também', async () => {
+    const c = ctx({ reagir: vi.fn() });
+    await responder(msg('como tá a lista?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+});
+
+describe('limite de envio do ZapGate segurando a resposta', () => {
+  const limite = (tipo: 'minuto' | 'hora' | 'dia', esperarMs = 30_000) => new ErroDeLimite(`limite por ${tipo}`, tipo, esperarMs);
+
+  it('comando segurado: ⌛, espera, manda e tira a ⌛', async () => {
+    const esperas: number[] = [];
+    const enviar = vi.fn().mockRejectedValueOnce(limite('minuto', 20_000)).mockResolvedValue(undefined);
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async (ms: number) => void esperas.push(ms) });
+    const r = await responder(msg('lista'), c);
+    expect(r?.texto).toContain(LISTA);
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(esperas).toEqual([22_000]);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+
+  it('pergunta à IA segurada: não repete a ⌛; no fim, a reação de sempre', async () => {
+    const enviar = vi.fn().mockRejectedValueOnce(limite('hora', 60_000)).mockResolvedValue(undefined);
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async () => {} });
+    await responder(msg('quem vai?'), c);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+  });
+
+  it('espera demais (ou limite do dia): desiste com ❌', async () => {
+    const longo = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('hora', 3_400_000))), esperar: async () => {} });
+    expect(await responder(msg('lista'), longo)).toBeNull();
+    expect(longo.reagir).toHaveBeenLastCalledWith('❌');
+    const enviarSempre = vi.fn(async () => Promise.reject(limite('minuto', 60_000)));
+    const sempre = ctx({ reagir: vi.fn(), enviar: enviarSempre, esperar: async () => {} });
+    expect(await responder(msg('lista'), sempre)).toBeNull();
+    expect(enviarSempre.mock.calls.length).toBeGreaterThan(5);
+    expect(sempre.reagir).toHaveBeenLastCalledWith('❌');
+    const dia = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(limite('dia'))), esperar: async () => {} });
+    expect(await responder(msg('lista'), dia)).toBeNull();
+    expect(dia.enviar).toHaveBeenCalledTimes(1);
+    expect(dia.reagir).toHaveBeenLastCalledWith('❌');
+  });
+});
+
+describe('privado: resposta descartada quando chega outra mensagem', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('pergunta ou consulta: descarta sem enviar', async () => {
+    const cancelar = { pedido: () => true, cancelou: false };
+    const c = ctx({ cancelar });
+    expect(await responder(msg('como tá a lista?', PRIV), c)).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+    expect(c.enviar).not.toHaveBeenCalled();
+  });
+
+  it('a IA fez uma ação ou é comando de mudança: não descarta', async () => {
+    const acao = { pedido: () => true, cancelou: false };
+    const c = ctx({
+      cancelar: acao,
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito';
+      }),
+    });
+    expect(await responder(msg('me tira aí', PRIV), c)).not.toBeNull();
+    expect(acao.cancelou).toBe(false);
+    const cmd = { pedido: () => true, cancelou: false };
+    const d = ctx({ cancelar: cmd });
+    await responder(msg('remover Ana', PRIV), d);
+    expect(cmd.cancelou).toBe(false);
+    expect(d.enviar).toHaveBeenCalled();
+  });
+
+  it('sem mensagem nova: envia normal', async () => {
+    const cancelar = { pedido: () => false, cancelou: false };
+    const c = ctx({ cancelar });
+    await responder(msg('como tá a lista?', PRIV), c);
+    expect(cancelar.cancelou).toBe(false);
+    expect(c.enviar).toHaveBeenCalled();
+  });
+});
+
+describe('privado: 1ª parte cancelada no ZapGate quando chega outra mensagem', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('cancelada antes de sair: descarta para refazer (sem ❌ nem resto das partes)', async () => {
+    let chegou = false;
+    const cancelar = { pedido: () => chegou, cancelou: false };
+    const enviar = vi.fn(async (_t: string, op?: { cancelavel?: () => boolean }) => {
+      chegou = true; // a pessoa escreveu enquanto a 1ª parte "digitava"
+      return op?.cancelavel?.() ? ('cancelada' as const) : undefined;
+    });
+    const c = ctx({ cancelar, enviar, reagir: vi.fn(), perguntar: vi.fn(async () => ['Oxe, faço um bocado de coisa', 'Quer começar por qual?']) });
+    expect(await responder(msg('o que você faz?', PRIV), c)).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(c.reagir).not.toHaveBeenCalledWith('❌');
+  });
+
+  it('só a 1ª parte é cancelável; ação feita pela IA nunca é', async () => {
+    const enviar = vi.fn(async (...args: [string, { cancelavel?: () => boolean }?]) => void args);
+    const c = ctx({ cancelar: { pedido: () => false, cancelou: false }, enviar, perguntar: vi.fn(async () => ['a', 'b']) });
+    await responder(msg('oi', PRIV), c);
+    expect(enviar.mock.calls.map((x) => typeof x[1]?.cancelavel)).toEqual(['function', 'undefined']);
+    const acao = vi.fn(async (...args: [string, { cancelavel?: () => boolean }?]) => void args);
+    const d = ctx({
+      cancelar: { pedido: () => true, cancelou: false },
+      enviar: acao,
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito';
+      }),
+    });
+    await responder(msg('me tira', PRIV), d);
+    expect(acao.mock.calls[0][1]).toBeUndefined();
+  });
+});
+
+describe('resposta que saiu pela metade', () => {
+  it('a 2ª parte bateu no limite: sem ❌ (a ⌛ sai), e fica no log', async () => {
+    const enviar = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new ErroDeLimite('limite por hora', 'hora', 3_000_000));
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async () => {}, perguntar: vi.fn(async () => ['Oxe, faço um bocado', 'Quer começar por qual?']) });
+    const r = await responder(msg('o que você faz?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect(r).not.toBeNull();
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+    expect(c.log).toHaveBeenCalledWith(expect.stringContaining('resposta saiu pela metade (1 de 2 partes)'));
+  });
+});
+
+describe('privado com enviarPartes (ZapGate): uma entrega só', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+
+  it('as partes vão juntas, canceláveis; cancelada: descarta para refazer', async () => {
+    const enviarPartes = vi.fn(async (...args: [string[], { cancelavel?: () => boolean }?]) => (args[1]?.cancelavel?.() ? ('cancelada' as const) : undefined));
+    let chegou = false;
+    const c = ctx({ enviarPartes, cancelar: { pedido: () => chegou, cancelou: false }, perguntar: vi.fn(async () => ['Oxe', 'Quer qual?']) });
+    await responder(msg('o que você faz?', PRIV), c);
+    expect(enviarPartes).toHaveBeenCalledTimes(1);
+    expect(enviarPartes.mock.calls[0][0]).toEqual(['Oxe', 'Quer qual?']);
+    expect(c.enviar).not.toHaveBeenCalled();
+    chegou = true;
+    const d = ctx({ enviarPartes, cancelar: { pedido: () => false, cancelou: false }, perguntar: vi.fn(async () => {
+      chegou = true;
+      return ['a', 'b'];
+    }) });
+    const cancelar = { pedido: () => chegou, cancelou: false };
+    expect(await responder(msg('oi', PRIV), { ...d, cancelar })).toBeNull();
+    expect(cancelar.cancelou).toBe(true);
+  });
+
+  it('uma parte só: usa enviar', async () => {
+    const enviarPartes = vi.fn(async () => undefined);
+    const c = ctx({ enviarPartes });
+    await responder(msg('como tá a lista?', PRIV), c);
+    expect(enviarPartes).not.toHaveBeenCalled();
+    expect(c.enviar).toHaveBeenCalled();
   });
 });

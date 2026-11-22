@@ -9,6 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { ZapGate, ZapGateError, createWebhookHandler, type MessageReceived, type SessionStatus } from './zapgate';
 import type { MensagemRecebida } from './responder';
 import { ErroFatalWhatsApp, type Grupo, type WhatsApp } from './whatsapp';
+import { ErroDeLimite, type TipoDeLimite } from './limite';
 
 export type OpcoesMotor = {
   /** Ex.: http://127.0.0.1:8787 */
@@ -83,8 +84,18 @@ export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Da
       .trim(),
     mencionaORobo: m.mentions_me,
     quando: new Date(m.timestamp * 1000),
+    id: m.id,
+    remetente: m.sender,
     ...(privado ? { privado: true } : {}),
   };
+}
+
+const LIMITES: Record<string, TipoDeLimite> = { rate_limited: 'minuto', hourly_limit: 'hora', daily_limit: 'dia' };
+
+/** Recusa por limite de envio → `ErroDeLimite` (o `responder` espera e tenta de novo); o resto, `null`. */
+export function erroDeLimite(err: unknown): ErroDeLimite | null {
+  if (!(err instanceof ZapGateError) || !LIMITES[err.code]) return null;
+  return new ErroDeLimite(explicarErro(err), LIMITES[err.code], (err.retryAfter ?? 60) * 1000);
 }
 
 /** Explica em português uma recusa do ZapGate (o que fazer, se algo). */
@@ -200,6 +211,8 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       } catch (err) {
         // Queda curta: como a Baileys fazia, espera reconectar (até 1 min) e tenta mais uma vez.
         // Só quando nada saiu (não conectado); sem confirmação, a mensagem pode ter saído.
+        const limite = erroDeLimite(err);
+        if (limite) throw limite;
         if (!(err instanceof ZapGateError && err.code === 'not_connected')) throw new Error(explicarErro(err));
         try {
           await esperarConectado(wa, ESPERA_RECONEXAO_MS, op.log);
@@ -215,6 +228,42 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     // O próprio ZapGate mostra "digitando…" pelo tempo que uma pessoa levaria, antes de cada parte.
     async digitando(): Promise<void> {},
+    // Um texto ou várias partes (uma mensagem cada, uma só no limite). Cancela no ZapGate se
+    // `cancelar()` ficar verdadeiro antes da 1ª sair.
+    async enviarCancelavel(conversa: string, texto: string | string[], cancelar?: () => boolean): Promise<'enviada' | 'cancelada'> {
+      if (fatal) throw fatal;
+      let ref: string;
+      try {
+        const opcoes = { wait: 'queued' as const };
+        ref = (Array.isArray(texto) ? await wa.sendParts(conversa, texto, opcoes) : await wa.sendText(conversa, texto, opcoes)).ref;
+      } catch (err) {
+        throw erroDeLimite(err) ?? new Error(explicarErro(err));
+      }
+      // Acompanha até sair; se a pessoa escrever de novo antes, cancela no ZapGate.
+      const fim = Date.now() + 180_000;
+      let tentouCancelar = false;
+      while (Date.now() < fim) {
+        if (!tentouCancelar && cancelar?.()) {
+          tentouCancelar = true;
+          if (await wa.cancel(ref)) return 'cancelada';
+        }
+        const st = await wa.message(ref).catch(() => null);
+        if (st?.status === 'acked' || st?.status === 'delivered' || st?.status === 'read') return 'enviada';
+        if (st?.status === 'failed') throw new Error(`zapgate: a mensagem falhou (${(st as { error?: { code?: string } }).error?.code ?? '?'})`);
+        await new Promise((ok) => setTimeout(ok, 300));
+      }
+      throw new Error('O servidor do WhatsApp não confirmou a mensagem a tempo.');
+    },
+    // A reação passa pelas mesmas regras do ZapGate (tem limite próprio por hora). Ao reagir ele
+    // também marca a mensagem como lida. Espera só ser aceita na fila, não o ack.
+    async reagir(conversa: string, mensagemId: string, emoji: string): Promise<void> {
+      if (fatal) throw fatal;
+      try {
+        await wa.react(conversa, mensagemId, emoji, { wait: 'queued' });
+      } catch (err) {
+        throw new Error(explicarErro(err));
+      }
+    },
     async fechar(): Promise<void> {
       await new Promise<void>((ok) => servidor.close(() => ok()));
     },
