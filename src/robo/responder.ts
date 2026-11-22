@@ -1086,22 +1086,33 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   if (cancelavel?.()) return descartar();
   // Na pergunta à IA a ampulheta já está na mensagem; num comando, só aparece se o limite segurar.
   const ampulheta = { posta: desfecho !== undefined };
+  /** A resposta saiu (inteira ou em parte): a reação final e o freio. */
+  const terminar = (): Resposta => {
+    // Depois da resposta (não antes: o ✅ não pode aparecer com o texto ainda sendo digitado).
+    if (desfecho) c.reagir?.(REACAO_FINAL[desfecho]);
+    else if (ampulheta.posta) c.reagir?.(REACAO_FINAL.resposta);
+    c.freio.registrarResposta();
+    // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
+    return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
+  };
+  const partes = emPartes ?? [r.texto];
+  let enviadas = 0;
   try {
-    const partes = emPartes ?? [r.texto];
     for (const [i, parte] of partes.entries()) {
       const saiu = await enviarEsperandoLimite(parte, c, ampulheta, i === 0 ? cancelavel : undefined);
       if (saiu === 'cancelada') return descartar();
+      enviadas++;
     }
   } catch (err) {
+    // Parte da resposta já chegou: não é erro para quem pediu (nada de ❌); o resto fica só no log.
+    if (enviadas > 0) {
+      c.log(`resposta saiu pela metade (${enviadas} de ${partes.length} partes): ${(err as Error).message}`);
+      return terminar();
+    }
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
     // Segurada além da espera máxima (ou limite do dia): o ❌ diz que não vai sair, em vez de ⌛ para sempre.
     if (ampulheta.posta || err instanceof ErroDeLimite) c.reagir?.(REACAO_FINAL.erro);
     return null;
   }
-  // Depois da resposta (não antes: o ✅ não pode aparecer com o texto ainda sendo digitado).
-  if (desfecho) c.reagir?.(REACAO_FINAL[desfecho]);
-  else if (ampulheta.posta) c.reagir?.(REACAO_FINAL.resposta);
-  c.freio.registrarResposta();
-  // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
-  return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };
+  return terminar();
 }

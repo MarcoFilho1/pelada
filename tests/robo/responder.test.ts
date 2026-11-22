@@ -1576,3 +1576,14 @@ describe('privado: 1ª parte cancelada no ZapGate quando chega outra mensagem', 
     expect(acao.mock.calls[0][1]).toBeUndefined();
   });
 });
+
+describe('resposta que saiu pela metade', () => {
+  it('a 2ª parte bateu no limite: sem ❌ (a ⌛ sai), e fica no log', async () => {
+    const enviar = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new ErroDeLimite('limite por hora', 'hora', 3_000_000));
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async () => {}, perguntar: vi.fn(async () => ['Oxe, faço um bocado', 'Quer começar por qual?']) });
+    const r = await responder(msg('o que você faz?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect(r).not.toBeNull();
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
+    expect(c.log).toHaveBeenCalledWith(expect.stringContaining('resposta saiu pela metade (1 de 2 partes)'));
+  });
+});
