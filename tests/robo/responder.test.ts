@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ERRO_IA } from '@/robo/ia';
-import { ErroDeLimite } from '@/robo/limite';
+import { EnvioIncerto, ErroDeLimite } from '@/robo/limite';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
@@ -1615,5 +1615,14 @@ describe('privado com enviarPartes (ZapGate): uma entrega só', () => {
     await responder(msg('como tá a lista?', PRIV), c);
     expect(enviarPartes).not.toHaveBeenCalled();
     expect(c.enviar).toHaveBeenCalled();
+  });
+});
+
+describe('envio incerto (fila do ZapGate sem confirmação)', () => {
+  it('pode ter saído: sem ❌', async () => {
+    const enviarPartes = vi.fn(async () => Promise.reject(new EnvioIncerto('sem confirmação')));
+    const c = ctx({ reagir: vi.fn(), enviarPartes, perguntar: vi.fn(async () => ['a', 'b']) });
+    await responder(msg('oi', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect(c.reagir).not.toHaveBeenCalledWith('❌');
   });
 });

@@ -3,7 +3,6 @@
 // bloco só). Sai uma vez por noite, entre 22:35 e 22:40, quando nenhuma partida está em andamento.
 import type { LinhaRanking } from '@/domain/ranking';
 import { dataDe } from '@/domain/tempo';
-import { emSilencio } from './agenda';
 import { ordenarArtilharia } from './ferramentas';
 
 /** Quantos aparecem em cada tabela geral. */
@@ -24,13 +23,23 @@ export function horaDoResumo(data: string): Date {
   return new Date(base + segundos * 1000);
 }
 
+/** Até quando as mensagens do fim da noite (resumo, lembrete do Pix) ainda saem: 23:15 de Recife. */
+export function fimDaNoite(data: string): Date {
+  return new Date(Date.parse(`${data}T23:15:00Z`) - OFFSET_RECIFE_MS);
+}
+
+/** Desde quando o resumo para de esperar uma partida aberta (alguém esqueceu de encerrar): 22:55. */
+export function paraDeEsperar(data: string): Date {
+  return new Date(Date.parse(`${data}T22:55:00Z`) - OFFSET_RECIFE_MS);
+}
+
 /**
- * Se agora é hora de tentar o resumo de hoje: depois da hora do resumo, antes do silêncio das 23:00,
- * e ainda não mandado (`enviado` = data do último resumo).
+ * Se agora é hora de tentar o resumo (ou o lembrete) de hoje: depois da hora do resumo, antes das
+ * 23:15 (um resumo que começou 22:57 ainda termina), e ainda não mandado (`enviado` = data do último).
  */
 export function horaDeTentarResumo(now: Date, enviado: string | null | undefined): boolean {
   const hoje = dataDe(now);
-  return enviado !== hoje && now >= horaDoResumo(hoje) && !emSilencio(now);
+  return enviado !== hoje && now >= horaDoResumo(hoje) && now < fimDaNoite(hoje);
 }
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;

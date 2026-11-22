@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
 import { dataDe } from '@/domain/tempo';
-import { estadoDaSemana, estadoDaSemanaSemCriar, restaurarPresenca } from '@/server/presencas';
+import { estadoDaPelada, estadoDaSemana, estadoDaSemanaSemCriar, restaurarPresenca } from '@/server/presencas';
 import { idDaPeladaDaData } from '@/server/pelada';
 import { partidaEmAndamento } from '@/server/partidas';
 import { rankingsDaNoite } from '@/server/ranking';
@@ -32,7 +32,10 @@ import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type Cancelamento, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
 import { PedidosDoPrivado } from './juntar';
-import { horaDeTentarResumo, textosDoResumo } from './resumo-da-noite';
+import { MAX_ANALISES, casarDiarista, cobrancaAtiva, horaDeAvisarDono, jaPagou, novaCobranca, proximaManha, registrarPagamento, textoDoLembrete, textoParaODono, type Pix } from './cobranca';
+import { lerComprovante } from './comprovante';
+import { marcaDe } from '@/domain/lista';
+import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -288,6 +291,12 @@ async function laco(): Promise<void> {
   };
   // Uma conexão só, aberta abaixo; mensagens que chegam enquanto ela abre esperam por ela.
   let conexao: Promise<WhatsApp> | null = null;
+  /** Resumo e lembrete do fim da pelada: no grupo, até as 23:15 (passam do silêncio das 23:00). */
+  const enviarNaNoite = async (texto: string) => {
+    const wa = await conexao!;
+    if (new Date() >= fimDaNoite(dataDe(new Date()))) throw new Error('passou das 23:15; o fim da noite não sai mais');
+    await wa.enviar(grupoId, texto);
+  };
   /** Envio com ack, só no grupo configurado; a conexão pode ter demorado: nada depois das 23:00. */
   const enviarNoGrupo = async (texto: string) => {
     const wa = await conexao!;
@@ -467,7 +476,106 @@ async function laco(): Promise<void> {
       if (m.id && m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, admins)) reagirEm(m.grupoId, m.id)('⏳');
     },
   });
+  // ---- Pix dos diaristas: lembrete no fim da pelada, comprovantes no grupo, aviso ao dono ----
+  const pix: Pix | null = process.env.ROBO_PIX_VALOR && process.env.ROBO_PIX_CHAVE ? { valor: process.env.ROBO_PIX_VALOR, chave: process.env.ROBO_PIX_CHAVE } : null;
+  const dono = (process.env.ROBO_DONO ?? '').replace(/\D/g, '');
+  const telefoneDoDono = dono ? (dono.startsWith('55') ? dono : `55${dono}`) : null;
+  // O endereço de verdade do dono no WhatsApp: muito número antigo está registrado sem o 9, e uma
+  // mensagem para o endereço com o 9 é aceita pelo servidor mas não chega a ninguém.
+  let conversaDoDono: string | null = null;
+  const enderecoDoDono = async (): Promise<string | null> => {
+    if (!telefoneDoDono) return null;
+    conversaDoDono ??= await (await conexao!).conversaDoTelefone(telefoneDoDono);
+    return conversaDoDono;
+  };
+  const apelidos = apelidosDoEnv(process.env);
+
+  /** Foto ou PDF no grupo enquanto o Pix da noite está aberto: a IA confere; comprovante ganha ✅. */
+  const talvezComprovante = async (m: MensagemRecebida) => {
+    const c = estado.cobranca;
+    const now = new Date();
+    if (!m.midia || !m.id || !cobrancaAtiva(c, now)) return;
+    if (!ia || !clienteIA) return log('comprovante: a IA está desligada, não dá para conferir a imagem');
+    if (c.analisadas >= MAX_ANALISES) return log(`comprovante: já olhei ${MAX_ANALISES} imagens desta noite; esta fica sem conferir`);
+    const telefoneDoJogador = m.remetenteTelefone ? apelidos.find((a) => ehAdmin(m.remetenteTelefone!, [a.telefone]))?.nome : null;
+    // Quem já pagou pode mandar foto à vontade (resenha, print): não gasta IA.
+    const pelosNomes = casarDiarista(c, [telefoneDoJogador, m.remetenteNome]);
+    if (pelosNomes && jaPagou(c, pelosNomes.jogadorId)) return;
+    const wa = await conexao!;
+    if (!wa.baixarMidia) return;
+    const arquivo = await wa.baixarMidia(m.midia.id);
+    const leitura = await lerComprovante(clienteIA, ia.modelo || 'claude-haiku-5-5', arquivo.bytes, m.midia.mime ?? arquivo.mime, registrarUso);
+    estado = { ...estado, cobranca: { ...c, analisadas: c.analisadas + 1 } };
+    gravar(estado);
+    if (!leitura.ehComprovante) return;
+    const atual = estado.cobranca!;
+    const d = pelosNomes ?? casarDiarista(atual, [leitura.pagador]);
+    reagirEm(m.grupoId, m.id)('✅');
+    reacoes.delete(m.id);
+    if (d && jaPagou(atual, d.jogadorId)) return;
+    const nome = d?.nome ?? m.remetenteNome?.trim() ?? 'alguém';
+    estado = {
+      ...estado,
+      cobranca: registrarPagamento(atual, { jogadorId: d?.jogadorId ?? null, nome, quando: now.toISOString(), mensagemId: m.id, pagador: leitura.pagador, valor: leitura.valor }, now),
+    };
+    gravar(estado);
+    log(`comprovante de ${nome}${d ? '' : ' (não sei qual diarista é)'}`);
+  };
+
+  /**
+   * O lembrete do Pix para os diaristas da lista: logo depois do resumo da noite ou, se o resumo
+   * ficou esperando uma partida aberta, a partir das 22:55 de qualquer jeito.
+   */
+  const talvezLembrete = async (now: Date) => {
+    const hoje = dataDe(now);
+    if (!pix || !horaDeTentarResumo(now, estado.lembreteEnviado)) return;
+    if (estado.resumoEnviado !== hoje && now < paraDeEsperar(hoje)) return;
+    const marcar = (cobranca?: ReturnType<typeof novaCobranca>) => {
+      estado = { ...estado, lembreteEnviado: hoje, ...(cobranca ? { cobranca } : {}) };
+      gravar(estado);
+    };
+    const peladaId = await idDaPeladaDaData(db, hoje);
+    if (peladaId === null) return marcar();
+    // A lista desta pelada (depois das 22:30, "a da semana" já é a da quarta seguinte).
+    const lista = await estadoDaPelada(db, peladaId, now);
+    if (lista.cancelada) return marcar();
+    const diaristas = lista.principal.filter((i) => marcaDe(i) === 'D').map((i) => ({ jogadorId: i.jogadorId, nome: i.nome }));
+    if (!diaristas.length) {
+      log('lembrete do Pix: nenhum diarista na lista de hoje');
+      return marcar();
+    }
+    await enviarNaNoite(textoDoLembrete(diaristas, pix));
+    marcar(novaCobranca(hoje, diaristas));
+    log(`lembrete do Pix mandado (${diaristas.length} diaristas)`);
+  };
+
+  /** Quem pagou e quem falta, no privado do dono; de madrugada, guarda para a manhã. */
+  const talvezAvisarDono = async (now: Date) => {
+    const c = estado.cobranca;
+    if (!telefoneDoDono || !c || !horaDeAvisarDono(c, now)) return;
+    try {
+      const destino = await enderecoDoDono();
+      if (!destino) throw new Error('o número do dono (ROBO_DONO) não tem WhatsApp');
+      await (await conexao!).enviar(destino, textoParaODono(c));
+      estado = { ...estado, cobranca: { ...c, avisarDonoEm: null } };
+      log('aviso do Pix mandado ao dono da pelada');
+    } catch (err) {
+      const msg = (err as Error).message;
+      const depois = /quiet_hours/.test(msg) ? proximaManha(now) : new Date(now.getTime() + 5 * 60_000);
+      estado = { ...estado, cobranca: { ...c, avisarDonoEm: depois.toISOString() } };
+      log(`aviso do Pix ao dono não saiu (${msg}); tenta de novo às ${depois.toISOString().slice(11, 16)} UTC`);
+    }
+    gravar(estado);
+  };
+
   const aoReceber = (m: MensagemRecebida) => {
+    // Foto ou PDF no grupo (sem marcar o robô): pode ser comprovante de Pix.
+    if (m.midia && !m.privado && m.grupoId === grupoId && !m.mencionaORobo && !m.respondeAoRobo) {
+      void emFila(() => talvezComprovante(m)).catch((err) => log(`comprovante: ${(err as Error).message}`));
+      return;
+    }
+    // Mídia sem texto (no privado ou com marcação): nada para responder.
+    if (m.midia && !m.texto.trim()) return;
     // No privado não precisa marcar (o `responder` atende só os organizadores); mensagens seguidas
     // da mesma pessoa viram um pedido só. No grupo, só marcação (ou resposta ao robô), cada uma
     // sozinha; a de outro grupo vai ao `responder` só para deixar a linha "marcação ignorada" no log.
@@ -503,7 +611,8 @@ async function laco(): Promise<void> {
     };
     const peladaId = await idDaPeladaDaData(db, hoje);
     if (peladaId === null) return marcar();
-    if ((await partidaEmAndamento(db, peladaId)) !== null) {
+    // Partida aberta: espera terminar, mas só até 22:55 (alguém pode ter esquecido de encerrar).
+    if (now < paraDeEsperar(hoje) && (await partidaEmAndamento(db, peladaId)) !== null) {
       if (!esperandoPartida) log('resumo da noite: esperando a partida em andamento terminar');
       esperandoPartida = true;
       return;
@@ -517,10 +626,10 @@ async function laco(): Promise<void> {
     }
     for (const [i, texto] of textos.entries()) {
       try {
-        await enviarNoGrupo(texto);
+        await enviarNaNoite(texto);
       } catch (err) {
         log(`resumo da noite: a mensagem ${i + 1} de ${textos.length} não saiu (${(err as Error).message})`);
-        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:00)
+        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:15)
         continue;
       }
       if (i === 0) marcar();
@@ -532,6 +641,8 @@ async function laco(): Promise<void> {
   for (;;) {
     const now = new Date();
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
+    await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
+    await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
     const dentro = dentroDaJanela(now);
     if (!dentro) {
       manterAcordado(false);
