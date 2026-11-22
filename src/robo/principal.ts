@@ -301,6 +301,14 @@ async function laco(): Promise<void> {
     await wa.enviar(conversa, texto);
   };
 
+  /** Reação na mensagem recebida, sem esperar: uma reação que não sai só fica no log. */
+  const reagirEm = (conversa: string, id: string) => (emoji: string) => {
+    void (async () => {
+      const wa = await conexao!;
+      await wa.reagir?.(conversa, id, emoji);
+    })().catch((err) => log(`reação ${emoji || '(tirar)'} não saiu: ${(err as Error).message}`));
+  };
+
   // A conversa privada de cada organizador: a que ele já usou com o robô ou a que o WhatsApp informa.
   const conversas = new Map<string, string>();
   const conversaDe = async (admin: string): Promise<string | null> => {
@@ -396,6 +404,7 @@ async function laco(): Promise<void> {
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
+        ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         log,
       });
       if (proposta.atual !== propostaGravada || anuncio.atual !== anuncioGravado) {

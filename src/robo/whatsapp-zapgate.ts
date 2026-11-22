@@ -83,6 +83,7 @@ export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Da
       .trim(),
     mencionaORobo: m.mentions_me,
     quando: new Date(m.timestamp * 1000),
+    id: m.id,
     ...(privado ? { privado: true } : {}),
   };
 }
@@ -215,6 +216,16 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
     },
     // O próprio ZapGate mostra "digitando…" pelo tempo que uma pessoa levaria, antes de cada parte.
     async digitando(): Promise<void> {},
+    // A reação passa pelas mesmas regras do ZapGate (tem limite próprio por hora). Ao reagir ele
+    // também marca a mensagem como lida. Espera só ser aceita na fila, não o ack.
+    async reagir(conversa: string, mensagemId: string, emoji: string): Promise<void> {
+      if (fatal) throw fatal;
+      try {
+        await wa.react(conversa, mensagemId, emoji, { wait: 'queued' });
+      } catch (err) {
+        throw new Error(explicarErro(err));
+      }
+    },
     async fechar(): Promise<void> {
       await new Promise<void>((ok) => servidor.close(() => ok()));
     },

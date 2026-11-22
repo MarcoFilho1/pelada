@@ -29,7 +29,7 @@ import { fotografar, haMudanca, juntarNomes, mudancas, type FotoDaLista } from '
 import { LIMITE_RESPOSTAS, TEXTO_LIMITE, TEXTO_MUITA_GENTE, type Freio } from './freio';
 import { dentroDaJanela } from './janela';
 import { montarMensagem } from './mensagem';
-import { MODELO_PADRAO, TEXTO_MAX_MUDANCAS } from './ia';
+import { ERRO_IA, MODELO_PADRAO, TEXTO_IA_FORA, TEXTO_MAX_MUDANCAS } from './ia';
 import { daQuarta, ehAdmin, MAX_TROCAS, montarProposta, type AnuncioPendente, propostaVencida, TEXTO_SO_ADMIN, votar, type Proposta, type TimesPropostos, type TrocaNosTimes } from './sorteio-zap';
 
 export type MensagemRecebida = {
@@ -45,6 +45,8 @@ export type MensagemRecebida = {
   quando: Date;
   /** Conversa privada (não grupo): `grupoId` é a conversa; só os organizadores são atendidos. */
   privado?: boolean;
+  /** Id da mensagem no WhatsApp (para reagir nela); ausente: o robô não reage. */
+  id?: string;
 };
 
 export type ContextoDaResposta = {
@@ -78,6 +80,12 @@ export type ContextoDaResposta = {
   anunciarNoGrupo: (texto: string) => Promise<void>;
   /** A lista mandada no grupo pelo privado vira a "última lista" do grupo (a próxima mostra o que mudou desde ela). */
   listaMandadaNoGrupo?: (gravar: NonNullable<Resposta['gravar']>) => void;
+  /**
+   * Reage na mensagem que chegou (melhor esforço: quem chama não espera nem vê erro). `''` tira a
+   * reação. Usado só nas perguntas à IA: ⌛ enquanto pensa; depois ✅ (fez uma ação), nada (só
+   * respondeu) ou ❌ (deu erro).
+   */
+  reagir?: (emoji: string) => void;
   /** `acoes`: as ferramentas de ação desta mensagem (quem mandou já vem amarrado nelas). */
   /** A resposta da IA: um texto ou, em mensagens, a fala e os textos prontos (o privado manda uma por uma). */
   perguntar: (
@@ -422,12 +430,32 @@ async function respostaMandar(m: MensagemRecebida, c: ContextoDaResposta): Promi
   return TEXTO_MANDADOS;
 }
 
-/** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. */
-async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<string[]> {
-  if (!c.ia) return [m.privado ? TEXTO_AJUDA_PRIVADO : TEXTO_AJUDA];
-  if (!c.freio.podePerguntar()) return [TEXTO_LIMITE];
+/** Como terminou uma pergunta à IA, para a reação final na mensagem. */
+export type Desfecho = 'acao' | 'resposta' | 'erro';
+
+/** A reação que fica na mensagem depois da resposta: ✅ fez algo, nada se só respondeu, ❌ erro. */
+export const REACAO_FINAL: Record<Desfecho, string> = { acao: '✅', resposta: '', erro: '❌' };
+export const REACAO_PENSANDO = '⏳';
+
+/** Comando que não é nenhum dos prontos: sem IA, a lista de comandos. `desfecho` só quando a IA foi chamada. */
+async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ partes: string[]; desfecho?: Desfecho }> {
+  if (!c.ia) return { partes: [m.privado ? TEXTO_AJUDA_PRIVADO : TEXTO_AJUDA] };
+  if (!c.freio.podePerguntar()) return { partes: [TEXTO_LIMITE] };
   const marca = { entrouOuConfirmou: false };
-  const acoes = m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca);
+  // Uma ação que rodou sem erro vira ✅ no fim (as de leitura não contam: não estão aqui).
+  let fez = false;
+  const acoes = (m.privado ? [...ferramentasDeAcao(m, c, marca), ...ferramentasDoOrganizador(m, c)] : ferramentasDeAcao(m, c, marca)).map(
+    (f): Ferramenta => ({
+      ...f,
+      executar: async (args) => {
+        const r = await f.executar(args);
+        fez = true;
+        return r;
+      },
+    }),
+  );
+  // A IA leva alguns segundos: a ampulheta mostra logo que a mensagem foi vista.
+  c.reagir?.(REACAO_PENSANDO);
   // No privado, a IA vê as últimas falas: "troca o Caio pelo Jonas" e "desfaz" dependem do que veio antes.
   const historico = m.privado && m.remetenteTelefone ? c.memoria?.historico(m.remetenteTelefone, m.quando) : undefined;
   const r = await c.perguntar(texto, {
@@ -441,10 +469,11 @@ async function respostaPergunta(texto: string, m: MensagemRecebida, c: ContextoD
   });
   c.freio.registrarPergunta();
   const partes = Array.isArray(r) ? r : [r];
-  if (!marca.entrouOuConfirmou) return partes;
+  const desfecho: Desfecho = fez ? 'acao' : partes.length === 1 && (partes[0] === ERRO_IA || partes[0] === TEXTO_IA_FORA) ? 'erro' : 'resposta';
+  if (!marca.entrouOuConfirmou) return { partes, desfecho };
   // Entrou ou confirmou alguém: a lista atual vai junto, se a resposta ainda não a trouxe.
   const lista = await listaAtual(m, c);
-  return partes.some((p) => p.includes(lista)) ? partes : [...partes, lista];
+  return { partes: partes.some((p) => p.includes(lista)) ? partes : [...partes, lista], desfecho };
 }
 
 /** Quem pediu, para o "pedido por" (nunca o telefone). */
@@ -915,6 +944,7 @@ async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): P
 async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   let r: Omit<Resposta, 'ehListaCompleta'>;
   let emPartes: string[] | null = null;
+  let desfecho: Desfecho | undefined;
   switch (cmd.tipo) {
     case 'lista':
       r = await respostaLista(m, c);
@@ -972,7 +1002,9 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       r = { texto: await respostaTimes(m, c) };
       break;
     case 'pergunta': {
-      const partes = await respostaPergunta(cmd.texto, m, c);
+      const pergunta = await respostaPergunta(cmd.texto, m, c);
+      const partes = pergunta.partes;
+      desfecho = pergunta.desfecho;
       r = { texto: partes.join('\n\n') };
       // No privado, a resposta sai em mensagens curtas, uma depois da outra (como gente no WhatsApp).
       if (m.privado && partes.length > 1) emPartes = partes;
@@ -991,8 +1023,11 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
     else await c.enviar(r.texto);
   } catch (err) {
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
+    if (desfecho) c.reagir?.(REACAO_FINAL.erro);
     return null;
   }
+  // Depois da resposta (não antes: o ✅ não pode aparecer com o texto ainda sendo digitado).
+  if (desfecho) c.reagir?.(REACAO_FINAL[desfecho]);
   c.freio.registrarResposta();
   // Se grava `estado.ultimo` quem decide é o chamador, depois do ack, com `podeGravarLista`.
   return { texto: r.texto, ehListaCompleta: r.gravar !== undefined, gravar: r.gravar };

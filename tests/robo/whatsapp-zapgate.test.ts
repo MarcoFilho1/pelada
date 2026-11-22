@@ -33,7 +33,7 @@ const base: MessageReceived = {
 describe('lerEventoDoZapGate', () => {
   it('traduz uma mensagem de grupo', () => {
     const m = lerEventoDoZapGate(base, [ROBO, ROBO_LID], AGORA)!;
-    expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false });
+    expect(m).toMatchObject({ grupoId: GRUPO, remetenteTelefone: '5583111110000', remetenteNome: 'Ana', texto: 'oi', mencionaORobo: false, respondeAoRobo: false, id: 'M1' });
     expect(m.privado).toBeUndefined();
     expect(m.quando.getTime()).toBe(1_800_000_000_000);
   });

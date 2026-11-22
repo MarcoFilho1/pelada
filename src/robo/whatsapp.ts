@@ -14,6 +14,8 @@ export interface WhatsApp {
   conversaDoTelefone(telefone: string): Promise<string | null>;
   /** Mostra "digitando…" na conversa (melhor esforço: falha não importa). */
   digitando(conversa: string): Promise<void>;
+  /** Reage na mensagem `mensagemId` da conversa (`''` tira a reação). Ausente: este caminho não reage. */
+  reagir?(conversa: string, mensagemId: string, emoji: string): Promise<void>;
   fechar(): Promise<void>;
 }
 

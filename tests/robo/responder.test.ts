@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ERRO_IA } from '@/robo/ia';
 import { textoWhatsApp } from '@/domain/copiarLista';
 import type { EstadoDaSemana } from '@/server/presencas';
 import type { Envio, EstadoDoRobo } from '@/robo/agenda';
@@ -1398,5 +1399,68 @@ describe('privado: memória da conversa, troca nos times e desfazer', () => {
       { de: 'Ana', por: 'Bia' },
     ]);
     expect(lerTrocas('só o Caio')).toEqual([]);
+  });
+});
+
+describe('reações na mensagem (perguntas à IA)', () => {
+  it('⌛ antes de perguntar; só respondeu: tira a ampulheta depois do envio', async () => {
+    const ordem: string[] = [];
+    const c = ctx({
+      reagir: vi.fn((e: string) => void ordem.push(`reagir ${e}`)),
+      perguntar: vi.fn(async () => {
+        ordem.push('perguntar');
+        return 'O João está na lista.';
+      }),
+      enviar: vi.fn(async () => void ordem.push('enviar')),
+    });
+    await responder(msg('quem vai?'), c);
+    expect(ordem).toEqual(['reagir ⏳', 'perguntar', 'enviar', 'reagir ']);
+  });
+
+  it('a IA fez uma ação: ✅ no fim', async () => {
+    const c = ctx({
+      reagir: vi.fn(),
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'remover_jogador')!.executar({ nome: 'Ana' });
+        return 'Feito.';
+      }),
+    });
+    await responder(msg('me tira'), c);
+    expect(c.reagir).toHaveBeenNthCalledWith(1, '⏳');
+    expect(c.reagir).toHaveBeenLastCalledWith('✅');
+  });
+
+  it('ação que falhou não vale ✅', async () => {
+    const c = ctx({
+      reagir: vi.fn(),
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'cadastrar_jogadores')!.executar({ pessoas: 'Pedro' }).catch(() => {});
+        return 'Faltou a nota.';
+      }),
+    });
+    await responder(msg('bota o Pedro no sistema aí', { remetenteTelefone: ADMIN }), c);
+    expect(c.reagir).toHaveBeenLastCalledWith('');
+  });
+
+  it('IA com erro, ou a resposta não saiu: ❌', async () => {
+    const erro = ctx({ reagir: vi.fn(), perguntar: vi.fn(async () => ERRO_IA) });
+    await responder(msg('quem vai?'), erro);
+    expect(erro.reagir).toHaveBeenLastCalledWith('❌');
+    const semEnvio = ctx({ reagir: vi.fn(), enviar: vi.fn(async () => Promise.reject(new Error('caiu'))) });
+    await responder(msg('quem vai?'), semEnvio);
+    expect(semEnvio.reagir).toHaveBeenLastCalledWith('❌');
+  });
+
+  it('comando pronto (sem IA) ou limite de perguntas: não reage', async () => {
+    const c = ctx({ reagir: vi.fn() });
+    await responder(msg('lista'), c);
+    await responder(msg('artilheiro'), c);
+    expect(c.reagir).not.toHaveBeenCalled();
+  });
+
+  it('no privado também', async () => {
+    const c = ctx({ reagir: vi.fn() });
+    await responder(msg('como tá a lista?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).toEqual(['⏳', '']);
   });
 });
