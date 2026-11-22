@@ -449,10 +449,13 @@ describe('resenha e mensagens em partes', () => {
     expect(await perguntarEmPartes('x', base(cliente))).toEqual([ERRO_IA]);
   });
 
-  it('no privado, a mensagem do usuário pede mensagens curtas, separadas por linha em branco', async () => {
+  it('o jeito de escrever do grupo (curtas, quebradas, sem ponto final) vale para grupo e privado', async () => {
+    expect(SISTEMA).toContain('mensagens bem curtas');
+    expect(SISTEMA).toContain('uma ideia por mensagem, separadas por uma linha em branco');
+    expect(SISTEMA).toContain('Sem ponto final');
     const { cliente, pedidos } = falso(texto('a'));
     await perguntarEmPartes('x', { ...base(cliente), privado: true });
-    expect(JSON.stringify(pedidos[0].messages[0])).toContain('mensagens curtas, uma ideia por mensagem');
+    expect(JSON.stringify(pedidos[0].messages[0])).toContain('Conversa: privado com um organizador.');
   });
 });
 

@@ -11,6 +11,9 @@ import { createInterface } from 'node:readline/promises';
 import { getDb } from '@/db/client';
 import { dataDe } from '@/domain/tempo';
 import { estadoDaSemana, estadoDaSemanaSemCriar, restaurarPresenca } from '@/server/presencas';
+import { idDaPeladaDaData } from '@/server/pelada';
+import { partidaEmAndamento } from '@/server/partidas';
+import { rankingsDaNoite } from '@/server/ranking';
 import { decidir, emSilencio } from './agenda';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { criarLinkAnotador } from '@/server/anotador';
@@ -29,6 +32,7 @@ import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type Cancelamento, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
 import { PedidosDoPrivado } from './juntar';
+import { horaDeTentarResumo, textosDoResumo } from './resumo-da-noite';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -484,9 +488,50 @@ async function laco(): Promise<void> {
   log(`Robô ligado. Vai mandar em: ${nomeDoGrupo(estado)}. Estado em ${arquivoEstado}.`);
   log(`Respostas: ${ia ? `IA ligada (${ia.modelo})` : 'IA desligada'}; ${admins.length} admin(s) para sortear.`);
 
+  /**
+   * O resumo do fim da pelada (22:35–22:40): destaques da noite e depois as tabelas gerais, uma
+   * mensagem cada. Espera a partida em andamento terminar (até as 23:00). Conta como mandado assim
+   * que a primeira mensagem sai: repetir o resumo seria pior que uma tabela faltando.
+   */
+  let esperandoPartida = false;
+  const talvezResumo = async (now: Date) => {
+    if (!horaDeTentarResumo(now, estado.resumoEnviado)) return;
+    const hoje = dataDe(now);
+    const marcar = () => {
+      estado = { ...estado, resumoEnviado: hoje };
+      gravar(estado);
+    };
+    const peladaId = await idDaPeladaDaData(db, hoje);
+    if (peladaId === null) return marcar();
+    if ((await partidaEmAndamento(db, peladaId)) !== null) {
+      if (!esperandoPartida) log('resumo da noite: esperando a partida em andamento terminar');
+      esperandoPartida = true;
+      return;
+    }
+    esperandoPartida = false;
+    const { hoje: daNoite, geral } = await rankingsDaNoite(db, hoje);
+    const textos = textosDoResumo(daNoite, geral);
+    if (!textos.length) {
+      log('resumo da noite: nenhuma partida com gol ou vitória hoje; não manda');
+      return marcar();
+    }
+    for (const [i, texto] of textos.entries()) {
+      try {
+        await enviarNoGrupo(texto);
+      } catch (err) {
+        log(`resumo da noite: a mensagem ${i + 1} de ${textos.length} não saiu (${(err as Error).message})`);
+        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:00)
+        continue;
+      }
+      if (i === 0) marcar();
+    }
+    log(`resumo da noite mandado (${textos.length} mensagens)`);
+  };
+
   let estavaDentro: boolean | null = null;
   for (;;) {
     const now = new Date();
+    await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
     const dentro = dentroDaJanela(now);
     if (!dentro) {
       manterAcordado(false);

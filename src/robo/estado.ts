@@ -31,6 +31,7 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
     grupoNome: d.grupoNome ?? null,
     ...(d.proposta ? { proposta: d.proposta } : {}),
     ...(d.anuncio ? { anuncio: d.anuncio } : {}),
+    ...(d.resumoEnviado ? { resumoEnviado: d.resumoEnviado } : {}),
   };
 }
 

@@ -118,3 +118,19 @@ export async function periodosDisponiveis(db: DB): Promise<{ anos: number[]; mes
   const anos = [...new Set(meses.map((m) => Number(m.slice(0, 4))))];
   return { anos, meses };
 }
+
+/**
+ * Para o resumo do fim da pelada: o ranking só das partidas da noite `data` e o geral (todas as
+ * partidas), dos jogadores ativos, com uma leitura só das partidas.
+ */
+export async function rankingsDaNoite(db: DB, data: string): Promise<{ hoje: LinhaRanking[]; geral: LinhaRanking[] }> {
+  const geral: Periodo = { tipo: 'geral' };
+  const [ps, js] = await Promise.all([partidasEncerradas(db, geral), db.select({ id: jogadores.id, nome: jogadores.nome, ativo: jogadores.ativo }).from(jogadores)]);
+  const nomes = new Map(js.map((j) => [j.id, j.nome]));
+  const ativos = new Set(js.filter((j) => j.ativo).map((j) => j.id));
+  const so = (ls: LinhaRanking[]) => ls.filter((l) => ativos.has(l.jogadorId));
+  return {
+    hoje: so(calcularRanking(ps.filter((p) => p.peladaData === data), nomes, geral)),
+    geral: so(calcularRanking(ps, nomes, geral)),
+  };
+}

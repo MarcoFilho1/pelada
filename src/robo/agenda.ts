@@ -18,6 +18,8 @@ export type EstadoDoRobo = {
   proposta?: PropostaGuardada | null;
   /** Times confirmados esperando quem propôs mandar no grupo. */
   anuncio?: AnuncioGuardado | null;
+  /** Data ('YYYY-MM-DD') do último resumo do fim da pelada (sai uma vez por noite). */
+  resumoEnviado?: string | null;
 };
 
 const MEIA_HORA_MS = 30 * 60 * 1000;

@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores, peladas } from '@/db/schema';
 import { encerrarPartida, iniciarPartida, registrarLance } from '@/server/partidas';
-import { estatisticasDoJogador, periodosDisponiveis, rankingDoPeriodo } from '@/server/ranking';
+import { estatisticasDoJogador, periodosDisponiveis, rankingDoPeriodo, rankingsDaNoite } from '@/server/ranking';
+import { idDaPeladaDaData } from '@/server/pelada';
 import { salvarTimesDefinitivos, timesDaPelada } from '@/server/times';
 import { createTestDb } from '../helpers/db';
 
@@ -50,6 +51,16 @@ describe('ranking do servidor', () => {
       await encerrarPartida(db, id, new Date('2026-11-11T20:48:00-03:00'));
     });
   }
+
+  it('rankingsDaNoite: a noite só com as partidas do dia; o geral com todas', async () => {
+    await cenario();
+    const { hoje, geral } = await rankingsDaNoite(db, '2026-11-04');
+    expect(hoje.find((l) => l.nome === 'Ana')).toMatchObject({ gols: 2, vitorias: 1, jogos: 1 });
+    expect(geral.find((l) => l.nome === 'Ana')).toMatchObject({ gols: 2, vitorias: 1, jogos: 2 });
+    expect((await rankingsDaNoite(db, '2026-11-25')).hoje).toEqual([]);
+    expect(await idDaPeladaDaData(db, '2026-11-25')).toBeNull();
+    expect(await idDaPeladaDaData(db, '2026-11-04')).toEqual(expect.any(Number));
+  });
 
   it('ranking com 2 partidas reais', async () => {
     await db.update(jogadores).set({ nota: '4.5' }).where(eq(jogadores.id, ana));
