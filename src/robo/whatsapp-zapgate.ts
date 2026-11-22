@@ -85,6 +85,7 @@ export function lerEventoDoZapGate(m: MessageReceived, eu: string[], agoraS = Da
     mencionaORobo: m.mentions_me,
     quando: new Date(m.timestamp * 1000),
     id: m.id,
+    remetente: m.sender,
     ...(privado ? { privado: true } : {}),
   };
 }

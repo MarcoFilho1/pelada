@@ -48,6 +48,8 @@ export type MensagemRecebida = {
   privado?: boolean;
   /** Id da mensagem no WhatsApp (para reagir nela); ausente: o robô não reage. */
   id?: string;
+  /** Endereço de quem mandou (telefone ou LID), para juntar mensagens quebradas da mesma pessoa. */
+  remetente?: string;
 };
 
 export type ContextoDaResposta = {

@@ -28,6 +28,7 @@ import { mexerNaLista } from './lista-zap';
 import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
+import { JuntarMensagens } from './juntar';
 import { umaVolta } from './volta';
 import type { WhatsApp } from './whatsapp';
 
@@ -301,8 +302,12 @@ async function laco(): Promise<void> {
     await wa.enviar(conversa, texto);
   };
 
+  // A reação que está em cada mensagem (só enquanto ela é tratada): não manda a mesma de novo.
+  const reacoes = new Map<string, string>();
   /** Reação na mensagem recebida, sem esperar: uma reação que não sai só fica no log. */
   const reagirEm = (conversa: string, id: string) => (emoji: string) => {
+    if ((reacoes.get(id) ?? '') === emoji) return;
+    reacoes.set(id, emoji);
     void (async () => {
       const wa = await conexao!;
       await wa.reagir?.(conversa, id, emoji);
@@ -358,7 +363,18 @@ async function laco(): Promise<void> {
   // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
   const memoria = new ConversasPrivadas();
 
+  /** Trata o pedido e, no fim, nunca deixa a ⌛ da mensagem para trás (ignorada, limite, erro). */
   const tratar = async (m: MensagemRecebida) => {
+    try {
+      await tratarPedido(m);
+    } finally {
+      if (m.id) {
+        if (reacoes.get(m.id) === '⏳') reagirEm(m.grupoId, m.id)('');
+        reacoes.delete(m.id);
+      }
+    }
+  };
+  const tratarPedido = async (m: MensagemRecebida) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     try {
       const r = await responder(m, {
@@ -423,11 +439,22 @@ async function laco(): Promise<void> {
       log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
     }
   };
+  /** Se o robô vai mesmo atender: só então a ⌛ aparece antes de juntar as mensagens. */
+  const vaiAtender = (m: MensagemRecebida) =>
+    m.privado ? m.remetenteTelefone !== null && ehAdmin(m.remetenteTelefone, admins) : m.grupoId === grupoId && m.mencionaORobo && !emSilencio(m.quando);
+  // Mensagens quebradas da mesma pessoa viram um pedido só (espera uns segundos pelas próximas).
+  const juntar = new JuntarMensagens({
+    aoComecar: (m) => {
+      if (m.id && vaiAtender(m)) reagirEm(m.grupoId, m.id)('⏳');
+    },
+    aoJuntar: (m) => void emFila(() => tratar(m)),
+  });
   const aoReceber = (m: MensagemRecebida) => {
-    // Filtro barato antes da fila: só marcação (ou resposta ao robô). A de outro grupo vai ao
-    // `responder` só para deixar a linha "marcação ignorada (outro grupo)" no log.
-    // No privado não precisa marcar: o `responder` atende só os organizadores.
-    if (m.privado || m.mencionaORobo || m.respondeAoRobo) void emFila(() => tratar(m));
+    // Filtro barato antes da fila: só marcação (ou resposta ao robô) começa um pedido; depois, as
+    // próximas da mesma pessoa entram nele. A de outro grupo vai ao `responder` só para deixar a
+    // linha "marcação ignorada (outro grupo)" no log. No privado não precisa marcar: o `responder`
+    // atende só os organizadores.
+    juntar.receber(m, m.privado === true || m.mencionaORobo || m.respondeAoRobo);
   };
 
   // Fica conectado a semana toda para responder (a Baileys reconecta sozinha nas quedas).
