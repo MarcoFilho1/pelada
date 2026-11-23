@@ -104,6 +104,20 @@ export function erroDeLimite(err: unknown): ErroDeLimite | null {
   return new ErroDeLimite(explicarErro(err), LIMITES[err.code], (err.retryAfter ?? 60) * 1000);
 }
 
+/** O ZapGate aceita de 2 a 5 partes, nenhuma vazia. */
+export const MAX_PARTES = 5;
+
+/**
+ * As partes como o ZapGate aceita: sem vazias e no máximo 5 (as que sobram vão juntas na última,
+ * separadas por linha em branco). Uma parte só vira texto simples.
+ */
+export function partesParaEnvio(partes: string[]): string | string[] {
+  const cheias = partes.map((p) => p.trim()).filter(Boolean);
+  if (cheias.length <= 1) return cheias[0] ?? '';
+  if (cheias.length <= MAX_PARTES) return cheias;
+  return [...cheias.slice(0, MAX_PARTES - 1), cheias.slice(MAX_PARTES - 1).join('\n\n')];
+}
+
 /** Explica em português uma recusa do ZapGate (o que fazer, se algo). */
 export function explicarErro(err: unknown): string {
   if (!(err instanceof ZapGateError)) return (err as Error).message;
@@ -241,7 +255,8 @@ export async function conectarMotor(op: OpcoesMotor): Promise<WhatsApp> {
       let ref: string;
       try {
         const opcoes = { wait: 'queued' as const };
-        ref = (Array.isArray(texto) ? await wa.sendParts(conversa, texto, opcoes) : await wa.sendText(conversa, texto, opcoes)).ref;
+        const envio = Array.isArray(texto) ? partesParaEnvio(texto) : texto;
+        ref = (Array.isArray(envio) ? await wa.sendParts(conversa, envio, opcoes) : await wa.sendText(conversa, envio, opcoes)).ref;
       } catch (err) {
         throw erroDeLimite(err) ?? new Error(explicarErro(err));
       }

@@ -99,6 +99,8 @@ export type ContextoDaResposta = {
    * respondeu) ou ❌ (deu erro).
    */
   reagir?: (emoji: string) => void;
+  /** O Pix dos diaristas (só com uma cobrança aberta): a situação e marcar um pagamento na mão. */
+  pix?: { situacao: () => string | null; marcar: (nome: string, now: Date) => string };
   /** Privado: descartar a resposta se chegar mais mensagem da pessoa antes dela sair. */
   cancelar?: Cancelamento;
   /** Pausa enquanto o limite de envio segura a resposta (nos testes, instantânea). */
@@ -716,6 +718,16 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
   ];
 }
 
+/** Um aviso no grupo cabe em poucas mensagens curtas. */
+export const TAM_MAX_AVISO = 600;
+
+const comTexto: Parametros = {
+  type: 'object',
+  properties: { texto: { type: 'string', description: 'O aviso, no jeito do grupo (mensagens curtas separadas por linha em branco).' } },
+  required: ['texto'],
+  additionalProperties: false,
+};
+
 const comNomeENota: Parametros = {
   type: 'object',
   properties: {
@@ -832,6 +844,47 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
         await c.desfazer([...mudancas].reverse(), m.quando);
         const nomes = [...new Set(mudancas.map((x) => x.nome))];
         return new TextoPronto(`↩️ Desfeito: ${juntarNomes(nomes)} ${nomes.length > 1 ? 'voltaram' : 'voltou'} como estava.\n\n${await listaAtual(m, c)}`, 'acao');
+      },
+    },
+    {
+      nome: 'mandar_aviso_no_grupo',
+      altera: true,
+      descricao:
+        'Manda no grupo um aviso escrito por você a pedido do organizador (ex.: "avisa lá no grupo que a nota do Fernando mudou"). Escreva o aviso no jeito do grupo, curto, em até 3 mensagens separadas por linha em branco. Nunca mande sem o organizador pedir para avisar o grupo. Para a lista ou os times, use as ferramentas próprias.',
+      parametros: comTexto,
+      async executar(args) {
+        const { texto } = args as { texto?: unknown };
+        if (typeof texto !== 'string' || !texto.trim()) throw new ErroDeFerramenta('Faltou o texto do aviso.');
+        if (texto.length > TAM_MAX_AVISO) throw new ErroDeFerramenta(`O aviso passou de ${TAM_MAX_AVISO} letras; resuma.`);
+        try {
+          await c.anunciarNoGrupo(texto.trim());
+        } catch (err) {
+          c.log(`aviso no grupo não saiu: ${(err as Error).message}`);
+          throw new ErroDeFerramenta('Não consegui mandar no grupo agora (entre 23h e 8h o robô não manda nada no grupo). Nada foi mandado.');
+        }
+        return '📣 Aviso mandado no grupo.';
+      },
+    },
+    {
+      nome: 'ver_pagamentos_do_pix',
+      descricao: 'Quem dos diaristas da última pelada já pagou o Pix e quem falta. O robô manda o texto sozinho.',
+      parametros: semParametros,
+      async executar() {
+        const situacao = c.pix?.situacao();
+        return situacao ? new TextoPronto(situacao, 'lista') : 'Não tem cobrança de Pix aberta agora (ela abre depois da pelada, com o lembrete).';
+      },
+    },
+    {
+      nome: 'marcar_pagamento_do_pix',
+      altera: true,
+      descricao:
+        'Marca que um diarista pagou o Pix da última pelada (pagou em dinheiro, ou o comprovante não foi reconhecido). Só quando o organizador disser que a pessoa pagou. Devolve o texto para a conversa.',
+      parametros: comNome,
+      async executar(args) {
+        const { nome } = args as { nome?: unknown };
+        if (typeof nome !== 'string' || !nome.trim()) throw new ErroDeFerramenta('Faltou o nome de quem pagou.');
+        if (!c.pix) return 'Não tem cobrança de Pix aberta agora.';
+        return new TextoPronto(c.pix.marcar(nome.trim(), m.quando), 'acao');
       },
     },
   ];

@@ -1650,3 +1650,27 @@ describe('lista mostrada numa resposta vira a última lista do grupo', () => {
     expect(privado?.gravar).toBeUndefined();
   });
 });
+
+describe('ferramentas novas do organizador (privado)', () => {
+  const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
+  const ferramenta = (c: ReturnType<typeof ctx>, nome: string) => ferramentasDoOrganizador(msg('x', PRIV), c).find((f) => f.nome === nome)!;
+
+  it('mandar_aviso_no_grupo manda o texto no grupo; vazio ou comprido demais, não', async () => {
+    const c = ctx();
+    expect(await ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto: 'Galera, a nota do Fernando mudou' })).toBe('📣 Aviso mandado no grupo.');
+    expect(c.anunciarNoGrupo).toHaveBeenCalledWith('Galera, a nota do Fernando mudou');
+    await expect(ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto: ' ' })).rejects.toThrow('Faltou o texto');
+    await expect(ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto: 'x'.repeat(700) })).rejects.toThrow('passou de');
+  });
+
+  it('pix: ver a situação e marcar pagamento usam a cobrança; sem cobrança, avisa', async () => {
+    const pix = { situacao: vi.fn(() => '💰 Pix da pelada de 18/11'), marcar: vi.fn(() => '✅ Bartolomeu marcado como pago.') };
+    const c = ctx({ pix });
+    expect(((await ferramenta(c, 'ver_pagamentos_do_pix').executar({})) as TextoPronto).texto).toBe('💰 Pix da pelada de 18/11');
+    expect(((await ferramenta(c, 'marcar_pagamento_do_pix').executar({ nome: 'Bartolomeu' })) as TextoPronto).texto).toBe('✅ Bartolomeu marcado como pago.');
+    expect(pix.marcar).toHaveBeenCalledWith('Bartolomeu', expect.any(Date));
+    const sem = ctx();
+    expect(await ferramenta(sem, 'ver_pagamentos_do_pix').executar({})).toContain('Não tem cobrança');
+    expect(await ferramenta(sem, 'marcar_pagamento_do_pix').executar({ nome: 'X' })).toContain('Não tem cobrança');
+  });
+});
