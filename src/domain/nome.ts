@@ -108,3 +108,18 @@ export function sugerirNome<T extends { nome: string }>(texto: string, candidato
   const melhores = com.filter((x) => x.d === menor);
   return melhores.length === 1 ? melhores[0].c : null;
 }
+
+/**
+ * Nome completo do WhatsApp ("Silvio Viana") → o jogador cujo nome inteiro são as primeiras palavras
+ * dele ("Silvio"). Mais de um ("João" e "João Pedro" para "João Pedro Silva"): o mais comprido; empate
+ * → todos (`varios`); nenhum → `null`. Só para quando `acharJogador` não achou, e entre poucos candidatos
+ * (quem já está na lista): entre todos os cadastrados, "João Pedro" acharia o "João" por engano.
+ */
+export function acharPeloComeco<T extends { nome: string }>(texto: string, candidatos: T[]): { jogador: T } | { varios: T[] } | null {
+  const alvo = normalizarNome(texto);
+  const cabem = candidatos.filter((c) => alvo.startsWith(`${normalizarNome(c.nome)} `));
+  if (!cabem.length) return null;
+  const maior = Math.max(...cabem.map((c) => normalizarNome(c.nome).length));
+  const melhores = cabem.filter((c) => normalizarNome(c.nome).length === maior);
+  return melhores.length === 1 ? { jogador: melhores[0] } : { varios: melhores };
+}

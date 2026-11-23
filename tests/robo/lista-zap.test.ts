@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DB } from '@/db/client';
 import { jogadores } from '@/db/schema';
 import { acharJogador, CALVINHO, levenshtein, mexerNaLista } from '@/robo/lista-zap';
+import { acharPeloComeco } from '@/domain/nome';
 import { definirMensalistas } from '@/server/mensalistas';
 import { definirEstadoManual, obterPeladaDaSemana } from '@/server/pelada';
 import { estadoDaSemana } from '@/server/presencas';
@@ -307,5 +308,34 @@ describe('sugestão de nome parecido', () => {
     await criar(['Maximiliano Fernandes de Albuquerque']);
     const digitado = 'Maximiliano Fernandes de Albukerque';
     expect((await mexerNaLista(db, 'adicionar', digitado, TERCA)).texto).toBe(`🤔 Não achei "${digitado.slice(0, 30)}…". Você quis dizer Maximiliano Fernandes de Albuquerque?`);
+  });
+});
+
+describe('nome completo do WhatsApp acha o jogador da lista', () => {
+  it('"Silvio Viana" (quem disse "eu não vou") tira o Silvio da lista', async () => {
+    await criar(['Silvio']);
+    await mexerNaLista(db, 'adicionar', 'Silvio', TERCA);
+    expect(await mexerNaLista(db, 'remover', 'Silvio Viana', TERCA)).toMatchObject({ texto: '👋 Silvio saiu da lista.', mudou: true });
+  });
+
+  it('"Silvio Viana" confirma o Silvio', async () => {
+    await criar(['Silvio']);
+    await mexerNaLista(db, 'adicionar', 'Silvio', TERCA);
+    expect(await mexerNaLista(db, 'confirmar', 'silvio viana', TERCA)).toMatchObject({ texto: '✅ Silvio confirmado!', mudou: true });
+  });
+
+  it('adicionar não usa o nome completo (outra pessoa pode ter o mesmo primeiro nome)', async () => {
+    await criar(['João']);
+    expect((await mexerNaLista(db, 'adicionar', 'João Pedro', TERCA)).mudou).toBe(false);
+  });
+});
+
+describe('acharPeloComeco', () => {
+  it('o nome mais comprido que cabe vence; empate é ambíguo; palavra pela metade não vale', () => {
+    const js = [{ nome: 'João' }, { nome: 'João Pedro' }, { nome: 'Sil' }];
+    expect(acharPeloComeco('João Pedro Silva', js)).toEqual({ jogador: { nome: 'João Pedro' } });
+    expect(acharPeloComeco('Silvio Viana', js)).toBeNull();
+    expect(acharPeloComeco('Joao', js)).toBeNull();
+    expect(acharPeloComeco('Ana Maria', [{ nome: 'Ana' }, { nome: 'ANA' }])).toEqual({ varios: [{ nome: 'Ana' }, { nome: 'ANA' }] });
   });
 });
