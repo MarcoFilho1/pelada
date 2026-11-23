@@ -106,6 +106,7 @@ function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | '
   // "adicionar Caio - 2,5": nome com nota é cadastro de jogador novo (adicionar na lista não tem nota).
   if (tipo === 'adicionar' && /\s[-–]\s*\d/u.test(` ${nome}`)) {
     const pessoas = lerCadastro(nome);
+    if (pessoas.some((p) => pareceFrase(p.nome))) return null;
     if (pessoas.length && pessoas.every((p) => p.nota !== null)) {
       return { tipo: 'cadastrar', pessoas: pessoas.slice(0, MAX_CADASTROS_POR_MENSAGEM), excedeu: pessoas.length > MAX_CADASTROS_POR_MENSAGEM };
     }
@@ -116,6 +117,7 @@ function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | '
     .split(/\s*,\s*|\s+[eE]\s+/u)
     .map((n) => n.replace(/\s+(?:como\s+)?diarista$/iu, '').replace(/\s*\(\s*d\s*\)$/iu, '').trim())
     .filter(Boolean);
+  if (todos.some(pareceFrase)) return null;
   if (todos.length > 1) {
     return { tipo, nome: todos[0], nomes: todos.slice(0, MAX_NOMES_POR_MENSAGEM), excedeu: todos.length > MAX_NOMES_POR_MENSAGEM };
   }
@@ -126,12 +128,33 @@ function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | '
 
 const CADASTRAR = new Set(['cadastrar', 'cadastra', 'cadastre', 'cadastro']);
 
+// Palavras que começam um pedido, não um nome ("e em seguida mande no grupo", "depois manda a lista").
+const INICIO_DE_PEDIDO = new Set([
+  'em', 'depois', 'entao', 'seguida', 'tambem', 'mande', 'manda', 'mandar', 'envie', 'envia', 'enviar', 'avise', 'avisa',
+  'avisar', 'adicione', 'adiciona', 'adicionar', 'coloque', 'coloca', 'bota', 'bote', 'cadastre', 'cadastra',
+  'cadastrar', 'remova', 'remove', 'tire', 'tira', 'mude', 'muda', 'troque', 'troca', 'sorteie', 'sorteia', 'me', 'pode',
+  'por', 'favor', 'na', 'no', 'pra', 'para',
+]);
+
+/**
+ * Nome que é, na verdade, o resto de um pedido em frase ("em seguida adicione na lista"): mais de 4
+ * palavras, pontuação de frase ou aspas no meio, ou começa com palavra de pedido. Aí a mensagem toda vai
+ * para a IA, que entende as várias tarefas, em vez de o comando fixo fazer só a primeira.
+ */
+function pareceFrase(nome: string): boolean {
+  const palavras = nome.trim().split(/\s+/);
+  if (palavras.length > 4) return true;
+  if (/[.!?:"“”]/u.test(nome)) return true;
+  return INICIO_DE_PEDIDO.has(normalizarNome(palavras[0] ?? ''));
+}
+
 /** "cadastrar Caio - 2,5 João - 3" (ou várias linhas) → pessoas; sem ninguém, o jeito de mandar. */
 function comandoDeCadastro(texto: string): Extract<Comando, { tipo: 'cadastrar' | 'recusa' }> | null {
   const m = /^\s*(\S+)(?:\s+([\s\S]*))?$/u.exec(texto);
   if (!m || !CADASTRAR.has(normalizarNome(m[1]).replace(/[.,:;!?]+$/u, ''))) return null;
   const pessoas = lerCadastro(m[2] ?? '');
   if (!pessoas.length) return { tipo: 'recusa', texto: TEXTO_COMO_CADASTRAR };
+  if (pessoas.some((p) => pareceFrase(p.nome))) return null;
   return { tipo: 'cadastrar', pessoas: pessoas.slice(0, MAX_CADASTROS_POR_MENSAGEM), excedeu: pessoas.length > MAX_CADASTROS_POR_MENSAGEM };
 }
 
