@@ -1,7 +1,7 @@
 // "adicionar", "confirmar" e "remover" pelo WhatsApp: acha o jogador pelo nome e chama as mesmas
 // funções dos botões do jogador no site ("Entrar na fila", "Vou", "Não vou"). Nenhuma regra nova aqui.
 import type { DB } from '@/db/client';
-import { acharJogador, normalizarNome, sugerirNome } from '@/domain/nome';
+import { acharJogador, acharPeloComeco, normalizarNome, sugerirNome } from '@/domain/nome';
 import { mensagemParaUsuario } from '@/server/erros';
 import { listarJogadores } from '@/server/jogadores';
 import { ErroLista } from '@/server/pelada';
@@ -102,7 +102,8 @@ async function confirmarOuRemover(db: DB, acao: 'confirmar' | 'remover', texto: 
   const estado = await estadoDaSemana(db, now);
   // Para confirmar, quem perdeu o prazo das 14h também é achado: o site recusa com a mensagem dele.
   const candidatos = [...estado.principal, ...estado.fila, ...(acao === 'confirmar' ? estado.foraDoPrazo : [])];
-  const achado = acharJogador(texto, candidatos);
+  // "Silvio Viana" (nome do WhatsApp de quem disse "eu não vou") acha o "Silvio" da lista.
+  const achado = acharJogador(texto, candidatos) ?? acharPeloComeco(texto, candidatos);
   if (!achado) {
     // O Jonas fora da lista também ganha a brincadeira: ele é achado entre todos os cadastrados.
     const todos = acharJogador(texto, await listarJogadores(db, { incluirInativos: false }));
