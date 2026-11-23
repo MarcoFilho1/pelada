@@ -154,6 +154,7 @@ async function conectarWhatsApp(mostrarQr: boolean, prazoMs?: number, aoReceber?
 
 async function ensaio(): Promise<void> {
   carregarBanco();
+  configurarSegunda(process.env);
   const textoAgora = argumento('agora');
   const now = textoAgora ? new Date(textoAgora) : new Date();
   if (Number.isNaN(now.getTime())) parar(`--agora inválido: "${textoAgora}". Exemplo: --agora=2026-11-11T12:00:00-03:00`);
