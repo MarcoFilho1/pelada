@@ -259,3 +259,23 @@ describe('adicionar: diarista e nota', () => {
     expect(interpretar('adicionar Pedro 2')).toEqual({ tipo: 'adicionar', nome: 'Pedro 2' });
   });
 });
+
+describe('pedido em frase vai para a IA, não para o comando fixo', () => {
+  it('cadastrar + outras tarefas na mesma frase', () => {
+    const texto =
+      'Cadastre kaio com nota 4 e em seguida adicione na lista. Em seguida mande no grupo a lista atualizada e as mensagens: “pode me marcar da prox vez Kaio, pra facilitar a organização “';
+    expect(interpretar(texto).tipo).toBe('pergunta');
+    expect(interpretarPrivado(texto).tipo).toBe('pergunta');
+  });
+  it('adicionar + mandar no grupo', () => {
+    expect(interpretar('adicione kaio na lista e mande no grupo').tipo).toBe('pergunta');
+    expect(interpretar('adicionar Caio - 2,5 e depois manda a lista').tipo).toBe('pergunta');
+  });
+  it('listas simples continuam no comando fixo', () => {
+    expect(interpretar('cadastre kaio com nota 4')).toEqual({ tipo: 'cadastrar', pessoas: [{ nome: 'Kaio', nota: 4 }], excedeu: false });
+    expect(interpretar('cadastrar Caio - 2,5 João da Silva - 3').tipo).toBe('cadastrar');
+    expect(interpretar('cadastrar Caio')).toMatchObject({ tipo: 'cadastrar', pessoas: [{ nome: 'Caio', nota: null }] });
+    expect(interpretar('adicionar Caio, Pedro e João')).toMatchObject({ tipo: 'adicionar', nomes: ['Caio', 'Pedro', 'João'] });
+    expect(interpretar('adicionar jonatha diarista')).toEqual({ tipo: 'adicionar', nome: 'jonatha' });
+  });
+});
