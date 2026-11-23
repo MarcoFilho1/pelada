@@ -301,6 +301,13 @@ async function laco(): Promise<void> {
     if (new Date() >= fimDaNoite(dataDe(new Date()))) throw new Error('passou das 23:15; o fim da noite não sai mais');
     await wa.enviar(grupoId, texto);
   };
+  /** Várias mensagens curtas no grupo, exatamente como separadas (pelo ZapGate, uma no limite). */
+  const enviarPartesNoGrupo = async (partes: string[]) => {
+    const wa = await conexao!;
+    if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
+    if (wa.enviarCancelavel) await wa.enviarCancelavel(grupoId, partes);
+    else await wa.enviar(grupoId, partes.join('\n\n'));
+  };
   /** Envio com ack, só no grupo configurado; a conexão pode ter demorado: nada depois das 23:00. */
   const enviarNoGrupo = async (texto: string) => {
     const wa = await conexao!;
@@ -493,6 +500,11 @@ async function laco(): Promise<void> {
     return conversaDoDono;
   };
   const apelidos = apelidosDoEnv(process.env);
+  // Grupo extra onde comprovantes também valem (ex.: o organizador encaminha um comprovante para o
+  // grupo de teste). E um telefone que recebe uma cópia de cada aviso do Pix mandado ao dono.
+  const grupoDeTesteDoPix = process.env.ROBO_PIX_GRUPO_EXTRA?.trim() || null;
+  const telefoneDaCopia = (process.env.ROBO_PIX_COPIA ?? '').replace(/\D/g, '');
+  let conversaDaCopia: string | null = null;
 
   /** Foto ou PDF no grupo enquanto o Pix da noite está aberto: a IA confere; comprovante ganha ✅. */
   const talvezComprovante = async (m: MensagemRecebida) => {
@@ -563,6 +575,16 @@ async function laco(): Promise<void> {
       await (await conexao!).enviar(destino, textoParaODono(c));
       estado = { ...estado, cobranca: { ...c, avisarDonoEm: null } };
       log('aviso do Pix mandado ao dono da pelada');
+      // A cópia (para quem acompanha) não atrasa nem desfaz o aviso: falha só fica no log.
+      if (telefoneDaCopia) {
+        try {
+          const wa = await conexao!;
+          conversaDaCopia ??= await wa.conversaDoTelefone(telefoneDaCopia.startsWith('55') ? telefoneDaCopia : `55${telefoneDaCopia}`);
+          if (conversaDaCopia) await wa.enviar(conversaDaCopia, `(cópia do aviso ao dono)\n${textoParaODono(c)}`);
+        } catch (err) {
+          log(`cópia do aviso do Pix não saiu: ${(err as Error).message}`);
+        }
+      }
     } catch (err) {
       const msg = (err as Error).message;
       const depois = /quiet_hours/.test(msg) ? proximaManha(now) : new Date(now.getTime() + 5 * 60_000);
@@ -574,7 +596,8 @@ async function laco(): Promise<void> {
 
   const aoReceber = (m: MensagemRecebida) => {
     // Foto ou PDF no grupo (sem marcar o robô): pode ser comprovante de Pix.
-    if (m.midia && !m.privado && m.grupoId === grupoId && !m.mencionaORobo && !m.respondeAoRobo) {
+    const grupoDoPix = m.grupoId === grupoId || (grupoDeTesteDoPix !== null && m.grupoId === grupoDeTesteDoPix);
+    if (m.midia && !m.privado && grupoDoPix && !m.mencionaORobo && !m.respondeAoRobo) {
       void emFila(() => talvezComprovante(m)).catch((err) => log(`comprovante: ${(err as Error).message}`));
       return;
     }
@@ -660,7 +683,7 @@ async function laco(): Promise<void> {
         const quarta = proximaQuarta(now);
         if (horaDeMandarBomDia(now, quarta, estado.bomDiaEnviado)) {
           try {
-            await enviarNoGrupo(textoDoBomDia(quarta));
+            await enviarPartesNoGrupo(textoDoBomDia(quarta).split('\n\n'));
             estado = { ...estado, bomDiaEnviado: quarta };
             gravar(estado);
             log('bom dia de segunda mandado');
