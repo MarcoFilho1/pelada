@@ -1,6 +1,6 @@
 import { dataDe } from '@/domain/tempo';
 
-export const LIMITE_PERGUNTAS = 30;
+export const LIMITE_PERGUNTAS = 60;
 export const TEXTO_LIMITE = '🛑 Por hoje acabaram as perguntas livres. Os comandos continuam valendo: mande *ajuda* para ver todos.';
 
 /** Contra enxurrada: no máximo 10 respostas em 60 s corridos no grupo. */
@@ -11,7 +11,7 @@ const MINUTO_MS = 60_000;
 
 /**
  * Sem espera entre uma resposta e outra: só um teto de 10 respostas em 60 s corridos, um aviso de
- * "muita gente" por 60 s (que não conta nas 10) e 30 perguntas livres por dia (dia de Recife).
+ * "muita gente" por 60 s (que não conta nas 10) e 60 perguntas livres por dia (dia de Recife).
  */
 export class Freio {
   private respostas: number[] = [];

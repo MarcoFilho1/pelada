@@ -38,7 +38,7 @@ describe('Freio', () => {
     expect(f.podeResponder()).toBe(true);
   });
 
-  it('30 perguntas por dia; virada do dia de Recife zera', () => {
+  it('60 perguntas por dia; virada do dia de Recife zera', () => {
     const r = relogio('2026-11-11T20:00:00Z');
     const f = new Freio(r.agora);
     for (let i = 0; i < LIMITE_PERGUNTAS; i++) {
@@ -53,7 +53,7 @@ describe('Freio', () => {
   });
 
   it('textos', () => {
-    expect(LIMITE_PERGUNTAS).toBe(30);
+    expect(LIMITE_PERGUNTAS).toBe(60);
     expect(LIMITE_RESPOSTAS).toBe(10);
     expect(TEXTO_LIMITE).toBe('🛑 Por hoje acabaram as perguntas livres. Os comandos continuam valendo: mande *ajuda* para ver todos.');
   });

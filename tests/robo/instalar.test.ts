@@ -9,10 +9,12 @@ describe('plist do LaunchAgent', () => {
     log: '/Users/u/Library/Logs/PeladaRobo/robo.log',
   });
 
-  it('roda `pnpm robo` na pasta do projeto, liga com o Mac e se mantém vivo', () => {
+  it('roda o robô compilado (node dist/robo/principal.mjs) na pasta do projeto, liga com o Mac e se mantém vivo', () => {
     expect(ROTULO).toBe('com.pelada.robo');
     expect(plist).toContain('<string>com.pelada.robo</string>');
-    expect(plist).toMatch(/<key>ProgramArguments<\/key>\s*<array>\s*<string>\/opt\/homebrew\/bin\/pnpm<\/string>\s*<string>robo<\/string>/);
+    expect(plist).toMatch(
+      /<key>ProgramArguments<\/key>\s*<array>\s*<string>\/Users\/u\/.nvm\/versions\/node\/v22\/bin\/node<\/string>\s*<string>--enable-source-maps<\/string>\s*<string>\/Users\/u\/Desktop\/pelada &amp; cia\/dist\/robo\/principal.mjs<\/string>/,
+    );
     expect(plist).toMatch(/<key>RunAtLoad<\/key>\s*<true\/>/);
     expect(plist).toMatch(/<key>KeepAlive<\/key>\s*<true\/>/);
     expect(plist).toContain('<string>/Users/u/Library/Logs/PeladaRobo/robo.log</string>');

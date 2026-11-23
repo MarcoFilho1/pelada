@@ -507,9 +507,16 @@ const quemPediu = (m: MensagemRecebida) => m.remetenteNome?.trim() || 'alguém';
 /** Quem entra ou confirma quer conferir a lista: depois dessas mudanças, a lista atual vai junto. */
 const MOSTRA_LISTA: readonly AcaoNaLista[] = ['adicionar', 'confirmar'];
 
+/**
+ * A lista que uma resposta mostrou (depois de uma entrada ou confirmação): no grupo, ela vira a
+ * "última lista" do robô, para a rodada da meia hora não mandar a mesma lista de novo.
+ */
+const listaMostrada = new WeakMap<MensagemRecebida, FotoDaLista>();
+
 /** A lista atual, como o "Copiar lista" do site, para ir depois de uma entrada ou confirmação. */
 async function listaAtual(m: MensagemRecebida, c: ContextoDaResposta): Promise<string> {
   const lista = await c.lerLista(m.quando);
+  listaMostrada.set(m, fotografar(lista));
   return textoWhatsApp(lista, lista.data);
 }
 
@@ -1076,6 +1083,10 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       r = { texto: cmd.texto };
       break;
   }
+
+  // A resposta trouxe a lista atual (entrou ou confirmou alguém): conta como a última lista do grupo.
+  const mostrada = listaMostrada.get(m);
+  if (!r.gravar && mostrada) r = { ...r, gravar: { tipo: 'rodada', foto: mostrada } };
 
   // Brincadeira com quem pede, só quando é o Jonas (o "sim" já trocou o texto lá em cima).
   if (cmd.tipo !== 'sim' && remetenteEhJonas(m, c)) r = { ...r, texto: comBrincadeira(cmd, r.texto, c) };
