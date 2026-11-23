@@ -1,5 +1,5 @@
 // Liga o robô como serviço de login do macOS (LaunchAgent `com.pelada.robo`).
-//   pnpm robo:instalar                       grava o plist e liga o serviço
+//   pnpm robo:instalar                       compila o robô, grava o plist e liga o serviço
 //   pnpm robo:desinstalar                    desliga e apaga o plist
 //   pnpm robo:instalar --so-gerar=<arquivo>  só escreve o plist nesse arquivo (para conferir)
 import { execFileSync } from 'node:child_process';
@@ -37,8 +37,9 @@ export function gerarPlist(o: OpcoesPlist): string {
   <string>${ROTULO}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${xml(o.pnpm)}</string>
-    <string>robo</string>
+    <string>${xml(o.node)}</string>
+    <string>--enable-source-maps</string>
+    <string>${xml(join(o.repo, 'dist', 'robo', 'principal.mjs'))}</string>
   </array>
   <key>WorkingDirectory</key>
   <string>${xml(o.repo)}</string>
@@ -103,6 +104,8 @@ function instalar(): void {
   }
   mkdirSync(dirname(o.log), { recursive: true });
   mkdirSync(dirname(plistInstalado()), { recursive: true });
+  // O serviço roda o robô compilado (dist/robo/principal.mjs): compila a versão atual antes.
+  execFileSync(o.node, ['scripts/compilar-robo.mjs'], { cwd: o.repo, stdio: 'inherit' });
   desligar();
   writeFileSync(plistInstalado(), gerarPlist(o));
   execFileSync('launchctl', ['bootstrap', dominio(), plistInstalado()], { stdio: 'inherit' });

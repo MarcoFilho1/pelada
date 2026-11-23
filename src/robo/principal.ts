@@ -301,6 +301,13 @@ async function laco(): Promise<void> {
     if (new Date() >= fimDaNoite(dataDe(new Date()))) throw new Error('passou das 23:15; o fim da noite não sai mais');
     await wa.enviar(grupoId, texto);
   };
+  /** Várias mensagens curtas no grupo, exatamente como separadas (pelo ZapGate, uma no limite). */
+  const enviarPartesNoGrupo = async (partes: string[]) => {
+    const wa = await conexao!;
+    if (emSilencio(new Date())) throw new Error('passou das 23:00; a mensagem espera até as 08:00');
+    if (wa.enviarCancelavel) await wa.enviarCancelavel(grupoId, partes);
+    else await wa.enviar(grupoId, partes.join('\n\n'));
+  };
   /** Envio com ack, só no grupo configurado; a conexão pode ter demorado: nada depois das 23:00. */
   const enviarNoGrupo = async (texto: string) => {
     const wa = await conexao!;
@@ -660,7 +667,7 @@ async function laco(): Promise<void> {
         const quarta = proximaQuarta(now);
         if (horaDeMandarBomDia(now, quarta, estado.bomDiaEnviado)) {
           try {
-            await enviarNoGrupo(textoDoBomDia(quarta));
+            await enviarPartesNoGrupo(textoDoBomDia(quarta).split('\n\n'));
             estado = { ...estado, bomDiaEnviado: quarta };
             gravar(estado);
             log('bom dia de segunda mandado');
