@@ -92,7 +92,7 @@ const ACOES: Record<string, AcaoNaLista> = {
 };
 
 /** "adicionar [na] [lista] <nome>" → o nome como foi escrito (sem pontuação no fim); `null` sem nome. */
-function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | 'recusa' }> | null {
+function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | 'recusa' | 'cadastrar' }> | null {
   const palavras = texto.trim().split(/\s+/);
   const tipo = ACOES[normalizarNome(palavras[0] ?? '')];
   if (!tipo) return null;
@@ -103,8 +103,19 @@ function comandoDeLista(texto: string): Extract<Comando, { tipo: AcaoNaLista | '
   }
   const nome = resto.join(' ').replace(/[\s.,;:!?]+$/u, '').trim();
   if (!nome) return null;
-  // Vírgulas e " e " separam nomes (só o "e"; "é" não separa).
-  const todos = nome.split(/\s*,\s*|\s+[eE]\s+/u).map((n) => n.trim()).filter(Boolean);
+  // "adicionar Caio - 2,5": nome com nota é cadastro de jogador novo (adicionar na lista não tem nota).
+  if (tipo === 'adicionar' && /\s[-–]\s*\d/u.test(` ${nome}`)) {
+    const pessoas = lerCadastro(nome);
+    if (pessoas.length && pessoas.every((p) => p.nota !== null)) {
+      return { tipo: 'cadastrar', pessoas: pessoas.slice(0, MAX_CADASTROS_POR_MENSAGEM), excedeu: pessoas.length > MAX_CADASTROS_POR_MENSAGEM };
+    }
+  }
+  // Vírgulas e " e " separam nomes (só o "e"; "é" não separa). "Jonatha diarista" / "como diarista" /
+  // "(D)": o jogador entra como diarista de qualquer jeito (só mensalista entra como M), então só o nome vale.
+  const todos = nome
+    .split(/\s*,\s*|\s+[eE]\s+/u)
+    .map((n) => n.replace(/\s+(?:como\s+)?diarista$/iu, '').replace(/\s*\(\s*d\s*\)$/iu, '').trim())
+    .filter(Boolean);
   if (todos.length > 1) {
     return { tipo, nome: todos[0], nomes: todos.slice(0, MAX_NOMES_POR_MENSAGEM), excedeu: todos.length > MAX_NOMES_POR_MENSAGEM };
   }

@@ -461,6 +461,7 @@ async function laco(): Promise<void> {
         ...(m.privado && usaZapGate() ? { enviarPartes: enviarPartesNoPrivado(m.grupoId) } : {}),
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         ...(cancelar ? { cancelar } : {}),
+        pix: pixDosOrganizadores,
         log,
       });
       if (proposta.atual !== propostaGravada || anuncio.atual !== anuncioGravado) {
@@ -592,6 +593,22 @@ async function laco(): Promise<void> {
       log(`aviso do Pix ao dono não saiu (${msg}); tenta de novo às ${depois.toISOString().slice(11, 16)} UTC`);
     }
     gravar(estado);
+  };
+
+  /** O Pix para os organizadores no privado: a situação e marcar um pagamento na mão. */
+  const pixDosOrganizadores = {
+    situacao: () => (cobrancaAtiva(estado.cobranca, new Date()) ? textoParaODono(estado.cobranca) : null),
+    marcar: (nome: string, now: Date) => {
+      const c = estado.cobranca;
+      if (!cobrancaAtiva(c, now)) return 'Não tem cobrança de Pix aberta agora.';
+      const d = casarDiarista(c, [nome]);
+      if (!d) return `Não achei ${nome} entre os diaristas: ${c.diaristas.map((x) => x.nome).join(', ')}.`;
+      if (jaPagou(c, d.jogadorId)) return `${d.nome} já estava marcado como pago.`;
+      estado = { ...estado, cobranca: registrarPagamento(c, { jogadorId: d.jogadorId, nome: d.nome, quando: now.toISOString(), mensagemId: 'manual' }, now) };
+      gravar(estado);
+      log(`pagamento do Pix marcado na mão: ${d.nome}`);
+      return `✅ ${d.nome} marcado como pago.`;
+    },
   };
 
   const aoReceber = (m: MensagemRecebida) => {
