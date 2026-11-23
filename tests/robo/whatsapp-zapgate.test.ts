@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ZapGateError, type MessageReceived } from '@/robo/zapgate';
-import { conectarMotor, erroDeLimite, explicarErro, lerEventoDoZapGate } from '@/robo/whatsapp-zapgate';
+import { conectarMotor, erroDeLimite, explicarErro, lerEventoDoZapGate, partesParaEnvio } from '@/robo/whatsapp-zapgate';
 import type { MensagemRecebida } from '@/robo/responder';
 import type { WhatsApp } from '@/robo/whatsapp';
 
@@ -214,5 +214,13 @@ scopes = ["read", "send"]
     expect(erroDeLimite(z('daily_limit'))).toMatchObject({ tipo: 'dia', esperarMs: 60_000 });
     expect(erroDeLimite(z('quiet_hours', 5))).toBeNull();
     expect(erroDeLimite(new Error('x'))).toBeNull();
+  });
+});
+
+describe('partesParaEnvio', () => {
+  it('no máximo 5 partes, sem vazias; as que sobram vão juntas na última', () => {
+    expect(partesParaEnvio(['a', ' ', 'b'])).toEqual(['a', 'b']);
+    expect(partesParaEnvio(['1', '2', '3', '4', '5', '6', '7'])).toEqual(['1', '2', '3', '4', '5\n\n6\n\n7']);
+    expect(partesParaEnvio(['só uma', ''])).toBe('só uma');
   });
 });

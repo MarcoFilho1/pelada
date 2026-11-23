@@ -243,3 +243,19 @@ describe('interpretar: anotar', () => {
     for (const t of ['anotar', 'Anotar!', 'link de anotar', 'link pra anotar', 'anotador']) expect(interpretar(t)).toEqual({ tipo: 'anotar' });
   });
 });
+
+describe('adicionar: diarista e nota', () => {
+  it('"diarista" / "como diarista" / "(D)" no fim não entra no nome', () => {
+    expect(interpretar('adicionar jonatha diarista')).toEqual({ tipo: 'adicionar', nome: 'jonatha' });
+    expect(interpretar('adicionar Jonatha como diarista')).toEqual({ tipo: 'adicionar', nome: 'Jonatha' });
+    expect(interpretar('adicionar Jonatha (D)')).toEqual({ tipo: 'adicionar', nome: 'Jonatha' });
+    expect(interpretar('adicionar Ana diarista e Bia')).toMatchObject({ tipo: 'adicionar', nomes: ['Ana', 'Bia'] });
+  });
+
+  it('"adicionar Nome - nota" é cadastro (adicionar na lista não tem nota)', () => {
+    expect(interpretar('adicionar jonatha - 3')).toEqual({ tipo: 'cadastrar', pessoas: [{ nome: 'Jonatha', nota: 3 }], excedeu: false });
+    expect(interpretar('adicionar Caio - 2,5 e João - 3')).toMatchObject({ tipo: 'cadastrar', pessoas: [{ nome: 'Caio', nota: 2.5 }, { nome: 'João', nota: 3 }] });
+    // Sem o tracinho, número no nome não vira cadastro.
+    expect(interpretar('adicionar Pedro 2')).toEqual({ tipo: 'adicionar', nome: 'Pedro 2' });
+  });
+});
