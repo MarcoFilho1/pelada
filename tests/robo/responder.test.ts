@@ -724,8 +724,9 @@ describe('responder: mexer na lista pelo nome', () => {
     expect(c.mexerNaLista).toHaveBeenCalledWith(acao, nome, t('2026-11-10T15:40:00'));
     // Depois de entrar ou confirmar, a lista atual vai junto; depois de remover, não.
     const esperado = acao === 'remover' ? 'Pepe entrou na lista. (pedido por Zeca)' : `Pepe entrou na lista. (pedido por Zeca)\n\n${LISTA}`;
-    expect(r).toMatchObject({ texto: esperado, ehListaCompleta: false });
-    expect(r?.gravar).toBeUndefined();
+    // A lista que foi junto vira a última lista do grupo (a rodada da meia hora não repete).
+    expect(r).toMatchObject({ texto: esperado, ehListaCompleta: acao !== 'remover' });
+    expect(r?.gravar?.tipo).toBe(acao === 'remover' ? undefined : 'rodada');
     expect(c.enviar).toHaveBeenCalledWith(esperado);
   });
 
@@ -1624,5 +1625,28 @@ describe('envio incerto (fila do ZapGate sem confirmação)', () => {
     const c = ctx({ reagir: vi.fn(), enviarPartes, perguntar: vi.fn(async () => ['a', 'b']) });
     await responder(msg('oi', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
     expect(c.reagir).not.toHaveBeenCalledWith('❌');
+  });
+});
+
+describe('lista mostrada numa resposta vira a última lista do grupo', () => {
+  it('confirmou pelo comando: a resposta traz a lista e grava como rodada (a da meia hora não repete)', async () => {
+    const c = ctx();
+    const r = await responder(msg('confirmar Pepe'), c);
+    expect(r?.texto).toContain(LISTA);
+    expect(r?.ehListaCompleta).toBe(true);
+    expect(r?.gravar?.tipo).toBe('rodada');
+    expect(r?.gravar?.foto.dataQuarta).toBe('2026-11-11');
+  });
+
+  it('pela IA também; no privado não grava', async () => {
+    const pelaIa = ctx({
+      perguntar: vi.fn(async (_t: string, op: { acoes: ReturnType<typeof ferramentasDeAcao> }) => {
+        await op.acoes.find((f) => f.nome === 'confirmar_jogador')!.executar({ nome: 'Ana' });
+        return 'Beleza';
+      }),
+    });
+    expect((await responder(msg('eu vou'), pelaIa))?.gravar?.tipo).toBe('rodada');
+    const privado = await responder(msg('confirmar Pepe', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), ctx());
+    expect(privado?.gravar).toBeUndefined();
   });
 });
