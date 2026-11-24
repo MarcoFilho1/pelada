@@ -3,7 +3,7 @@
 //   pnpm robo:ensaio [--agora=ISO] [--estado=caminho]   uma decisão, só imprime
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, openSync, renameSync } from 'node:fs';
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -38,6 +38,8 @@ import { marcaDe } from '@/domain/lista';
 import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
+import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
+import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, ehPodeMergear } from './revisao';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -395,6 +397,57 @@ async function laco(): Promise<void> {
     ).catch(() => {});
   };
 
+  // ---- Auto-revisão: avisos ao dono e o "pode mergear" ----
+  const caixa = new CaixaDaRevisao(join(homedir(), 'Library/Logs/PeladaRobo/revisao'), () => new Date());
+  /** Mensagens ao dono (1º de ROBO_ADMINS), numa entrega só pelo ZapGate; lança se não saiu. */
+  const avisarDono = async (partes: string[]) => {
+    const wa = await conexao!;
+    const jid = admins[0] ? await conversaDe(admins[0]) : null;
+    if (!jid) throw new Error('sem conversa com o dono');
+    if (wa.enviarCancelavel) await wa.enviarCancelavel(jid, partes);
+    else for (const p of partes) await wa.enviar(jid, p);
+  };
+  // Entre 23:00 e 08:00 o ZapGate recusa mensagem que o robô começa (anti-ban): os avisos esperam a manhã.
+  const conferirRevisao = async (now: Date) => {
+    if (emSilencio(now)) return;
+    const r = caixa.novoResultado();
+    if (r) {
+      try {
+        await avisarDono(avisoDaRevisao(r));
+        log(`revisão: aviso mandado ao dono (${r.status}${r.pr ? `, PR #${r.pr}` : ''})`);
+      } catch (err) {
+        caixa.devolverResultado(r);
+        log(`revisão: aviso não saiu (tenta na próxima volta): ${(err as Error).message}`);
+      }
+    }
+    const mg = caixa.resultadoDoMerge();
+    if (mg) {
+      log(`revisão: merge do PR #${mg.pr} ${mg.status === 'ok' ? 'ok' : `falhou (${mg.motivo})`}`);
+      try {
+        await avisarDono([avisoDoMerge(mg)]);
+      } catch (err) {
+        caixa.devolverMerge(mg);
+        log(`revisão: aviso do merge não saiu (tenta na próxima volta): ${(err as Error).message}`);
+      }
+    }
+  };
+  /** "pode mergear" do dono no privado, com revisão pendente: solta o script de merge, que sobrevive ao reinício. */
+  const talvezMergear = async (m: MensagemRecebida): Promise<string | null> => {
+    if (!m.privado || !m.remetenteTelefone || !admins[0] || !ehAdmin(m.remetenteTelefone, [admins[0]]) || !ehPodeMergear(m.texto)) return null;
+    const pr = caixa.comecarMerge();
+    if (pr === null) return null;
+    const saida = openSync(join(homedir(), 'Library/Logs/PeladaRobo/revisao.log'), 'a');
+    try {
+      const filho = spawn('/bin/zsh', [join(process.cwd(), 'scripts/revisao/mergear.sh'), String(pr)], { detached: true, stdio: ['ignore', saida, saida] });
+      filho.on('error', (err) => log(`revisão: o script de merge não abriu: ${err.message}`));
+      filho.unref();
+    } finally {
+      closeSync(saida);
+    }
+    log(`revisão: "pode mergear" do dono; juntando o PR #${pr}`);
+    return `⏳ Juntando o PR #${pr}: rodo os testes, junto e me reinicio. Te aviso quando voltar.`;
+  };
+
   // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
   const memoria = new ConversasPrivadas();
 
@@ -414,7 +467,20 @@ async function laco(): Promise<void> {
   };
   const tratarPedido = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
+    // O que de fato saiu, para o diário das conversas (a auto-revisão lê).
+    const enviado: string[] = [];
+    const anotar = (erro?: string) =>
+      registrarConversa(PASTA_DO_DIARIO, { quando: m.quando.toISOString(), onde: m.privado ? 'privado' : 'grupo', quem: m.remetenteNome, recebido: m.texto, enviado, ...(erro ? { erro } : {}) });
+    const enviar = m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo;
+    const enviarPartes = m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes);
     try {
+      const mergeando = await talvezMergear(m);
+      if (mergeando) {
+        await enviar(mergeando);
+        enviado.push(mergeando);
+        anotar();
+        return;
+      }
       const r = await responder(m, {
         estadoGrupoId: grupoId,
         freio,
@@ -458,9 +524,21 @@ async function laco(): Promise<void> {
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
-        enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
+        enviar: async (texto: string, op?: { cancelavel?: () => boolean }) => {
+          const r = await enviar(texto, op);
+          if (r !== 'cancelada') enviado.push(texto);
+          return r;
+        },
         // Pelo ZapGate, as partes saem numa entrega só (uma no limite), no privado e no grupo.
-        ...(usaZapGate() ? { enviarPartes: m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes) } : {}),
+        ...(usaZapGate()
+          ? {
+              enviarPartes: async (partes: string[], op?: { cancelavel?: () => boolean }) => {
+                const r = await enviarPartes(partes, op);
+                if (r !== 'cancelada') enviado.push(...partes);
+                return r;
+              },
+            }
+          : {}),
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         ...(cancelar ? { cancelar } : {}),
         pix: pixDosOrganizadores,
@@ -473,12 +551,14 @@ async function laco(): Promise<void> {
         gravar(estado);
       }
       if (!r) return;
+      anotar();
       log(`respondeu ${m.privado ? 'no privado' : 'a uma marcação'} (${r.texto.split('\n')[0].slice(0, 60)})`);
       if (r.ehListaCompleta && r.gravar && podeGravarLista(new Date(), r.gravar.foto, estado)) {
         estado = aposEnvio(estado, new Date(), r.gravar.tipo, r.gravar.foto);
         gravar(estado);
       }
     } catch (err) {
+      anotar((err as Error).message);
       log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
     }
   };
@@ -684,8 +764,16 @@ async function laco(): Promise<void> {
   };
 
   let estavaDentro: boolean | null = null;
+  let diaDaLimpeza = '';
   for (;;) {
     const now = new Date();
+    await emFila(() => conferirRevisao(now)).catch((err) => log(`revisão: ${(err as Error).message}`));
+    // Diário das conversas: uma limpeza por dia (na partida e na virada), fica só a última semana.
+    if (diaDaLimpeza !== dataDe(now)) {
+      diaDaLimpeza = dataDe(now);
+      const apagados = limparDiario(PASTA_DO_DIARIO, now);
+      if (apagados.length) log(`diário: apagados ${apagados.length} dia(s) com mais de 7 dias`);
+    }
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
     await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
