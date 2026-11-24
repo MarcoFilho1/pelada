@@ -38,6 +38,7 @@ import { marcaDe } from '@/domain/lista';
 import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
+import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -414,6 +415,12 @@ async function laco(): Promise<void> {
   };
   const tratarPedido = async (m: MensagemRecebida, cancelar?: Cancelamento) => {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
+    // O que de fato saiu, para o diário das conversas (a auto-revisão lê).
+    const enviado: string[] = [];
+    const anotar = (erro?: string) =>
+      registrarConversa(PASTA_DO_DIARIO, { quando: m.quando.toISOString(), onde: m.privado ? 'privado' : 'grupo', quem: m.remetenteNome, recebido: m.texto, enviado, ...(erro ? { erro } : {}) });
+    const enviar = m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo;
+    const enviarPartes = m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes);
     try {
       const r = await responder(m, {
         estadoGrupoId: grupoId,
@@ -458,9 +465,21 @@ async function laco(): Promise<void> {
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
-        enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
+        enviar: async (texto: string, op?: { cancelavel?: () => boolean }) => {
+          const r = await enviar(texto, op);
+          if (r !== 'cancelada') enviado.push(texto);
+          return r;
+        },
         // Pelo ZapGate, as partes saem numa entrega só (uma no limite), no privado e no grupo.
-        ...(usaZapGate() ? { enviarPartes: m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes) } : {}),
+        ...(usaZapGate()
+          ? {
+              enviarPartes: async (partes: string[], op?: { cancelavel?: () => boolean }) => {
+                const r = await enviarPartes(partes, op);
+                if (r !== 'cancelada') enviado.push(...partes);
+                return r;
+              },
+            }
+          : {}),
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         ...(cancelar ? { cancelar } : {}),
         pix: pixDosOrganizadores,
@@ -473,12 +492,14 @@ async function laco(): Promise<void> {
         gravar(estado);
       }
       if (!r) return;
+      anotar();
       log(`respondeu ${m.privado ? 'no privado' : 'a uma marcação'} (${r.texto.split('\n')[0].slice(0, 60)})`);
       if (r.ehListaCompleta && r.gravar && podeGravarLista(new Date(), r.gravar.foto, estado)) {
         estado = aposEnvio(estado, new Date(), r.gravar.tipo, r.gravar.foto);
         gravar(estado);
       }
     } catch (err) {
+      anotar((err as Error).message);
       log(`erro ao responder (não tenta de novo): ${(err as Error).message}`);
     }
   };
@@ -684,8 +705,15 @@ async function laco(): Promise<void> {
   };
 
   let estavaDentro: boolean | null = null;
+  let diaDaLimpeza = '';
   for (;;) {
     const now = new Date();
+    // Diário das conversas: uma limpeza por dia (na partida e na virada), fica só a última semana.
+    if (diaDaLimpeza !== dataDe(now)) {
+      diaDaLimpeza = dataDe(now);
+      const apagados = limparDiario(PASTA_DO_DIARIO, now);
+      if (apagados.length) log(`diário: apagados ${apagados.length} dia(s) com mais de 7 dias`);
+    }
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
     await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
