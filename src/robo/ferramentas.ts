@@ -28,6 +28,8 @@ export class TextoPronto {
     readonly texto: string,
     readonly como: 'acao' | 'lista' | 'sorteio',
     readonly descartar?: () => void,
+    /** Mudança na lista: de quem (a fala do modelo que só repete isso sai, o texto pronto já diz). */
+    readonly nomes: string[] = [],
   ) {}
 }
 

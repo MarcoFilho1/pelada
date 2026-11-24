@@ -508,3 +508,36 @@ describe('privado: histórico da conversa e link repetido', () => {
     expect(await perguntarEmPartes('quero o link', { ...base(cliente, [anotar]), privado: true })).toEqual(['Toma o link!', PRONTO]);
   });
 });
+
+describe('fala que só repete a mudança na lista sai (o texto pronto já diz)', () => {
+  const entrou = (nome = 'David') =>
+    ferramenta('adicionar_jogador', vi.fn(async () => new TextoPronto(`✅ ${nome} entrou na lista! (pedido por ${nome})`, 'acao', undefined, [nome])), { altera: true });
+
+  it('"David entrou na lista, bora" some; fica o texto pronto', async () => {
+    const { cliente } = falso(chamada('adicionar_jogador', { nome: 'eu' }), texto('David entrou na lista, bora'));
+    expect(await perguntarEmPartes('coloca eu na lista', base(cliente, [entrou()]))).toEqual(['✅ David entrou na lista! (pedido por David)']);
+  });
+
+  it('o que traz outra coisa fica: saudação, pergunta, ressalva', async () => {
+    const { cliente } = falso(
+      chamada('adicionar_jogador', { nome: 'Luciano' }),
+      texto('Luciano entrou na lista, Marco.\n\nBom dia, Calvinho! Bora pra pelada de quarta 🙌\n\nMais alguém, Luciano?\n\nLuciano entrou, mas o Pedro não tá cadastrado'),
+    );
+    expect(await perguntarEmPartes('bota o luciano e o pedro', base(cliente, [entrou('Luciano')]))).toEqual([
+      'Bom dia, Calvinho! Bora pra pelada de quarta 🙌',
+      'Mais alguém, Luciano?',
+      'Luciano entrou, mas o Pedro não tá cadastrado',
+      '✅ Luciano entrou na lista! (pedido por Luciano)',
+    ]);
+  });
+
+  it('sem o nome, mas com o verbo da lista ("Pronto, tá na lista"): também sai', async () => {
+    const { cliente } = falso(chamada('adicionar_jogador', { nome: 'eu' }), texto('Pronto, tá na lista'));
+    expect(await perguntarEmPartes('me bota', base(cliente, [entrou()]))).toEqual(['✅ David entrou na lista! (pedido por David)']);
+  });
+
+  it('nome dentro de outra palavra não conta ("Davidson" não é o David)', async () => {
+    const { cliente } = falso(chamada('adicionar_jogador', { nome: 'eu' }), texto('Davidson chega cedo hoje'));
+    expect(await perguntarEmPartes('me bota', base(cliente, [entrou()]))).toEqual(['Davidson chega cedo hoje', '✅ David entrou na lista! (pedido por David)']);
+  });
+});

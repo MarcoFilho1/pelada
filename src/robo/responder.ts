@@ -523,12 +523,13 @@ async function listaAtual(m: MensagemRecebida, c: ContextoDaResposta): Promise<s
 }
 
 /** adicionar/confirmar/remover: qualquer pessoa do grupo pode; a mudança na lista mostra quem pediu. */
-async function mudarNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean }> {
-  const feito = await c.mexerNaLista(acao, nomeDoPedido(nome, m, c), m.quando);
+async function mudarNaLista(acao: AcaoNaLista, nome: string, m: MensagemRecebida, c: ContextoDaResposta): Promise<{ texto: string; mudou: boolean; nome?: string }> {
+  const pedido = nomeDoPedido(nome, m, c);
+  const feito = await c.mexerNaLista(acao, pedido, m.quando);
   if (!feito.mudou) return { texto: feito.texto, mudou: false };
   // No privado, a mudança fica guardada para o "desfazer" (todas as desta mensagem juntas).
   if (m.privado && feito.mudanca) mudancasDaMensagem.set(m, [...(mudancasDaMensagem.get(m) ?? []), feito.mudanca]);
-  return { texto: `${feito.texto} (pedido por ${quemPediu(m)})`, mudou: true };
+  return { texto: `${feito.texto} (pedido por ${quemPediu(m)})`, mudou: true, nome: feito.mudanca?.nome ?? pedido };
 }
 
 /** As mudanças na lista feitas por cada mensagem do privado, até a resposta sair. */
@@ -624,7 +625,7 @@ export function ferramentasDeAcao(m: MensagemRecebida, c: ContextoDaResposta, ma
       // Não mudou (não achou, já estava, recusa do site): o modelo recebe o texto como erro e explica.
       if (!feito.mudou) throw new ErroDeFerramenta(feito.texto);
       if (MOSTRA_LISTA.includes(acao)) marca.entrouOuConfirmou = true;
-      return new TextoPronto(feito.texto, 'acao');
+      return new TextoPronto(feito.texto, 'acao', undefined, feito.nome ? [feito.nome] : []);
     },
   });
   // O texto da consulta vai inteiro no fim da resposta, pelo robô (a IA dizia "aqui está o ranking" e não mandava).

@@ -557,7 +557,7 @@ describe('ferramentasDeAcao (comandos em linguagem natural pela IA)', () => {
   ] as const)('%s chama mexerNaLista com o nome e devolve o texto com "pedido por" de quem mandou', async (ferramenta, acao) => {
     const c = ctx();
     const m = msg('põe o pepe aí', { remetenteNome: 'Zeca' });
-    expect(await achar(ferramentasDeAcao(m, c), ferramenta).executar({ nome: 'Pepe' })).toEqual(new TextoPronto('Pepe entrou na lista. (pedido por Zeca)', 'acao'));
+    expect(await achar(ferramentasDeAcao(m, c), ferramenta).executar({ nome: 'Pepe' })).toEqual(new TextoPronto('Pepe entrou na lista. (pedido por Zeca)', 'acao', undefined, ['Pepe']));
     expect(c.mexerNaLista).toHaveBeenCalledWith(acao, 'Pepe', m.quando);
   });
 
@@ -1683,5 +1683,16 @@ describe('grupo com enviarPartes (ZapGate): mensagens separadas, como no privado
     expect(enviarPartes).toHaveBeenCalledTimes(1);
     expect(enviarPartes.mock.calls[0][0]).toEqual(['Luciano entrou na lista, Marco', 'Bom dia, Calvinho!']);
     expect(c.enviar).not.toHaveBeenCalled();
+  });
+});
+
+describe('mudança na lista pela IA leva o nome de quem mudou', () => {
+  it('"eu" vira o nome do cadastro no texto pronto (para a fala repetida sair)', async () => {
+    const mexerNaLista = vi.fn(async () => ({ texto: '✅ David entrou na lista!', mudou: true, mudanca: { peladaId: 1, jogadorId: 7, nome: 'David', antes: null } }));
+    const c = ctx({ mexerNaLista });
+    const f = ferramentasDeAcao(msg('coloca eu', { remetenteNome: 'David Souza' }), c).find((x) => x.nome === 'adicionar_jogador')!;
+    const r = (await f.executar({ nome: 'eu' })) as TextoPronto;
+    expect(r.nomes).toEqual(['David']);
+    expect(r.texto).toBe('✅ David entrou na lista! (pedido por David Souza)');
   });
 });

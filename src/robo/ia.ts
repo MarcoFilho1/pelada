@@ -128,7 +128,7 @@ export function paraTools(fs: Ferramenta[]): Anthropic.Tool[] {
 const cortar = (t: string) => (t.length > MAX_RESPOSTA ? `${t.slice(0, MAX_RESPOSTA - 1).trimEnd()}…` : t);
 
 /** O que a conversa já produziu e precisa chegar ao grupo palavra por palavra. */
-type Anuncios = { acoes: string[]; listas: string[]; proposta: string | null };
+type Anuncios = { acoes: string[]; listas: string[]; proposta: string | null; nomes?: string[] };
 
 const unicos = (ts: string[]) => [...new Set(ts)];
 const juntar = (partes: (string | null | undefined)[]) => partes.filter((p): p is string => !!p?.trim());
@@ -161,6 +161,25 @@ function emMensagensComProntos(prosa: string, prontos: string[], filtro: (ps: st
   }
   return [...saida, ...filtro(emMensagens(resto))];
 }
+/** Frase da fala que só repete a mudança na lista. Mais comprida que isso já traz outra coisa. */
+const MAX_FALA_REPETIDA = 80;
+const SEM_ACENTO = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const VERBO_DA_LISTA = /\b(entrou|saiu|tirei|coloquei|botei|adicionei|confirmad[oa]s?|confirmei|garantid[oa]|ta dentro|ta na lista)\b/u;
+const RESSALVA = /\?|\b(nao|mas|porem|falta|ainda|so que)\b/u;
+/**
+ * O parágrafo da fala que só repete a mudança na lista ("David entrou na lista, bora"): o texto
+ * pronto ("✅ David entrou na lista! (pedido por David)") já diz isso e sai logo depois. Fica o que
+ * traz outra coisa: pergunta, ressalva ("não", "mas", "falta"), frase longa ou sem o nome e sem o verbo.
+ */
+function repeteAMudanca(paragrafo: string, nomes: string[]): boolean {
+  const p = SEM_ACENTO(paragrafo);
+  if (p.length > MAX_FALA_REPETIDA || RESSALVA.test(p)) return false;
+  const temNome = nomes.some((n) => {
+    const primeiro = SEM_ACENTO(n).trim().split(/\s+/)[0];
+    return !!primeiro && new RegExp(`(^|[^\\p{L}])${primeiro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\p{L}]|$)`, 'u').test(p);
+  });
+  return temNome || VERBO_DA_LISTA.test(p);
+}
 const tirar = (texto: string, partes: string[]) => partes.reduce((t, p) => t.split(p).join(''), texto).trim();
 
 /**
@@ -181,13 +200,15 @@ function montar(prosa: string, a: Anuncios): string[] {
   const faltam = integrais.filter((t) => !prosa.includes(t));
   // Link que já vai no texto pronto: o parágrafo da fala que repete esse link sai (senão o link chega duas vezes).
   const links = new Set(faltam.flatMap((t) => t.match(/https?:\/\/\S+/g) ?? []));
-  const semRepetir = (ps: string[]) => (links.size ? ps.filter((p) => ![...links].some((l) => p.includes(l))) : ps);
+  const nomes = a.nomes ?? [];
+  const semRepetir = (ps: string[]) =>
+    ps.filter((p) => !(links.size && [...links].some((l) => p.includes(l))) && !(nomes.length && repeteAMudanca(p, nomes)));
   // Só os de mais de um parágrafo (lista, ranking) seriam picotados; uma linha no meio da frase fica onde está.
   const grandes = integrais.filter((t) => /\n\s*\n/.test(t));
   if (prosa.length <= MAX_RESPOSTA) return juntar([...emMensagensComProntos(prosa, grandes, semRepetir), ...faltam]);
   // Longa demais: os textos prontos saem do meio da fala e vão inteiros no fim; só a fala é cortada.
   const resto = tirar(prosa, integrais);
-  return juntar([...emMensagens(resto && cortar(resto)), ...integrais]);
+  return juntar([...semRepetir(emMensagens(resto && cortar(resto))), ...integrais]);
 }
 
 /** Na falha, só o que já mudou de verdade: as mudanças na lista e a proposta que o "sim" salva. */
@@ -273,7 +294,10 @@ async function conversar(pergunta: string, op: OpcoesIA, cliente: ClienteIA, sin
           resultado.descartar?.();
           throw new Error('prazo estourado');
         }
-        if (resultado.como === 'acao') anuncios.acoes.push(resultado.texto);
+        if (resultado.como === 'acao') {
+          anuncios.acoes.push(resultado.texto);
+          anuncios.nomes = [...(anuncios.nomes ?? []), ...resultado.nomes];
+        }
         else if (resultado.como === 'lista') anuncios.listas.push(resultado.texto);
         else anuncios.proposta = resultado.texto;
         resultados.push({ type: 'tool_result', tool_use_id: u.id, content: resultado.texto });
