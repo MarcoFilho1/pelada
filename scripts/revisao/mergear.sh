@@ -25,7 +25,7 @@ gh pr checkout "$PR" -f >/dev/null 2>&1 || { fim falhou "não consegui abrir o P
 pnpm install --frozen-lockfile --silent || { fim falhou "a instalação das dependências falhou"; exit 1; }
 # Testes num passo separado, antes de qualquer merge.
 pnpm vitest run || { fim falhou "os testes falharam"; exit 1; }
-pnpm tsc --noEmit -p . || { fim falhou "a checagem de tipos falhou"; exit 1; }
+pnpm -s next typegen >/dev/null && pnpm tsc --noEmit -p . || { fim falhou "a checagem de tipos falhou"; exit 1; }
 
 gh pr merge "$PR" --merge --delete-branch || { fim falhou "o GitHub recusou o merge na develop"; exit 1; }
 git fetch -q origin
