@@ -14,13 +14,19 @@ export const TEXTO_MAX_CADASTROS = `Só cadastro até ${MAX_CADASTROS_POR_MENSAG
 // Número com ponto ou vírgula decimal colada ("2.5", "2,5"); "2, 5" são dois números.
 const NUMERO = /(\d+(?:[.,]\d+)?)(?!\d)/gu;
 const PALAVRAS_MINUSCULAS = new Set(['da', 'das', 'de', 'do', 'dos', 'e']);
+// "Lumo e Felipe, ambos 3": "ambos" fala da nota de todos, não é nome de jogador.
+const TODOS_ELES = /(?:^|\s+)(?:ambos|ambas|todos|todas|(?:os|as)\s+(?:dois|duas|tr[eê]s))(?:\s+com)?$/iu;
 
-/** Tira o que sobra entre um nome e a nota: "- ", ": ", "nota", "com nota", "(" e, no começo, ")", vírgula ou "e". */
+/** Tira o que sobra entre um nome e a nota: "- ", ": ", "nota", "com nota", "ambos", "(" e, no começo, ")", vírgula ou "e". */
 function limparTrecho(trecho: string): string {
   let s = trecho.replace(/^[\s,;:)\]\-–—/]+/u, '').replace(/^e\s+/iu, '');
   for (let antes = ''; antes !== s; ) {
     antes = s;
-    s = s.replace(/[\s,;(\[\-–—:=]+$/u, '').replace(/\s+(?:com\s+)?nota$/iu, '').replace(/^(?:com\s+)?nota$/iu, '');
+    s = s
+      .replace(/[\s,;(\[\-–—:=]+$/u, '')
+      .replace(/\s+(?:com\s+)?nota$/iu, '')
+      .replace(/^(?:com\s+)?nota$/iu, '')
+      .replace(TODOS_ELES, '');
   }
   return s.trim();
 }
