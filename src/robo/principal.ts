@@ -3,7 +3,7 @@
 //   pnpm robo:ensaio [--agora=ISO] [--estado=caminho]   uma decisão, só imprime
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, openSync, renameSync } from 'node:fs';
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -39,6 +39,7 @@ import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from '.
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
+import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, ehPodeMergear } from './revisao';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -396,6 +397,44 @@ async function laco(): Promise<void> {
     ).catch(() => {});
   };
 
+  // ---- Auto-revisão: avisos ao dono e o "pode mergear" ----
+  const caixa = new CaixaDaRevisao(join(homedir(), 'Library/Logs/PeladaRobo/revisao'), () => new Date());
+  /** Mensagens ao dono (1º de ROBO_ADMINS), numa entrega só pelo ZapGate; lança se não saiu. */
+  const avisarDono = async (partes: string[]) => {
+    const wa = await conexao!;
+    const jid = admins[0] ? await conversaDe(admins[0]) : null;
+    if (!jid) throw new Error('sem conversa com o dono');
+    if (wa.enviarCancelavel) await wa.enviarCancelavel(jid, partes);
+    else for (const p of partes) await wa.enviar(jid, p);
+  };
+  const conferirRevisao = async () => {
+    const r = caixa.novoResultado();
+    if (r) {
+      try {
+        await avisarDono(avisoDaRevisao(r));
+        log(`revisão: aviso mandado ao dono (${r.status}${r.pr ? `, PR #${r.pr}` : ''})`);
+      } catch (err) {
+        caixa.devolverResultado(r);
+        log(`revisão: aviso não saiu (tenta na próxima volta): ${(err as Error).message}`);
+      }
+    }
+    const mg = caixa.resultadoDoMerge();
+    if (mg) {
+      log(`revisão: merge do PR #${mg.pr} ${mg.status === 'ok' ? 'ok' : `falhou (${mg.motivo})`}`);
+      await avisarDono([avisoDoMerge(mg)]).catch((err) => log(`revisão: aviso do merge não saiu: ${(err as Error).message}`));
+    }
+  };
+  /** "pode mergear" do dono no privado, com revisão pendente: solta o script de merge, que sobrevive ao reinício. */
+  const talvezMergear = async (m: MensagemRecebida): Promise<string | null> => {
+    if (!m.privado || !m.remetenteTelefone || !admins[0] || !ehAdmin(m.remetenteTelefone, [admins[0]]) || !ehPodeMergear(m.texto)) return null;
+    const pr = caixa.comecarMerge();
+    if (pr === null) return null;
+    const saida = openSync(join(homedir(), 'Library/Logs/PeladaRobo/revisao.log'), 'a');
+    spawn('/bin/zsh', [join(process.cwd(), 'scripts/revisao/mergear.sh'), String(pr)], { detached: true, stdio: ['ignore', saida, saida] }).unref();
+    log(`revisão: "pode mergear" do dono; juntando o PR #${pr}`);
+    return `⏳ Juntando o PR #${pr}: rodo os testes, junto e me reinicio. Te aviso quando voltar.`;
+  };
+
   // Memória curta de cada privado de organizador (falas e o que dá para desfazer), só enquanto o robô roda.
   const memoria = new ConversasPrivadas();
 
@@ -422,6 +461,13 @@ async function laco(): Promise<void> {
     const enviar = m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo;
     const enviarPartes = m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes);
     try {
+      const mergeando = await talvezMergear(m);
+      if (mergeando) {
+        await enviar(mergeando);
+        enviado.push(mergeando);
+        anotar();
+        return;
+      }
       const r = await responder(m, {
         estadoGrupoId: grupoId,
         freio,
@@ -708,6 +754,7 @@ async function laco(): Promise<void> {
   let diaDaLimpeza = '';
   for (;;) {
     const now = new Date();
+    await emFila(conferirRevisao).catch((err) => log(`revisão: ${(err as Error).message}`));
     // Diário das conversas: uma limpeza por dia (na partida e na virada), fica só a última semana.
     if (diaDaLimpeza !== dataDe(now)) {
       diaDaLimpeza = dataDe(now);
