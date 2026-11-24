@@ -32,9 +32,11 @@ No máximo um PR por noite. Se não tiver certeza de que algo é defeito, não c
 - Nunca ponha segredo, chave ou número de telefone no repositório, nos commits ou no PR.
 - Commits e PR sem `Co-Authored-By` e sem "Generated with Claude Code".
 - Não mexa em nada fora deste repositório além do arquivo de resultado abaixo.
+- Não leia arquivos `.env`, chaves ou qualquer coisa fora deste repositório além das três entradas acima.
+- `git push` só da sua branch `revisao/$HOJE`; nunca para `develop` ou `main`.
 
 ## Fim obrigatório: o arquivo de resultado
-Sempre termine escrevendo `$REVISAO_DIR/resultado.json` (mesmo sem nada a corrigir). Formato:
+Sempre termine escrevendo `$REVISAO_DIR/saida.json` (mesmo sem nada a corrigir; o script entrega ao robô depois que você sair). Formato:
 - Nada a corrigir: `{"quando":"<ISO>","status":"nada"}`
 - Com PR: `{"quando":"<ISO>","status":"pr","pr":<número>,"url":"<link>","problemas":[{"vi":"...","corrigi":"..."}]}`
 - Não conseguiu terminar: `{"quando":"<ISO>","status":"falhou","motivo":"..."}`

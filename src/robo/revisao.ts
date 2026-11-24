@@ -76,6 +76,11 @@ export class CaixaDaRevisao {
     writeFileSync(this.caminho('resultado.json'), JSON.stringify(r));
   }
 
+  /** O aviso do merge não saiu: volta para o arquivo e a próxima volta tenta de novo. */
+  devolverMerge(r: ResultadoDoMerge): void {
+    writeFileSync(this.caminho('merge.json'), JSON.stringify(r));
+  }
+
   /** O "pode mergear" chegou: o PR pendente passa a "mergeando"; sem pendente, `null`. */
   comecarMerge(): number | null {
     if (!existsSync(this.caminho('pendente.json'))) return null;

@@ -37,7 +37,8 @@ git diff --quiet origin/develop origin/main || { fim falhou "a main ficou difere
 
 cd "$SERVICO" || { fim falhou "a pasta do robô não existe"; exit 1; }
 git pull -q --ff-only || { fim falhou "não consegui atualizar a pasta do robô (o PR já está na main)"; exit 1; }
-node scripts/compilar-robo.mjs || { fim falhou "a compilação falhou (o PR já está na main; o robô segue na versão anterior)"; exit 1; }
-# Avisa "ok" antes do reinício: quem lê é o robô novo.
+pnpm install --frozen-lockfile --silent || { fim falhou "a instalação das dependências falhou (o PR já está na main; o robô segue na versão anterior)"; exit 1; }
+# O reinício compila antes de parar o robô velho: compilação quebrada não derruba nada.
+scripts/robo-reiniciar.sh || { fim falhou "o reinício falhou (o PR já está na main); confira o robô"; exit 1; }
+# Só depois do reinício: quem lê e avisa é o robô novo.
 fim ok
-scripts/robo-reiniciar.sh

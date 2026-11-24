@@ -113,6 +113,14 @@ describe('CaixaDaRevisao', () => {
     expect(c.resultadoDoMerge()).toBeNull();
   });
 
+  it('devolverMerge: o aviso do merge que não saiu volta para a próxima volta', () => {
+    const p = pasta();
+    gravar(p, 'merge.json', { quando: 'y', status: 'ok', pr: 70 });
+    const c = new CaixaDaRevisao(p, () => AGORA);
+    c.devolverMerge(c.resultadoDoMerge()!);
+    expect(c.resultadoDoMerge()).toEqual({ quando: 'y', status: 'ok', pr: 70 });
+  });
+
   it('merge sem resposta: depois de 30 min avisa; antes, espera', () => {
     const p = pasta();
     gravar(p, 'mergeando.json', { pr: 70, desde: new Date(AGORA.getTime() - 10 * 60_000).toISOString() });

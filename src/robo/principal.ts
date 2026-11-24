@@ -3,7 +3,7 @@
 //   pnpm robo:ensaio [--agora=ISO] [--estado=caminho]   uma decisão, só imprime
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, openSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, openSync, renameSync } from 'node:fs';
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -407,7 +407,9 @@ async function laco(): Promise<void> {
     if (wa.enviarCancelavel) await wa.enviarCancelavel(jid, partes);
     else for (const p of partes) await wa.enviar(jid, p);
   };
-  const conferirRevisao = async () => {
+  // Entre 23:00 e 08:00 o ZapGate recusa mensagem que o robô começa (anti-ban): os avisos esperam a manhã.
+  const conferirRevisao = async (now: Date) => {
+    if (emSilencio(now)) return;
     const r = caixa.novoResultado();
     if (r) {
       try {
@@ -421,7 +423,12 @@ async function laco(): Promise<void> {
     const mg = caixa.resultadoDoMerge();
     if (mg) {
       log(`revisão: merge do PR #${mg.pr} ${mg.status === 'ok' ? 'ok' : `falhou (${mg.motivo})`}`);
-      await avisarDono([avisoDoMerge(mg)]).catch((err) => log(`revisão: aviso do merge não saiu: ${(err as Error).message}`));
+      try {
+        await avisarDono([avisoDoMerge(mg)]);
+      } catch (err) {
+        caixa.devolverMerge(mg);
+        log(`revisão: aviso do merge não saiu (tenta na próxima volta): ${(err as Error).message}`);
+      }
     }
   };
   /** "pode mergear" do dono no privado, com revisão pendente: solta o script de merge, que sobrevive ao reinício. */
@@ -430,7 +437,13 @@ async function laco(): Promise<void> {
     const pr = caixa.comecarMerge();
     if (pr === null) return null;
     const saida = openSync(join(homedir(), 'Library/Logs/PeladaRobo/revisao.log'), 'a');
-    spawn('/bin/zsh', [join(process.cwd(), 'scripts/revisao/mergear.sh'), String(pr)], { detached: true, stdio: ['ignore', saida, saida] }).unref();
+    try {
+      const filho = spawn('/bin/zsh', [join(process.cwd(), 'scripts/revisao/mergear.sh'), String(pr)], { detached: true, stdio: ['ignore', saida, saida] });
+      filho.on('error', (err) => log(`revisão: o script de merge não abriu: ${err.message}`));
+      filho.unref();
+    } finally {
+      closeSync(saida);
+    }
     log(`revisão: "pode mergear" do dono; juntando o PR #${pr}`);
     return `⏳ Juntando o PR #${pr}: rodo os testes, junto e me reinicio. Te aviso quando voltar.`;
   };
@@ -754,7 +767,7 @@ async function laco(): Promise<void> {
   let diaDaLimpeza = '';
   for (;;) {
     const now = new Date();
-    await emFila(conferirRevisao).catch((err) => log(`revisão: ${(err as Error).message}`));
+    await emFila(() => conferirRevisao(now)).catch((err) => log(`revisão: ${(err as Error).message}`));
     // Diário das conversas: uma limpeza por dia (na partida e na virada), fica só a última semana.
     if (diaDaLimpeza !== dataDe(now)) {
       diaDaLimpeza = dataDe(now);
