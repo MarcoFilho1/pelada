@@ -1663,6 +1663,20 @@ describe('ferramentas novas do organizador (privado)', () => {
     await expect(ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto: 'x'.repeat(700) })).rejects.toThrow('passou de');
   });
 
+  it('mandar_aviso_no_grupo com envio em partes: cada trecho separado por linha em branco vira uma mensagem', async () => {
+    const anunciarPartesNoGrupo = vi.fn(async (...args: [string[]]) => void args);
+    const c = ctx({ anunciarPartesNoGrupo });
+    const texto = 'Maylton chegou pra pelada e já tá na fila, em 1º\n\n\nSe alguém desistir, ele sobe\n\n';
+    expect(await ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto })).toBe('📣 Aviso mandado no grupo.');
+    expect(anunciarPartesNoGrupo).toHaveBeenCalledWith(['Maylton chegou pra pelada e já tá na fila, em 1º', 'Se alguém desistir, ele sobe']);
+    expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
+  });
+
+  it('mandar_aviso_no_grupo: se o envio em partes falhar, avisa que nada foi mandado', async () => {
+    const c = ctx({ anunciarPartesNoGrupo: vi.fn(async () => { throw new Error('passou das 23:00'); }) });
+    await expect(ferramenta(c, 'mandar_aviso_no_grupo').executar({ texto: 'Oi\n\nGalera' })).rejects.toThrow('Nada foi mandado');
+  });
+
   it('pix: ver a situação e marcar pagamento usam a cobrança; sem cobrança, avisa', async () => {
     const pix = { situacao: vi.fn(() => '💰 Pix da pelada de 18/11'), marcar: vi.fn(() => '✅ Bartolomeu marcado como pago.') };
     const c = ctx({ pix });
