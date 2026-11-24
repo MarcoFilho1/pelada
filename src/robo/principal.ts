@@ -458,7 +458,8 @@ async function laco(): Promise<void> {
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
           perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo,
-        ...(m.privado && usaZapGate() ? { enviarPartes: enviarPartesNoPrivado(m.grupoId) } : {}),
+        // Pelo ZapGate, as partes saem numa entrega só (uma no limite), no privado e no grupo.
+        ...(usaZapGate() ? { enviarPartes: m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes) } : {}),
         ...(m.id ? { reagir: reagirEm(m.grupoId, m.id) } : {}),
         ...(cancelar ? { cancelar } : {}),
         pix: pixDosOrganizadores,

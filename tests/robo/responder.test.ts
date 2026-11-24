@@ -1251,7 +1251,7 @@ describe('privado: conversa em mensagens curtas e tudo por linguagem natural', (
   const noPrivado = (texto: string, tel = ADMIN, nome = 'Marco') =>
     msg(texto, { privado: true, grupoId: `${tel}@s.whatsapp.net`, remetenteTelefone: tel, remetenteNome: nome, mencionaORobo: false });
 
-  it('a resposta da IA em partes sai em várias mensagens, uma por vez; no grupo, numa só', async () => {
+  it('a resposta da IA em partes sai em várias mensagens, uma por vez, no privado e no grupo', async () => {
     const c = ctx({ perguntar: vi.fn(async () => ['Opa, Marco!', 'Tá tudo certo pra quarta 💪']) });
     const r = await responder(noPrivado('e aí, como tá a pelada?'), c);
     expect(c.enviar).toHaveBeenNthCalledWith(1, 'Opa, Marco!');
@@ -1259,8 +1259,8 @@ describe('privado: conversa em mensagens curtas e tudo por linguagem natural', (
     expect(r?.texto).toBe('Opa, Marco!\n\nTá tudo certo pra quarta 💪');
     const g = ctx({ perguntar: vi.fn(async () => ['Opa!', 'Tudo certo.']) });
     await responder(msg('e aí?'), g);
-    expect(g.enviar).toHaveBeenCalledTimes(1);
-    expect(g.enviar).toHaveBeenCalledWith('Opa!\n\nTudo certo.');
+    expect(g.enviar).toHaveBeenNthCalledWith(1, 'Opa!');
+    expect(g.enviar).toHaveBeenNthCalledWith(2, 'Tudo certo.');
   });
 
   it('confirmar_times: o voto é de quem está falando (como o "sim")', async () => {
@@ -1672,5 +1672,16 @@ describe('ferramentas novas do organizador (privado)', () => {
     const sem = ctx();
     expect(await ferramenta(sem, 'ver_pagamentos_do_pix').executar({})).toContain('Não tem cobrança');
     expect(await ferramenta(sem, 'marcar_pagamento_do_pix').executar({ nome: 'X' })).toContain('Não tem cobrança');
+  });
+});
+
+describe('grupo com enviarPartes (ZapGate): mensagens separadas, como no privado', () => {
+  it('a resposta da IA em várias mensagens sai em partes, não num texto só', async () => {
+    const enviarPartes = vi.fn(async (...args: [string[]]) => void args);
+    const c = ctx({ enviarPartes, perguntar: vi.fn(async () => ['Luciano entrou na lista, Marco', 'Bom dia, Calvinho!']) });
+    await responder(msg('bota o luciano'), c);
+    expect(enviarPartes).toHaveBeenCalledTimes(1);
+    expect(enviarPartes.mock.calls[0][0]).toEqual(['Luciano entrou na lista, Marco', 'Bom dia, Calvinho!']);
+    expect(c.enviar).not.toHaveBeenCalled();
   });
 });
