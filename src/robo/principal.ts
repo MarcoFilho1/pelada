@@ -432,6 +432,7 @@ async function laco(): Promise<void> {
         salvar: (n, p) => salvarProposta(db, n, p),
         avisarOrganizadores,
         anunciarNoGrupo: enviarNoGrupo,
+        ...(usaZapGate() ? { anunciarPartesNoGrupo: enviarPartesNoGrupo } : {}),
         // Lista mandada no grupo pelo privado: vira a última do grupo, como a que sai pela marcação.
         listaMandadaNoGrupo: (g) => {
           if (!podeGravarLista(new Date(), g.foto, estado)) return;

@@ -91,6 +91,8 @@ export type ContextoDaResposta = {
   avisarOrganizadores: (texto: string, exceto: string[]) => Promise<void>;
   /** Manda no grupo configurado (o anúncio dos times confirmados no privado, a lista pedida no privado). */
   anunciarNoGrupo: (texto: string) => Promise<void>;
+  /** Várias mensagens curtas no grupo, como separadas (o aviso escrito pela IA). Sem ela, vai tudo num texto só. */
+  anunciarPartesNoGrupo?: (partes: string[]) => Promise<void>;
   /** A lista mandada no grupo pelo privado vira a "última lista" do grupo (a próxima mostra o que mudou desde ela). */
   listaMandadaNoGrupo?: (gravar: NonNullable<Resposta['gravar']>) => void;
   /**
@@ -858,7 +860,9 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
         if (typeof texto !== 'string' || !texto.trim()) throw new ErroDeFerramenta('Faltou o texto do aviso.');
         if (texto.length > TAM_MAX_AVISO) throw new ErroDeFerramenta(`O aviso passou de ${TAM_MAX_AVISO} letras; resuma.`);
         try {
-          await c.anunciarNoGrupo(texto.trim());
+          const partes = texto.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+          if (c.anunciarPartesNoGrupo && partes.length > 1) await c.anunciarPartesNoGrupo(partes);
+          else await c.anunciarNoGrupo(texto.trim());
         } catch (err) {
           c.log(`aviso no grupo não saiu: ${(err as Error).message}`);
           throw new ErroDeFerramenta('Não consegui mandar no grupo agora (entre 23h e 8h o robô não manda nada no grupo). Nada foi mandado.');
