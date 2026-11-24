@@ -358,7 +358,9 @@ async function laco(): Promise<void> {
     const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
     // Pelo ZapGate, o aviso vai sempre para o telefone: é ele que está em `allow_initiate`
     // (a conversa guardada pode ser um LID, que o ZapGate trataria como contato desconhecido).
-    if (usaZapGate()) return `${comDdi}@s.whatsapp.net`;
+    // Mas o endereço de verdade: número antigo registrado sem o 9 recebe nada no endereço com o 9
+    // (o servidor aceita e a mensagem fica em "enviada" para sempre).
+    if (usaZapGate()) return (await (await conexao!).conversaDoTelefone(comDdi).catch(() => null)) ?? `${comDdi}@s.whatsapp.net`;
     for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
     return (await conexao!).conversaDoTelefone(comDdi);
   };
