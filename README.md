@@ -120,6 +120,8 @@ A spare WhatsApp number joins the group as a bot. It reads the list from the sam
 
 The commands themselves are in Portuguese (`lista`, `falta confirmar`, `adicionar`…); tag the bot with `ajuda` to get the full list.
 
+**It runs on a Mac or on an Android phone.** The bot can live in an Android app, in the background, on an organizer's phone: the app carries the WhatsApp connection and the bot, updates itself with signed versions, and reports when the device goes missing. See [docs/android.md](docs/android.md) (in Portuguese).
+
 <br clear="right">
 
 ## Run it yourself

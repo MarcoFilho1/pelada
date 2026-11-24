@@ -7,6 +7,9 @@ import java.io.File
 import kotlin.concurrent.thread
 
 /** Tudo o que a tela e a notificação mostram, numa foto só. */
+/** Como foi o último sinal de vida (para a tela de Ajustes). */
+data class EstadoDoSinal(val quando: Long = 0, val erro: String? = null)
+
 data class Painel(
     val ligado: Boolean = false,
     val configurado: Boolean = false,
@@ -42,6 +45,7 @@ object Motor {
         if (::pastas.isInitialized) return
         pastas = Pastas(ctx)
         cache = ctx.cacheDir
+        app = ctx.applicationContext
         versaoDoApp = ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
         Instalador.preparar(ctx, pastas)
         registroZapGate = Registro(File(pastas.logs, "zapgate.log")).also { it.carregar() }
@@ -135,6 +139,8 @@ object Motor {
         zapgate = z
         robo = r
         _painel.value = _painel.value.copy(ligado = true, aviso = null, versaoDoRobo = Codigo.versaoAtual(pastas))
+        // O primeiro sinal sai 20 s depois de ligar, quando já se sabe como a conta está.
+        ultimoSinal = System.currentTimeMillis() - SinalDeVida.INTERVALO_MS + 20_000
         z.ligar()
         r.ligar()
         vigia = thread(name = "vigia", isDaemon = true) { vigiar() }
@@ -156,6 +162,21 @@ object Motor {
 
     private val _atualizacao = MutableStateFlow(EstadoDaAtualizacao())
     val atualizacao: StateFlow<EstadoDaAtualizacao> = _atualizacao
+    private val _sinal = MutableStateFlow(EstadoDoSinal())
+    val sinal: StateFlow<EstadoDoSinal> = _sinal
+    private var app: Context? = null
+    private var ultimoSinal = 0L
+
+    /** De minuto em minuto conta ao servidor como o robô está. Uma falha só fica anotada na tela. */
+    private fun talvezMandarSinal() {
+        val ctx = app ?: return
+        val agora = System.currentTimeMillis()
+        if (_painel.value.ajustes?.urlDoSinal.isNullOrEmpty() || agora - ultimoSinal < SinalDeVida.INTERVALO_MS) return
+        ultimoSinal = agora
+        val erro = SinalDeVida.mandar(ctx, _painel.value, registroRobo.linhas(), registroZapGate.linhas())
+        _sinal.value = EstadoDoSinal(quando = agora, erro = erro)
+    }
+
     private var versaoDoApp = 0L
     private var ultimaProcura = 0L
     private var observandoDesde = 0L
@@ -261,6 +282,7 @@ object Motor {
             if (conta != _painel.value.conta) _painel.value = _painel.value.copy(conta = conta)
             if (conta?.estado == "unpaired") prepararEnsaio()
             observarVersaoNova()
+            talvezMandarSinal()
             // De 6 em 6 horas (e uma vez logo depois de ligar) procura versão nova do robô.
             if (System.currentTimeMillis() - ultimaProcura > 6 * 3_600_000L && _painel.value.ajustes?.urlDaAtualizacao?.isNotEmpty() == true) {
                 try {

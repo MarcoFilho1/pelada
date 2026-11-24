@@ -21,6 +21,11 @@ const jogador = (precisaTrocar = false): Token => ({ tipo: 'jogador', jogadorId:
 const admin: Token = { tipo: 'admin', adminId: 1, versao: 0 };
 
 describe('proxy', () => {
+  it('o sinal de vida do robô passa sem cookie (a rota confere a chave)', async () => {
+    expect(await pedir('/api/robo/sinal')).toBe('segue');
+    expect(await pedir('/api/robo/outra')).toBe('/entrar');
+  });
+
   it('deixa abertas só as telas de entrar', async () => {
     expect(await pedir('/entrar')).toBe('segue');
     expect(await pedir('/admin/entrar')).toBe('segue');

@@ -22,7 +22,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.marcofilho.pelada.robo.BuildConfig
 import dev.marcofilho.pelada.robo.EstadoDaAtualizacao
+import dev.marcofilho.pelada.robo.EstadoDoSinal
 import dev.marcofilho.pelada.robo.Painel
+
+private val horaDoSinal = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT)
 
 class AcoesDosAjustes(
     val importar: () -> Unit,
@@ -34,7 +37,7 @@ class AcoesDosAjustes(
 )
 
 @Composable
-fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Boolean, importando: Boolean, atualizacao: EstadoDaAtualizacao, acoes: AcoesDosAjustes) {
+fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Boolean, importando: Boolean, atualizacao: EstadoDaAtualizacao, sinal: EstadoDoSinal, acoes: AcoesDosAjustes) {
     Coluna {
         Text("Ajustes", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.semantics { heading() })
 
@@ -71,6 +74,25 @@ fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Bool
                 Spacer(Modifier.height(12.dp))
                 BotaoPrimario("Instalar o app ${atualizacao.versaoDoAppNovo}", aoTocar = acoes.instalarApp)
             }
+        }
+
+        if (p.ajustes?.urlDoSinal?.isNotEmpty() == true) {
+            Secao("Sinal de vida")
+            Linha(
+                titulo = when {
+                    !p.ligado -> "Parado"
+                    sinal.quando == 0L -> "Ainda não mandou"
+                    sinal.erro == null -> "Chegando"
+                    else -> "Não está chegando"
+                },
+                apoio = when {
+                    !p.ligado -> "O sinal só é mandado com o robô ligado."
+                    sinal.quando == 0L -> "De minuto em minuto o app conta a quem cuida do robô que está tudo de pé."
+                    sinal.erro == null -> "Último às ${horaDoSinal.format(java.util.Date(sinal.quando))}. Quem cuida do robô é avisado se parar de chegar."
+                    else -> "A última tentativa, às ${horaDoSinal.format(java.util.Date(sinal.quando))}, falhou: ${sinal.erro}."
+                },
+                aoTocar = null,
+            )
         }
 
         Secao("Versões")

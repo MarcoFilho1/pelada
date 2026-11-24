@@ -30,6 +30,8 @@ data class Ajustes(
     /** Para onde mandar o sinal de vida (vazio = não manda). */
     val urlDoSinal: String = "",
     val chaveDoSinal: String = "",
+    /** Como este aparelho aparece no sinal de vida (vazio = o modelo do aparelho). */
+    val nomeDoAparelho: String = "",
 ) {
     companion object {
         fun ler(arquivo: File): Ajustes? = try {
@@ -54,6 +56,7 @@ data class Ajustes(
                 tokenDaAtualizacao = j.optString("atualizacao_token"),
                 urlDoSinal = j.optString("sinal_url"),
                 chaveDoSinal = j.optString("sinal_chave"),
+                nomeDoAparelho = j.optString("aparelho"),
             )
         }
     }

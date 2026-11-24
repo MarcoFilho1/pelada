@@ -162,3 +162,73 @@ Se o servidor pedir senha, o `atualizacao_token` é mandado como `Authorization:
 
 Para incluir um app novo: `./gradlew :app:assembleRelease -Pcodigo=2 -Pversao=0.2.0` e
 `publicar-robo.mjs --app=caminho.apk --app-versao=0.2.0 --app-numero=2`.
+
+## Sinal de vida (suporte à distância)
+
+De minuto em minuto, com o robô ligado, o app conta ao site como está. Quando o sinal para de
+chegar, quem cuida do robô fica sabendo que o aparelho sumiu (desligou, ficou sem internet, ou o
+Android matou o app).
+
+**O que vai no sinal:** estado da conta do WhatsApp, se o robô está rodando, quantas vezes cada
+programa caiu, versões, bateria, e as últimas linhas que o próprio app escreveu (ligou, caiu,
+atualizou). **Nunca** vai conversa, nome nem número de ninguém.
+
+**No site** (`/api/robo/sinal`, tabela `robo_sinais`, migração `0008`):
+
+- `POST`: o app manda o sinal.
+- `GET`: responde `200` se está tudo certo e `503` com a frase do problema quando o celular sumiu
+  (sem sinal há mais de 5 minutos), o WhatsApp desconectou ou o robô parou.
+- As duas pedem a chave `ROBO_SINAL_CHAVE` (24+ caracteres) em `Authorization: Bearer`. Sem essa
+  variável no site, a rota recusa todo mundo.
+
+**No pacote** (`app.json`): `"sinal_url": "https://<site>/api/robo/sinal"`, `"sinal_chave": "<a chave>"`
+e, se quiser, `"aparelho": "celular do Fulano"`.
+
+**Para ser avisado**, no Mac:
+
+```sh
+ROBO_SINAL_URL=https://<site>/api/robo/sinal ROBO_SINAL_CHAVE=<a chave> node scripts/android/vigiar-sinal.mjs
+ROBO_SINAL_URL=… ROBO_SINAL_CHAVE=… node scripts/android/vigiar-sinal.mjs --uma-vez   # só olha agora
+```
+
+O vigia pergunta de 2 em 2 minutos e mostra uma notificação do macOS quando aparece um problema e
+quando volta ao normal. Ele só avisa com o Mac ligado: para ser avisado sempre, dá para apontar
+um serviço de monitoramento (com aviso por e-mail ou Telegram) para o mesmo endereço.
+
+Por que o aviso não chega pelo WhatsApp do robô: o número do robô está no celular que sumiu.
+
+**Para pôr no ar:** rodar a migração `0008` no banco, criar `ROBO_SINAL_CHAVE` na Vercel e
+publicar o site.
+
+## Mudar o robô do Mac para o celular
+
+O pacote de verdade é montado a partir do que o robô usa hoje no Mac:
+
+```sh
+node scripts/android/montar-pacote.mjs --com-sessao \
+  --sinal-url=https://<site>/api/robo/sinal --sinal-chave=<a chave> --aparelho="celular do Fulano" \
+  --atualizacao-url=https://…/manifesto.json --atualizacao-chave=<a pública>
+```
+
+Ele copia as regras do ZapGate e a configuração do robô como estão (conta, limites, grupos,
+organizadores, Pix, horários) e muda só o necessário: caminhos, e as chaves entre o robô e o
+ZapGate, que são criadas novas para o celular.
+
+**Com `--com-sessao`** a sessão do WhatsApp vai junto: para o WhatsApp continua sendo o mesmo
+aparelho conectado, então não precisa parear de novo (menos risco para o número). **Sem** ela, o
+celular pareia pelo código de 8 letras na tela Conectar.
+
+A ordem, no dia:
+
+1. No Mac, desligar o robô e o ZapGate, e não ligar mais nessa conta:
+   `launchctl bootout gui/$(id -u)/com.pelada.robo` e `launchctl bootout gui/$(id -u)/zapgate`.
+2. Montar o pacote (comando acima) e mandar o `dist/android/pacote.zip` direto para o aparelho.
+3. No app: **Importar pacote**, permitir bateria e notificação, **Ligar**.
+4. Conferir no Início que aparece "WhatsApp conectado" e, no Mac, `vigiar-sinal.mjs --uma-vez`.
+5. Apagar o pacote do computador e do aparelho (ele leva a chave do banco e a da IA).
+
+Nunca os dois ligados na mesma conta: foi o que derrubou a sessão em 10/11.
+
+**Para voltar ao Mac:** desligar o robô no app e **parear de novo no Mac** (`zapgate pair pelada`).
+Se a sessão foi para o celular, a cópia que ficou no Mac está desatualizada (as chaves da conversa
+avançam a cada mensagem) e não deve ser religada.

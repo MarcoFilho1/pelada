@@ -46,6 +46,8 @@ escrever(
       grupo_simulado_nome: NOME_DO_GRUPO,
       organizador_simulado: ORGANIZADOR,
       // Para ensaiar a atualização: --atualizacao-url= e --atualizacao-chave= (a pública).
+      // Para ensaiar o sinal de vida: --sinal-url= e --sinal-chave=.
+      ...(arg('sinal-url') ? { sinal_url: arg('sinal-url'), sinal_chave: arg('sinal-chave') ?? '', aparelho: 'tablet de ensaio' } : {}),
       ...(arg('atualizacao-url') ? { atualizacao_url: arg('atualizacao-url'), atualizacao_chave: arg('atualizacao-chave') ?? '' } : {}),
     },
     null,
