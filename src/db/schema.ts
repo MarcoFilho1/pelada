@@ -210,3 +210,12 @@ export const duplasSeparadas = pgTable(
   },
   (t) => [uniqueIndex('duplas_separadas_par_uniq').on(t.jogadorAId, t.jogadorBId)],
 );
+
+// Sinal de vida do robô que roda num celular (docs/android.md): o app manda de minuto em minuto
+// como ele está. Uma linha por aparelho; cada sinal novo substitui o anterior.
+export const roboSinais = pgTable('robo_sinais', {
+  aparelho: text('aparelho').primaryKey(),
+  vistoEm: timestamptz('visto_em').notNull(),
+  /** O que o app contou (JSON já conferido e limitado por `limparSinal`). */
+  dados: text('dados').notNull(),
+});
