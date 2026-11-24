@@ -40,6 +40,19 @@ describe('lerCadastro', () => {
     ]);
   });
 
+  it('"ambos", "todos", "os dois" antes da nota não viram jogador', () => {
+    const lumoEFelipe = [
+      { nome: 'Lumo', nota: 3 },
+      { nome: 'Felipe', nota: 3 },
+    ];
+    expect(lerCadastro('Lumo e Felipe, ambos 3,0')).toEqual(lumoEFelipe);
+    expect(lerCadastro('Lumo, Felipe, ambos com nota 3')).toEqual(lumoEFelipe);
+    expect(lerCadastro('Lumo e Felipe ambos 3')).toEqual(lumoEFelipe);
+    expect(lerCadastro('Lumo e Felipe\nAmbos - 3')).toEqual(lumoEFelipe);
+    expect(lerCadastro('Lumo e Felipe, os dois com 3')).toEqual(lumoEFelipe);
+    expect(lerCadastro('Lumo e Felipe, todos 3')).toEqual(lumoEFelipe);
+  });
+
   it('sem nota: null (fica 3,0); nomes compostos sem vírgula ficam juntos', () => {
     expect(lerCadastro('Caio, Mateus Borges')).toEqual([
       { nome: 'Caio', nota: null },
