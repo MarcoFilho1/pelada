@@ -45,13 +45,15 @@ cd "$CLONE" || falhou "o clone da revisão não abriu"
 git fetch -q origin && git checkout -q develop && git reset -q --hard origin/develop && git clean -qfd || falhou "não consegui atualizar o clone"
 # Sem .env de propósito: a revisão não tem como chegar no banco de produção.
 pnpm install --frozen-lockfile --silent || falhou "a instalação das dependências falhou"
+# Tipos que o Next gera (PageProps…): sem eles o tsc falha em páginas que a revisão nem tocou.
+pnpm -s next typegen >/dev/null || falhou "não consegui gerar os tipos do Next"
 
 claude -p "$PROMPT_TEXTO" \
   --permission-mode acceptEdits \
   --allowedTools "Read" "Edit" "Write" "Grep" "Glob" \
     "Bash(pnpm vitest:*)" "Bash(pnpm tsc:*)" "Bash(pnpm eslint:*)" \
     "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git add:*)" "Bash(git commit:*)" \
-    "Bash(git checkout -b revisao/:*)" "Bash(git switch -c revisao/:*)" "Bash(git push -u origin revisao/:*)" \
+    "Bash(git checkout -b revisao/*)" "Bash(git switch -c revisao/*)" "Bash(git push -u origin revisao/*)" \
     "Bash(gh pr create:*)" "Bash(gh pr view:*)" "Bash(sqlite3 -readonly:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(ls:*)" \
   --disallowedTools "Bash(gh pr merge:*)" "Bash(gh api:*)" "Bash(git push origin develop:*)" "Bash(git push origin main:*)" \
     "Read(**/.env*)" "Read(~/.ssh/**)" "Read(~/zapgate-teste/.chave)" "Read(~/Desktop/**)" "Read(~/pelada/**)" &
