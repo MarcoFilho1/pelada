@@ -1,0 +1,13 @@
+# Gradle e Android
+.gradle/
+build/
+app/build/
+local.properties
+.kotlin/
+*.keystore
+*.jks
+
+# Gerados por scripts/preparar.sh (programas compilados e o robô empacotado)
+app/src/main/jniLibs/
+app/src/main/assets/no/
+app/src/main/assets/robo/
