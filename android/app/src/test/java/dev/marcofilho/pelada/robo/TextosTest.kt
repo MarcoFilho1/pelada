@@ -38,3 +38,25 @@ class TextosTest {
         assertEquals("Reiniciando a conexão", Textos.conta(p))
     }
 }
+
+class AtividadeTest {
+    @Test
+    fun `fica so o que o robo fez, com a hora`() {
+        val linhas = listOf(
+            "24/11 18:53:38 [app] Robô ligado",
+            "2026-11-24 18:53 ZapGate: sessão connected",
+            "2026-11-24 18:53 ZapGate conectado (5581900000000@s.whatsapp.net); envio: enabled.",
+            "2026-11-24 18:53 Robô ligado. Vai mandar em: \"Pelada de ensaio\".",
+            "2026-11-24 18:53 janela aberta até quarta 20:30.",
+            "2026-11-24 18:53 enviada: primeira",
+            "2026-11-24 18:54 nada a enviar",
+            "2026-11-24 18:54 respondeu no privado (📋 Notas (16 jogadores):)",
+            "linha solta sem data",
+        )
+        assertEquals(
+            listOf("18:53" to "enviada: primeira", "18:54" to "respondeu no privado (📋 Notas (16 jogadores):)"),
+            Textos.atividade(linhas, 12),
+        )
+        assertEquals(1, Textos.atividade(linhas, 1).size)
+    }
+}

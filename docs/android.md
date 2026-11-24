@@ -98,3 +98,23 @@ Testes do app (sem aparelho): `cd android && ./gradlew :app:testDebugUnitTest`.
 - **A auto-revisão (`claude -p`) não vai para o celular**: continua no Mac.
 - **Nunca duas conexões no mesmo número**: o robô do Mac tem de estar desligado enquanto o do
   celular estiver ligado na mesma conta.
+
+## As telas
+
+O visual é o do site (`DESIGN.md`): chão preto, placas um degrau de luz acima, Barlow Condensed
+nos títulos e números, Inter no resto, lima só para "está vivo". No celular a navegação fica
+embaixo; no tablet, num trilho ao lado.
+
+| Tela | Para que serve |
+| --- | --- |
+| **Início** | diz em uma frase como o robô está, mostra o que ele fez por último e tem o botão de ligar e desligar; avisa se a bateria ou a notificação estão bloqueadas |
+| **Conectar o WhatsApp** | gera o código de 8 letras (em placas, como o PIN do site) para digitar no WhatsApp do mesmo aparelho; tem contagem do prazo e botão de copiar |
+| **Ensaio** | só no pacote de ensaio: uma conversa de mentira com o robô, no grupo ou no privado |
+| **Registros** | o que o robô e a conexão escreveram, com botão de compartilhar para mandar a quem cuida |
+| **Ajustes** | trocar o pacote, abrir o painel de regras do ZapGate, bateria, notificação e versões |
+
+![Início no tablet, em ensaio](media/android/inicio.png)
+![Ensaio: o organizador de mentira pede as notas no privado](media/android/ensaio.png)
+
+Por que código e não QR para conectar: o WhatsApp está no mesmo aparelho, e não dá para apontar
+a câmera para a própria tela.

@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** Como a conta do WhatsApp está, segundo o ZapGate. */
-data class Conta(val estado: String, val envio: String, val fila: Int)
+data class Conta(val estado: String, val envio: String, val fila: Int, val endereco: String = "", val lid: String = "")
 
 /** Conversa com a API do ZapGate que roda dentro do aparelho (127.0.0.1). */
 class ZapGateApi(private val url: String, private val chaveAdmin: String) {
@@ -54,7 +54,7 @@ class ZapGateApi(private val url: String, private val chaveAdmin: String) {
         val lista = JSONArray(pedir("GET", "/v1/sessions"))
         for (i in 0 until lista.length()) {
             val s = lista.getJSONObject(i)
-            if (s.optString("id") == sessao) return Conta(s.optString("state"), s.optString("sending"), s.optInt("queue_length"))
+            if (s.optString("id") == sessao) return Conta(s.optString("state"), s.optString("sending"), s.optInt("queue_length"), s.optString("own_address"), s.optString("own_lid"))
         }
         return null
     }
