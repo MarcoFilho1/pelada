@@ -89,6 +89,7 @@ private fun Telas() {
     val ctx = LocalContext.current
     val escopo = rememberCoroutineScope()
     val p by Motor.painel.collectAsStateWithLifecycle()
+    val atualizacao by Motor.atualizacao.collectAsStateWithLifecycle()
     var aba by rememberSaveable { mutableStateOf(Aba.Inicio) }
     var conectando by rememberSaveable { mutableStateOf(false) }
     var importando by remember { mutableStateOf(false) }
@@ -206,8 +207,10 @@ private fun Telas() {
                 Aba.Registros -> TelaRegistros()
                 Aba.Ajustes -> Rolavel {
                     TelaAjustes(
-                        p, bateria, notificacoes, importando,
+                        p, bateria, notificacoes, importando, atualizacao,
                         AcoesDosAjustes(
+                            procurarAtualizacao = { escopo.launch(Dispatchers.IO) { Motor.procurarAtualizacao() } },
+                            instalarApp = { atualizacao.appNovo?.let { Aparelho.instalar(ctx, it) } },
                             importar = importar,
                             liberarBateria = { Aparelho.pedirBateria(ctx) },
                             liberarNotificacoes = liberarNotificacoes,

@@ -42,6 +42,7 @@ object Motor {
         if (::pastas.isInitialized) return
         pastas = Pastas(ctx)
         cache = ctx.cacheDir
+        versaoDoApp = ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
         Instalador.preparar(ctx, pastas)
         registroZapGate = Registro(File(pastas.logs, "zapgate.log")).also { it.carregar() }
         registroRobo = Registro(File(pastas.logs, "robo.log")).also { it.carregar() }
@@ -88,6 +89,11 @@ object Motor {
         return ZapGateApi(a.urlZapGate, chaves[a.envDaChaveAdmin] ?: "")
     }
 
+    private val hora = java.text.SimpleDateFormat("dd/MM HH:mm:ss", java.util.Locale.ROOT)
+
+    /** Uma linha do próprio app nos registros, com a hora, como as do [Filho]. */
+    private fun nota(registro: Registro, texto: String) = registro.escrever("${hora.format(java.util.Date())} [app] $texto")
+
     private fun ambienteComum(casa: File): Map<String, String> = mapOf(
         "HOME" to casa.path,
         "TMPDIR" to (cache ?: casa).path,
@@ -101,7 +107,7 @@ object Motor {
             return
         }
         val orfaos = Orfaos.encerrar(listOf(pastas.programaZapGate, pastas.programaNode))
-        if (orfaos > 0) registroZapGate.escrever("[app] encerrados $orfaos programa(s) que tinham ficado de uma execução anterior")
+        if (orfaos > 0) nota(registroZapGate, "encerrados $orfaos programa(s) que tinham ficado de uma execução anterior")
 
         val z = Filho(
             nome = "ZapGate",
@@ -148,6 +154,69 @@ object Motor {
         _painel.value = _painel.value.copy(zapgate = EstadoDoFilho(), robo = EstadoDoFilho(), conta = null)
     }
 
+    private val _atualizacao = MutableStateFlow(EstadoDaAtualizacao())
+    val atualizacao: StateFlow<EstadoDaAtualizacao> = _atualizacao
+    private var versaoDoApp = 0L
+    private var ultimaProcura = 0L
+    private var observandoDesde = 0L
+    private var quedasNaTroca = 0
+
+    /** Procura atualização agora (botão dos Ajustes, e sozinho de 6 em 6 horas com o robô ligado). */
+    fun procurarAtualizacao() {
+        val a = _painel.value.ajustes ?: return
+        if (!procurando.compareAndSet(false, true)) return
+        try {
+            procurarDeFato(a)
+        } finally {
+            procurando.set(false)
+            _atualizacao.value = _atualizacao.value.copy(procurando = false)
+        }
+    }
+
+    private val procurando = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun procurarDeFato(a: Ajustes) {
+        _atualizacao.value = _atualizacao.value.copy(procurando = true)
+        ultimaProcura = System.currentTimeMillis()
+        val antes = Codigo.versaoAtual(pastas)
+        val resultado = Atualizador.procurar(pastas, a, versaoDoApp, cache ?: pastas.base)
+        _atualizacao.value = resultado
+        if (Codigo.versaoAtual(pastas) != antes) {
+            nota(registroRobo, "atualização: de $antes para ${Codigo.versaoAtual(pastas)}")
+            observandoDesde = System.currentTimeMillis()
+            quedasNaTroca = robo?.quedas ?: 0
+            reiniciarRobo()
+        }
+    }
+
+    /** Se a versão recém-instalada não fica de pé, volta para a anterior. */
+    private fun observarVersaoNova() {
+        if (!Atualizador.emObservacao(pastas)) return
+        val r = robo ?: return
+        val agora = System.currentTimeMillis()
+        if (observandoDesde == 0L) { // o app reiniciou no meio da observação: recomeça a contar
+            observandoDesde = agora
+            quedasNaTroca = r.quedas
+        }
+        val e = r.estado
+        // A primeira "queda" depois da troca é o próprio reinício pedido pelo app: não conta.
+        val quedas = (r.quedas - quedasNaTroca - 1).coerceAtLeast(0)
+        when (Atualizador.julgar(quedas, e.rodando, if (e.rodando) agora - e.desde else 0, agora - observandoDesde)) {
+            Atualizador.Veredito.ESPERAR -> return
+            Atualizador.Veredito.FICOU -> {
+                Atualizador.confirmar(pastas)
+                nota(registroRobo, "atualização: a versão ${Codigo.versaoAtual(pastas)} ficou de pé")
+            }
+            Atualizador.Veredito.DESFAZER -> {
+                val ruim = Atualizador.desfazer(pastas)
+                nota(registroRobo, "atualização: a versão $ruim não ficou de pé; voltando para ${Codigo.versaoAtual(pastas)}")
+                _atualizacao.value = EstadoDaAtualizacao(mensagem = "A versão $ruim não ficou de pé. O robô voltou para a anterior.")
+                reiniciarRobo()
+            }
+        }
+        observandoDesde = 0
+    }
+
     /** Reinicia só o robô (código ou configuração dele mudou); o WhatsApp continua conectado. */
     fun reiniciarRobo() {
         _painel.value = _painel.value.copy(versaoDoRobo = Codigo.versaoAtual(pastas))
@@ -176,7 +245,7 @@ object Motor {
             api.simularEvento(a.sessao, org.json.JSONObject().put("type", "connected").put("own", "5581900000000@s.whatsapp.net"))
             api.ligarEnvio(a.sessao)
         } catch (e: Exception) {
-            registroZapGate.escrever("[app] ensaio: não consegui preparar a conta de mentira: ${e.message}")
+            nota(registroZapGate, "ensaio: não consegui preparar a conta de mentira: ${e.message}")
         }
     }
 
@@ -191,6 +260,15 @@ object Motor {
             }
             if (conta != _painel.value.conta) _painel.value = _painel.value.copy(conta = conta)
             if (conta?.estado == "unpaired") prepararEnsaio()
+            observarVersaoNova()
+            // De 6 em 6 horas (e uma vez logo depois de ligar) procura versão nova do robô.
+            if (System.currentTimeMillis() - ultimaProcura > 6 * 3_600_000L && _painel.value.ajustes?.urlDaAtualizacao?.isNotEmpty() == true) {
+                try {
+                    procurarAtualizacao()
+                } catch (e: Exception) {
+                    nota(registroRobo, "atualização: ${e.message}")
+                }
+            }
             try {
                 Thread.sleep(5_000)
             } catch (_: InterruptedException) {

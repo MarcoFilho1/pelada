@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.marcofilho.pelada.robo.BuildConfig
+import dev.marcofilho.pelada.robo.EstadoDaAtualizacao
 import dev.marcofilho.pelada.robo.Painel
 
 class AcoesDosAjustes(
@@ -28,10 +29,12 @@ class AcoesDosAjustes(
     val liberarBateria: () -> Unit,
     val liberarNotificacoes: () -> Unit,
     val abrirPainel: () -> Unit,
+    val procurarAtualizacao: () -> Unit,
+    val instalarApp: () -> Unit,
 )
 
 @Composable
-fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Boolean, importando: Boolean, acoes: AcoesDosAjustes, extras: @Composable () -> Unit = {}) {
+fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Boolean, importando: Boolean, atualizacao: EstadoDaAtualizacao, acoes: AcoesDosAjustes) {
     Coluna {
         Text("Ajustes", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.semantics { heading() })
 
@@ -57,7 +60,18 @@ fun TelaAjustes(p: Painel, bateriaLiberada: Boolean, notificacoesLiberadas: Bool
             aoTocar = if (notificacoesLiberadas) null else acoes.liberarNotificacoes,
         )
 
-        extras()
+        if (p.ajustes?.urlDaAtualizacao?.isNotEmpty() == true) {
+            Secao("Atualização")
+            Linha(
+                titulo = if (atualizacao.procurando) "Procurando…" else "Procurar atualização",
+                apoio = atualizacao.mensagem.ifEmpty { "O app procura sozinho de 6 em 6 horas. O robô novo entra sem reinstalar o app." },
+                aoTocar = if (atualizacao.procurando) null else acoes.procurarAtualizacao,
+            )
+            if (atualizacao.appNovo != null) {
+                Spacer(Modifier.height(12.dp))
+                BotaoPrimario("Instalar o app ${atualizacao.versaoDoAppNovo}", aoTocar = acoes.instalarApp)
+            }
+        }
 
         Secao("Versões")
         Placa {

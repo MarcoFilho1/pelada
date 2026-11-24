@@ -37,7 +37,20 @@ const escrever = (caminho: string, texto: string) => {
 
 escrever(
   'app.json',
-  JSON.stringify({ sessao: 'pelada', chave_admin_env: 'ZAPGATE_ADMIN_KEY', simulado: true, grupo_simulado: GRUPO, grupo_simulado_nome: NOME_DO_GRUPO, organizador_simulado: ORGANIZADOR }, null, 2) + '\n',
+  JSON.stringify(
+    {
+      sessao: 'pelada',
+      chave_admin_env: 'ZAPGATE_ADMIN_KEY',
+      simulado: true,
+      grupo_simulado: GRUPO,
+      grupo_simulado_nome: NOME_DO_GRUPO,
+      organizador_simulado: ORGANIZADOR,
+      // Para ensaiar a atualização: --atualizacao-url= e --atualizacao-chave= (a pública).
+      ...(arg('atualizacao-url') ? { atualizacao_url: arg('atualizacao-url'), atualizacao_chave: arg('atualizacao-chave') ?? '' } : {}),
+    },
+    null,
+    2,
+  ) + '\n',
 );
 
 escrever(

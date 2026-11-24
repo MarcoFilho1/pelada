@@ -118,3 +118,47 @@ embaixo; no tablet, num trilho ao lado.
 
 Por que código e não QR para conectar: o WhatsApp está no mesmo aparelho, e não dá para apontar
 a câmera para a própria tela.
+
+## Atualização
+
+Há dois tipos, e o comum não exige reinstalar nada.
+
+**Robô novo (o caso do dia a dia).** O app consulta um arquivo pequeno, o *manifesto*, de 6 em 6
+horas com o robô ligado (e no botão **Ajustes › Procurar atualização**). Se houver versão mais
+nova, ele baixa o arquivo do robô, confere, troca e reinicia **só o robô**: o WhatsApp continua
+conectado.
+
+- **Assinatura.** Cada versão é assinada no computador de quem cuida do robô, com uma chave
+  privada que nunca sai de lá. O app só tem a chave pública, que confere mas não assina. Um arquivo
+  trocado no caminho, ou assinado por outra chave, é recusado. Por isso o lugar onde os arquivos
+  ficam hospedados não precisa ser de confiança.
+- **Volta sozinho.** Depois de trocar, o app observa o robô por 3 minutos. Se ele cair 3 vezes, ou
+  não ficar 1 minuto de pé, a versão anterior volta e a versão ruim fica anotada para não ser
+  tentada de novo.
+- **Só para a frente.** Uma versão só entra se o número dela (a data do commit) for maior que o
+  da atual.
+
+**App novo (raro).** Quando o manifesto traz um APK mais novo, aparece o botão **Instalar o app**.
+O arquivo já vem conferido pela mesma assinatura, e o Android ainda confere que o APK foi assinado
+por quem assinou o app instalado. Na primeira vez o Android pede para permitir "instalar apps
+desta fonte", e o Play Protect pode perguntar se quer enviar o app para análise (dá para escolher
+"Instalar sem análise") e pedir o PIN do aparelho.
+
+### Publicar uma versão
+
+```sh
+node scripts/android/publicar-robo.mjs chave    # uma vez: cria a chave e mostra a pública
+node scripts/android/publicar-robo.mjs          # empacota, assina e gera dist/android/publicar/
+```
+
+A chave pública e o endereço do manifesto vão no `app.json` do pacote:
+
+```json
+{ "atualizacao_url": "https://…/manifesto.json", "atualizacao_chave": "<a pública>", "atualizacao_token": "<opcional>" }
+```
+
+O conteúdo de `dist/android/publicar/` é para subir, como está, para esse endereço (só HTTPS).
+Se o servidor pedir senha, o `atualizacao_token` é mandado como `Authorization: Bearer`.
+
+Para incluir um app novo: `./gradlew :app:assembleRelease -Pcodigo=2 -Pversao=0.2.0` e
+`publicar-robo.mjs --app=caminho.apk --app-versao=0.2.0 --app-numero=2`.

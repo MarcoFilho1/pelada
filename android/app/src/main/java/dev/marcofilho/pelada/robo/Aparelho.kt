@@ -30,6 +30,18 @@ object Aparelho {
     fun notificacoesLiberadas(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Abre o instalador do Android para o APK baixado (já conferido pela assinatura do manifesto).
+     * O Android ainda confere por conta própria que o APK foi assinado por quem assinou o app instalado.
+     */
+    fun instalar(ctx: Context, apk: java.io.File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.arquivos", apk)
+        val pedido = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(pedido)
+    }
+
     /** As animações do sistema estão desligadas? (Acessibilidade › Remover animações) */
     fun semAnimacao(ctx: Context): Boolean =
         Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f

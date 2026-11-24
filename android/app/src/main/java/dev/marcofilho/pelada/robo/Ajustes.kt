@@ -25,6 +25,8 @@ data class Ajustes(
     val urlDaAtualizacao: String = "",
     /** Chave pública (Ed25519, base64) que confere a assinatura das atualizações. */
     val chaveDaAtualizacao: String = "",
+    /** (Opcional) senha que o servidor das atualizações pede, mandada como "Authorization: Bearer". */
+    val tokenDaAtualizacao: String = "",
     /** Para onde mandar o sinal de vida (vazio = não manda). */
     val urlDoSinal: String = "",
     val chaveDoSinal: String = "",
@@ -49,6 +51,7 @@ data class Ajustes(
                 organizadorSimulado = j.optString("organizador_simulado").ifEmpty { null },
                 urlDaAtualizacao = j.optString("atualizacao_url"),
                 chaveDaAtualizacao = j.optString("atualizacao_chave"),
+                tokenDaAtualizacao = j.optString("atualizacao_token"),
                 urlDoSinal = j.optString("sinal_url"),
                 chaveDoSinal = j.optString("sinal_chave"),
             )

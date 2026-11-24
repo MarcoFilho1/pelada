@@ -106,6 +106,9 @@ class Filho(
         fio = null
     }
 
+    /** Quantas vezes caiu desde que foi ligado (para observar uma versão nova). */
+    val quedas: Int get() = estado.quedas
+
     /** Derruba o programa para ele voltar com configuração ou código novo (o laço religa). */
     fun reiniciar() {
         espera.zerar()

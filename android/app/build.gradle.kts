@@ -11,8 +11,9 @@ android {
         applicationId = "dev.marcofilho.pelada.robo"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Para gerar uma versão nova: ./gradlew :app:assembleDebug -Pcodigo=2 -Pversao=0.2.0
+        versionCode = (project.findProperty("codigo") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("versao") as String?) ?: "0.1.0"
         // O ZapGate e o Node só existem compilados para ARM de 64 bits (celulares e tablets atuais).
         ndk { abiFilters += "arm64-v8a" }
     }
