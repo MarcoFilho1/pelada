@@ -1128,8 +1128,8 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
       const partes = pergunta.partes;
       desfecho = pergunta.desfecho;
       r = { texto: partes.join('\n\n') };
-      // No privado, a resposta sai em mensagens curtas, uma depois da outra (como gente no WhatsApp).
-      if (m.privado && partes.length > 1) emPartes = partes;
+      // A resposta sai em mensagens curtas, uma depois da outra (como gente no WhatsApp), no privado e no grupo.
+      if (partes.length > 1) emPartes = partes;
       break;
     }
     case 'recusa':
