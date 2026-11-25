@@ -1025,13 +1025,29 @@ export async function responder(m: MensagemRecebida, c: ContextoDaResposta): Pro
  * (o silêncio das 23–08 é do grupo). Valem os comandos do grupo e os de organizador. A lista respondida
  * aqui nunca vira a "última lista" do grupo.
  */
+/** Respostas curtas de quem aprova. Só a palavra sozinha: "confirmar Ana" continua sendo a lista. */
+const PALAVRAS_DE_APROVAR = new Set([
+  'confirmar', 'confirmo', 'confirmado', 'confirmados', 'confirma', 'confirmar times', 'confirmar os times', 'confirmo os times', 'confirma os times',
+  'aprovar', 'aprovo', 'aprovado', 'aprovados', 'ok', 'okay', 'pode', 'pode ser', 'pode confirmar', 'fechado', 'fechou', 'beleza', 'blz', 'de acordo', '👍',
+]);
+
+/** No privado, um organizador que ainda não votou responde com uma palavra de aprovar a times que esperam voto. */
+function confirmaOsTimes(m: MensagemRecebida, c: ContextoDaResposta): boolean {
+  const p = c.proposta.atual;
+  const tel = m.remetenteTelefone;
+  if (!p || !tel || propostaVencida(p, m.quando) || p.votos.some((v) => ehAdmin(v, [tel]))) return false;
+  return PALAVRAS_DE_APROVAR.has(normalizarNome(m.texto).replace(/[.,;:!?]+$/u, '').trim());
+}
+
 async function responderNoPrivado(m: MensagemRecebida, c: ContextoDaResposta): Promise<Resposta | null> {
   if (m.remetenteTelefone === null) return ignorada(m, c, 'privado sem telefone (LID)');
   if (!ehAdmin(m.remetenteTelefone, c.admins)) {
     c.log('privado de quem não é organizador ignorado');
     return null;
   }
-  const cmd = interpretarPrivado(m.texto);
+  // Com times esperando o voto deste organizador, "confirmar", "ok", "aprovado" valem como o "sim":
+  // é o que a pessoa responde ao receber os times, e sem isto virava presença na lista.
+  const cmd: Comando = confirmaOsTimes(m, c) ? { tipo: 'sim' } : interpretarPrivado(m.texto);
   if (!simDeOrganizador(cmd, m, c) && !c.freio.podeResponder()) return avisarLimite(m, c);
   const r = await responderComando(cmd, m, c);
   const tel = m.remetenteTelefone;
