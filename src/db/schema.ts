@@ -227,3 +227,22 @@ export const roboManifesto = pgTable('robo_manifesto', {
   conteudo: text('conteudo').notNull(),
   atualizadoEm: timestamptz('atualizado_em').notNull(),
 });
+
+// Com o robô num celular (docs/android.md), o banco é a ponte com o Mac da auto-revisão.
+// O que o robô viveu (as conversas e as linhas do registro dele), para a revisão ler. Fica 7 dias.
+export const roboDiario = pgTable('robo_diario', {
+  id: serial('id').primaryKey(),
+  quando: timestamptz('quando').notNull(),
+  /** 'conversa' (uma linha JSON do diário) ou 'log' (uma linha do registro). */
+  tipo: text('tipo').notNull(),
+  dados: text('dados').notNull(),
+});
+
+// Os recados entre o robô e o Mac, um por nome: 'resultado' (a revisão terminou), 'pendente' (PR
+// esperando o "pode mergear"), 'pedido' (o dono mandou juntar), 'mergeando' e 'merge' (o fim do merge).
+// São os mesmos arquivos da pasta de troca que o robô usa quando roda no próprio Mac.
+export const roboRecados = pgTable('robo_recados', {
+  nome: text('nome').primaryKey(),
+  dados: text('dados').notNull(),
+  quando: timestamptz('quando').notNull(),
+});
