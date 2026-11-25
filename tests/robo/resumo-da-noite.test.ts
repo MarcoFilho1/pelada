@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LinhaRanking } from '@/domain/ranking';
-import { fimDaNoite, horaDeTentarResumo, horaDoResumo, paraDeEsperar, tabelasGerais, textoDaNoite, textosDoResumo } from '@/robo/resumo-da-noite';
+import { fimDaNoite, fimDePeladaDaVez, horaDeTentarResumo, manhaSeguinte, horaDoResumo, paraDeEsperar, tabelasGerais, textoDaNoite, textosDoResumo } from '@/robo/resumo-da-noite';
 
 let id = 0;
 function linha(nome: string, n: Partial<Pick<LinhaRanking, 'gols' | 'assistencias' | 'vitorias'>> = {}): LinhaRanking {
@@ -32,16 +32,49 @@ describe('horaDoResumo', () => {
 describe('horaDeTentarResumo', () => {
   const data = '2026-11-25';
   const alvo = horaDoResumo(data);
-  it('antes da hora, não; depois, sim; mandado hoje ou depois das 23:15, não', () => {
+  it('antes da hora, não; depois, sim; mandado hoje ou depois das 23:30, não', () => {
     expect(horaDeTentarResumo(new Date(alvo.getTime() - 1000), null)).toBe(false);
     expect(horaDeTentarResumo(alvo, null)).toBe(true);
     expect(horaDeTentarResumo(t('2026-11-25T22:55:00-03:00'), '2026-11-18')).toBe(true);
     expect(horaDeTentarResumo(t('2026-11-25T22:55:00-03:00'), data)).toBe(false);
     expect(horaDeTentarResumo(t('2026-11-25T23:05:00-03:00'), null)).toBe(true);
-    expect(horaDeTentarResumo(t('2026-11-25T23:15:00-03:00'), null)).toBe(false);
-    expect(fimDaNoite(data).toISOString()).toBe('2026-11-26T02:15:00.000Z');
+    expect(horaDeTentarResumo(t('2026-11-25T23:15:00-03:00'), null)).toBe(true);
+    expect(horaDeTentarResumo(t('2026-11-25T23:30:00-03:00'), null)).toBe(false);
+    expect(fimDaNoite(data).toISOString()).toBe('2026-11-26T02:30:00.000Z');
     expect(paraDeEsperar(data).toISOString()).toBe('2026-11-26T01:55:00.000Z');
     expect(horaDeTentarResumo(t('2026-11-25T15:00:00-03:00'), null)).toBe(false);
+  });
+});
+
+describe('fimDePeladaDaVez', () => {
+  const data = '2026-11-25';
+  const desde = '2026-11-20T10:00:00-03:00';
+  it('à noite, o de hoje, até as 23:30', () => {
+    expect(fimDePeladaDaVez(t('2026-11-25T22:50:00-03:00'), '2026-11-18', desde)).toEqual({ data, ontem: false, ate: fimDaNoite(data) });
+    expect(fimDePeladaDaVez(t('2026-11-25T23:29:00-03:00'), null, null)?.data).toBe(data);
+    expect(fimDePeladaDaVez(t('2026-11-25T22:50:00-03:00'), data, desde)).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-25T23:30:00-03:00'), null, desde)).toBeNull();
+  });
+
+  it('de manhã (8h ao meio-dia), o de ontem, se não saiu', () => {
+    const manha = manhaSeguinte(data);
+    expect(manha.de.toISOString()).toBe('2026-11-26T11:00:00.000Z');
+    expect(manha.ate.toISOString()).toBe('2026-11-26T15:00:00.000Z');
+    expect(fimDePeladaDaVez(t('2026-11-26T08:00:00-03:00'), '2026-11-18', desde)).toEqual({ data, ontem: true, ate: manha.ate });
+    expect(fimDePeladaDaVez(t('2026-11-26T11:59:00-03:00'), null, desde)?.ontem).toBe(true);
+    // Saiu à noite: de manhã, nada.
+    expect(fimDePeladaDaVez(t('2026-11-26T08:00:00-03:00'), data, desde)).toBeNull();
+    // Fora da janela da manhã.
+    expect(fimDePeladaDaVez(t('2026-11-26T07:59:00-03:00'), null, desde)).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-26T12:00:00-03:00'), null, desde)).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-26T02:00:00-03:00'), null, desde)).toBeNull();
+  });
+
+  it('robô instalado depois da noite não manda o resumo de ontem (outro já mandou)', () => {
+    expect(fimDePeladaDaVez(t('2026-11-26T09:00:00-03:00'), null, '2026-11-26T08:30:00-03:00')).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-26T09:00:00-03:00'), null, '2026-11-25T23:00:00-03:00')).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-26T09:00:00-03:00'), null, null)).toBeNull();
+    expect(fimDePeladaDaVez(t('2026-11-26T09:00:00-03:00'), null, '2026-11-25T20:00:00-03:00')?.data).toBe(data);
   });
 });
 
@@ -64,6 +97,7 @@ describe('textoDaNoite', () => {
 
   it('noite sem nada (ou sem partidas): null', () => {
     expect(textoDaNoite([])).toBeNull();
+    expect(textoDaNoite([linha('Ana', { gols: 1 })], true)).toBe('🏁 Destaques da pelada de ontem:\n⚽ Artilheiro: Ana (1 gol)');
     expect(textoDaNoite([linha('Ana')])).toBeNull();
   });
 });

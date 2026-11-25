@@ -40,7 +40,8 @@ export type MotivoPartida =
   | 'completes_demais'
   | 'completa_invalido'
   | 'goleiro_invalido'
-  | 'sem_empate';
+  | 'sem_empate'
+  | 'horario_invalido';
 
 const MENSAGENS: Record<MotivoPartida, string> = {
   pelada_inexistente: 'Essa pelada não existe mais. Recarregue a página.',
@@ -58,6 +59,7 @@ const MENSAGENS: Record<MotivoPartida, string> = {
   completes_demais: 'Tem mais gente completando do que vagas de COMPLETE no time.',
   completa_invalido: 'Quem completa precisa ser jogador ativo, de fora dos dois times da partida, e não pode repetir.',
   sem_empate: 'A moeda só vale para uma partida encerrada empatada.',
+  horario_invalido: 'O horário dessa partida não é desta pelada.',
   goleiro_invalido: 'O goleiro precisa ser jogador ativo, de fora dos dois times e de quem completa, e um para cada time.',
 };
 
@@ -119,6 +121,87 @@ export function violouUmaAberta(e: unknown): boolean {
   return code === '23505' && constraint === 'partidas_uma_aberta_por_pelada';
 }
 
+type LinhaDoElenco = { jogadorId: number; lado: Lado; completando?: boolean; goleiro?: boolean };
+
+/**
+ * A foto do elenco de uma partida entre dois times da pelada, já conferida: os dois times (só os
+ * ativos), quem completa cada lado e os goleiros. Lança `ErroPartida` com o motivo. Usada ao
+ * iniciar uma partida pelo site e ao gravar uma partida anotada no app.
+ */
+async function elencoConferido(
+  tx: Tx,
+  peladaId: number,
+  timeAId: number,
+  timeBId: number,
+  completam: { A: number[]; B: number[] },
+  goleiros: Goleiros,
+): Promise<LinhaDoElenco[]> {
+  if (timeAId === timeBId) throw new ErroPartida('mesmo_time');
+  const daPelada = await tx
+    .select({ id: times.id })
+    .from(times)
+    .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId]), isNull(times.arquivadoEm)));
+  if (daPelada.length !== 2) throw new ErroPartida('time_inexistente');
+
+  const elenco = await tx
+    .select({ timeId: timeJogadores.timeId, jogadorId: timeJogadores.jogadorId })
+    .from(timeJogadores)
+    .innerJoin(jogadores, eq(jogadores.id, timeJogadores.jogadorId))
+    .where(and(inArray(timeJogadores.timeId, [timeAId, timeBId]), eq(jogadores.ativo, true)));
+  const ladoA = elenco.filter((j) => j.timeId === timeAId);
+  const ladoB = elenco.filter((j) => j.timeId === timeBId);
+  if (!ladoA.length || !ladoB.length) throw new ErroPartida('time_vazio');
+
+  const completes = await tx
+    .select({ timeId: timeCompletes.timeId })
+    .from(timeCompletes)
+    .where(inArray(timeCompletes.timeId, [timeAId, timeBId]));
+  const vagas = (timeId: number) => completes.filter((c) => c.timeId === timeId).length;
+  if (completam.A.length > vagas(timeAId) || completam.B.length > vagas(timeBId)) throw new ErroPartida('completes_demais');
+  const escolhidos = [...completam.A, ...completam.B];
+  if (escolhidos.length) {
+    const noElenco = new Set(elenco.map((j) => j.jogadorId));
+    const donosDosTimes = await tx
+      .select({ jogadorId: timeJogadores.jogadorId })
+      .from(timeJogadores)
+      .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
+    const dosDoisTimes = new Set([...noElenco, ...donosDosTimes.map((j) => j.jogadorId)]);
+    const ativos = await tx
+      .select({ id: jogadores.id })
+      .from(jogadores)
+      .where(and(inArray(jogadores.id, escolhidos), eq(jogadores.ativo, true)));
+    const repetido = new Set(escolhidos).size !== escolhidos.length;
+    if (repetido || ativos.length !== escolhidos.length || escolhidos.some((id) => dosDoisTimes.has(id))) {
+      throw new ErroPartida('completa_invalido');
+    }
+  }
+
+  const gks = [goleiros.A, goleiros.B].filter((g): g is number => g !== null);
+  if (gks.length) {
+    const donos = await tx
+      .select({ jogadorId: timeJogadores.jogadorId })
+      .from(timeJogadores)
+      .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
+    const ocupados = new Set([...elenco.map((j) => j.jogadorId), ...donos.map((j) => j.jogadorId), ...escolhidos]);
+    const ativos = await tx
+      .select({ id: jogadores.id })
+      .from(jogadores)
+      .where(and(inArray(jogadores.id, gks), eq(jogadores.ativo, true)));
+    if (new Set(gks).size !== gks.length || ativos.length !== gks.length || gks.some((id) => ocupados.has(id))) {
+      throw new ErroPartida('goleiro_invalido');
+    }
+  }
+
+  return [
+    ...ladoA.map((j) => ({ jogadorId: j.jogadorId, lado: 'A' as const })),
+    ...ladoB.map((j) => ({ jogadorId: j.jogadorId, lado: 'B' as const })),
+    ...completam.A.map((jogadorId) => ({ jogadorId, lado: 'A' as const, completando: true })),
+    ...completam.B.map((jogadorId) => ({ jogadorId, lado: 'B' as const, completando: true })),
+    ...(goleiros.A === null ? [] : [{ jogadorId: goleiros.A, lado: 'A' as const, goleiro: true }]),
+    ...(goleiros.B === null ? [] : [{ jogadorId: goleiros.B, lado: 'B' as const, goleiro: true }]),
+  ];
+}
+
 /**
  * Começa uma partida entre dois times da pelada de hoje e grava a foto do elenco (só os jogadores
  * ativos de cada time, com o lado). A foto não muda se os times forem editados depois.
@@ -146,12 +229,6 @@ export async function iniciarPartida(
     if (pelada.data !== dataDe(now)) throw new ErroPartida('pelada_nao_e_hoje');
     if (pelada.estadoManual === 'cancelada') throw new ErroPartida('pelada_cancelada');
 
-    const daPelada = await tx
-      .select({ id: times.id })
-      .from(times)
-      .where(and(eq(times.peladaId, peladaId), inArray(times.id, [timeAId, timeBId]), isNull(times.arquivadoEm)));
-    if (daPelada.length !== 2) throw new ErroPartida('time_inexistente');
-
     const [rolando] = await tx
       .select({ id: partidas.id })
       .from(partidas)
@@ -159,54 +236,7 @@ export async function iniciarPartida(
       .limit(1);
     if (rolando) throw new ErroPartida('partida_em_andamento');
 
-    const elenco = await tx
-      .select({ timeId: timeJogadores.timeId, jogadorId: timeJogadores.jogadorId })
-      .from(timeJogadores)
-      .innerJoin(jogadores, eq(jogadores.id, timeJogadores.jogadorId))
-      .where(and(inArray(timeJogadores.timeId, [timeAId, timeBId]), eq(jogadores.ativo, true)));
-    const ladoA = elenco.filter((j) => j.timeId === timeAId);
-    const ladoB = elenco.filter((j) => j.timeId === timeBId);
-    if (!ladoA.length || !ladoB.length) throw new ErroPartida('time_vazio');
-
-    const completes = await tx
-      .select({ timeId: timeCompletes.timeId })
-      .from(timeCompletes)
-      .where(inArray(timeCompletes.timeId, [timeAId, timeBId]));
-    const vagas = (timeId: number) => completes.filter((c) => c.timeId === timeId).length;
-    if (completam.A.length > vagas(timeAId) || completam.B.length > vagas(timeBId)) throw new ErroPartida('completes_demais');
-    const escolhidos = [...completam.A, ...completam.B];
-    if (escolhidos.length) {
-      const noElenco = new Set(elenco.map((j) => j.jogadorId));
-      const donosDosTimes = await tx
-        .select({ jogadorId: timeJogadores.jogadorId })
-        .from(timeJogadores)
-        .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
-      const dosDoisTimes = new Set([...noElenco, ...donosDosTimes.map((j) => j.jogadorId)]);
-      const ativos = await tx
-        .select({ id: jogadores.id })
-        .from(jogadores)
-        .where(and(inArray(jogadores.id, escolhidos), eq(jogadores.ativo, true)));
-      const repetido = new Set(escolhidos).size !== escolhidos.length;
-      if (repetido || ativos.length !== escolhidos.length || escolhidos.some((id) => dosDoisTimes.has(id))) {
-        throw new ErroPartida('completa_invalido');
-      }
-    }
-
-    const gks = [goleiros.A, goleiros.B].filter((g): g is number => g !== null);
-    if (gks.length) {
-      const donos = await tx
-        .select({ jogadorId: timeJogadores.jogadorId })
-        .from(timeJogadores)
-        .where(inArray(timeJogadores.timeId, [timeAId, timeBId]));
-      const ocupados = new Set([...elenco.map((j) => j.jogadorId), ...donos.map((j) => j.jogadorId), ...escolhidos]);
-      const ativos = await tx
-        .select({ id: jogadores.id })
-        .from(jogadores)
-        .where(and(inArray(jogadores.id, gks), eq(jogadores.ativo, true)));
-      if (new Set(gks).size !== gks.length || ativos.length !== gks.length || gks.some((id) => ocupados.has(id))) {
-        throw new ErroPartida('goleiro_invalido');
-      }
-    }
+    const elenco = await elencoConferido(tx, peladaId, timeAId, timeBId, completam, goleiros);
 
     // A conferência acima já cobre quase tudo (a pelada está travada); o índice único é a rede de segurança.
     const [partida] = await tx
@@ -216,15 +246,84 @@ export async function iniciarPartida(
       .catch((e: unknown) => {
         throw violouUmaAberta(e) ? new ErroPartida('partida_em_andamento') : e;
       });
-    await tx.insert(partidaJogadores).values([
-      ...ladoA.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'A' as const })),
-      ...ladoB.map((j) => ({ partidaId: partida.id, jogadorId: j.jogadorId, lado: 'B' as const })),
-      ...completam.A.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'A' as const, completando: true })),
-      ...completam.B.map((jogadorId) => ({ partidaId: partida.id, jogadorId, lado: 'B' as const, completando: true })),
-      ...(goleiros.A === null ? [] : [{ partidaId: partida.id, jogadorId: goleiros.A, lado: 'A' as const, goleiro: true }]),
-      ...(goleiros.B === null ? [] : [{ partidaId: partida.id, jogadorId: goleiros.B, lado: 'B' as const, goleiro: true }]),
-    ]);
+    await tx.insert(partidaJogadores).values(elenco.map((l) => ({ partidaId: partida.id, ...l })));
     return partida.id;
+  });
+}
+
+/** Uma partida inteira, anotada no app do celular sem internet e enviada depois. */
+export type PartidaDoApp = {
+  /** A identificação que o app criou: reenviar a mesma não grava de novo. */
+  origem: string;
+  timeAId: number;
+  timeBId: number;
+  iniciadaEm: Date;
+  encerradaEm: Date;
+  /** O tempo que o cronômetro ficou parado. */
+  pausadoMs: number;
+  /** No empate, o lado que ganhou na moeda (null: moeda não jogada). */
+  desempate: Lado | null;
+  completam: { A: number[]; B: number[] };
+  goleiros: Goleiros;
+  /** Na ordem em que aconteceram. `tempoMs`: o tempo de jogo na hora do toque. */
+  lances: { jogadorId: number; tipo: TipoLance; tempoMs: number }[];
+};
+
+/** Até quando depois da pelada uma partida do app ainda é dela: 6h da manhã seguinte (Recife). */
+function limiteDaNoite(dataPelada: string): Date {
+  const d = new Date(`${dataPelada}T06:00:00-03:00`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
+/**
+ * Grava uma partida já encerrada, anotada no app: a partida, a foto do elenco e os lances, tudo ou
+ * nada. As conferências do elenco são as mesmas de iniciar pelo site. O resultado sai do placar.
+ * Devolve `gravada` com o id, ou `repetida` se essa `origem` já estava no banco (o app reenviou
+ * depois de uma resposta que se perdeu).
+ */
+export async function gravarPartidaDoApp(db: DB, peladaId: number, p: PartidaDoApp): Promise<{ id: number; situacao: 'gravada' | 'repetida' }> {
+  return db.transaction(async (tx) => {
+    const pelada = await travarPelada(tx, peladaId);
+    const [ja] = await tx.select({ id: partidas.id }).from(partidas).where(eq(partidas.origem, p.origem));
+    if (ja) return { id: ja.id, situacao: 'repetida' as const };
+    if (pelada.estadoManual === 'cancelada') throw new ErroPartida('pelada_cancelada');
+    const duracao = p.encerradaEm.getTime() - p.iniciadaEm.getTime();
+    if (dataDe(p.iniciadaEm) !== pelada.data || p.encerradaEm > limiteDaNoite(pelada.data) || duracao < 0 || p.pausadoMs > duracao) {
+      throw new ErroPartida('horario_invalido');
+    }
+    const elenco = await elencoConferido(tx, peladaId, p.timeAId, p.timeBId, p.completam, p.goleiros);
+    const lados = new Map(elenco.map((l) => [l.jogadorId, l.lado]));
+    if (p.lances.some((l) => !lados.has(l.jogadorId))) throw new ErroPartida('fora_da_partida');
+    const resultado = resultadoDoPlacar(placar(p.lances, lados));
+    const [partida] = await tx
+      .insert(partidas)
+      .values({
+        peladaId,
+        timeAId: p.timeAId,
+        timeBId: p.timeBId,
+        iniciadaEm: p.iniciadaEm,
+        encerradaEm: p.encerradaEm,
+        resultado,
+        pausadoMs: p.pausadoMs,
+        desempate: resultado === 'empate' ? p.desempate : null,
+        origem: p.origem,
+      })
+      .returning({ id: partidas.id });
+    await tx.insert(partidaJogadores).values(elenco.map((l) => ({ partidaId: partida.id, ...l })));
+    if (p.lances.length) {
+      // O `criadoEm` segue a ordem dos toques (a linha do tempo e o Desfazer do site ordenam por ele).
+      await tx.insert(lances).values(
+        p.lances.map((l, i) => ({
+          partidaId: partida.id,
+          jogadorId: l.jogadorId,
+          tipo: l.tipo,
+          tempoMs: l.tempoMs,
+          criadoEm: new Date(Math.min(p.iniciadaEm.getTime() + l.tempoMs, p.encerradaEm.getTime()) + i),
+        })),
+      );
+    }
+    return { id: partida.id, situacao: 'gravada' as const };
   });
 }
 

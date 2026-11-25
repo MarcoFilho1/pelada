@@ -7,7 +7,7 @@ const ENTRAR_JOGADOR = '/entrar';
 const ENTRAR_ADMIN = '/admin/entrar';
 const TROCAR_PIN = '/trocar-pin';
 /** Rotas do robô do celular: sem cookie; quem confere a chave é cada rota. */
-const ROTAS_DO_ROBO = ['/api/robo/sinal', '/api/robo/atualizacao'];
+const ROTAS_DO_ROBO = ['/api/robo/sinal', '/api/robo/atualizacao', '/api/robo/anotacao'];
 
 /** Telas de partida: abrem também com o link de anotar (a página confere a chave no banco). */
 const TELA_DE_PARTIDA = /^\/admin\/(?:partidas|partida\/[^/]+(?:\/corrigir)?)\/?$/;

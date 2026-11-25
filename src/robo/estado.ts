@@ -35,6 +35,7 @@ export function lerEstado(arquivo: string): EstadoDoRobo {
     ...(d.lembreteEnviado ? { lembreteEnviado: d.lembreteEnviado } : {}),
     ...(d.bomDiaEnviado ? { bomDiaEnviado: d.bomDiaEnviado } : {}),
     ...(d.cobranca ? { cobranca: d.cobranca } : {}),
+    ...(d.desde ? { desde: d.desde } : {}),
   };
 }
 

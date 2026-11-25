@@ -200,3 +200,30 @@ As conversas do grupo (nomes e mensagens) passam a ficar 7 dias no banco, e não
 - **A auto-revisão (`claude -p`)** continua no Mac, falando com o robô pelo banco (acima).
 - **As mensagens que saíram pelo ZapGate** (a tabela `activity` do `gate.db`) ficam no celular: a
   revisão trabalha só com as conversas e o registro do robô.
+
+## Anotar pelo app, sem internet
+
+O celular do robô pode ficar sem internet no campo. O app anota as partidas guardando tudo no
+aparelho e manda ao site quando a rede volta. A rota é `/api/robo/anotacao`, com a chave do
+aparelho (`ROBO_SINAL_CHAVE`, a mesma do sinal de vida):
+
+- `GET ?data=AAAA-MM-DD`: os times do sorteio, os jogadores ativos (para completar e para goleiro)
+  e as partidas já encerradas. O app guarda isso quando tem rede.
+- `POST`: as partidas anotadas, cada uma inteira (times, quem completa, goleiros, horários, pausa,
+  moeda do empate e os lances na ordem). Cada partida leva uma identificação criada no app
+  (`origem`, coluna nova em `partidas`, migração `0011`): mandar a mesma duas vezes não grava duas.
+  A resposta diz, por partida, `gravada`, `repetida` ou `recusada` com o motivo; uma recusada não
+  impede as outras.
+
+**O resumo do fim da pelada e o lembrete do Pix** passam a lidar com a falta de rede:
+
+| Situação | O que o robô faz |
+| --- | --- |
+| Tem rede no campo (alguém roteou) | o de sempre: resumo entre 22:35 e 22:40, lembrete do Pix logo depois |
+| A rede volta antes das 23:30 | espera o app mandar as partidas ao banco e então manda o resumo e o lembrete |
+| A rede volta depois das 23:30 | manda os dois na manhã seguinte, entre 8h e meio-dia, como "ontem" |
+
+O robô sabe que o app ainda tem partida para mandar por um arquivo: o app cria o arquivo de
+`ROBO_ANOTACAO_PENDENTE` enquanto há partida aberta ou partida que não chegou ao banco, e apaga
+quando termina. Um robô recém-instalado não manda o resumo de uma noite anterior à instalação.
+

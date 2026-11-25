@@ -28,6 +28,8 @@ export type EstadoDoRobo = {
   lembreteEnviado?: string | null;
   /** O Pix dos diaristas da última pelada (comprovantes até o dia seguinte). */
   cobranca?: Cobranca | null;
+  /** Desde quando este robô guarda estado (ISO): o fim de pelada de uma noite anterior não é dele. */
+  desde?: string | null;
 };
 
 const MEIA_HORA_MS = 30 * 60 * 1000;
