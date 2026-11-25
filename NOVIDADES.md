@@ -13,3 +13,5 @@ começando com `- `. Diga o que a pessoa passa a ver ou a poder fazer. Mudança 
 - Mande `caderno` no privado para ver o que o robô sabe, e `caderno tira 2` para apagar uma linha.
 - Trocar jogadores depois de aprovar os times não dá mais erro.
 - O robô avisa no WhatsApp quando a bateria do celular fica baixa.
+- Responder confirmar ou ok aos times, no privado, vale como o sim.
+- O robô sabe o endereço da pelada e passa para quem pedir.
