@@ -143,6 +143,9 @@ export const partidas = pgTable(
     pausadaEm: timestamptz('pausada_em'),
     // Empate: o lado que ganhou na moeda e volta primeiro para a fila (null: moeda ainda não jogada).
     desempate: ladoEnum('desempate'),
+    // Partida anotada no app do celular, sem internet: a identificação que o app criou. Reenviar a
+    // mesma partida não grava de novo. Null: partida anotada pelo site.
+    origem: text('origem').unique(),
   },
   // Uma partida aberta por pelada, garantido pelo banco (o código também confere, travando a pelada).
   (t) => [uniqueIndex('partidas_uma_aberta_por_pelada').on(t.peladaId).where(sql`${t.encerradaEm} is null`)],

@@ -78,6 +78,13 @@
       "when": 1795568365936,
       "tag": "0010_red_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795612890265,
+      "tag": "0011_skinny_vermin",
+      "breakpoints": true
     }
   ]
 }

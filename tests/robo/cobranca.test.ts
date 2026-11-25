@@ -26,6 +26,7 @@ describe('cobrança do Pix', () => {
     expect(textoDoLembrete(DIARISTAS.slice(0, 2), { valor: '15,00', chave: 'pix@exemplo.com' })).toBe(
       '💸 Diaristas de hoje: Caio e João Pedro\nPix de R$ 15,00 pra chave pix@exemplo.com\nDepois manda o comprovante aqui no grupo',
     );
+    expect(textoDoLembrete(DIARISTAS.slice(0, 1), { valor: '15,00', chave: 'pix@exemplo.com' }, true)).toContain('Diaristas de ontem: ');
   });
 
   it('comprovante vale até as 23:00 do dia seguinte', () => {
