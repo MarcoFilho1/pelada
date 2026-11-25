@@ -14,7 +14,7 @@ Aqui fica o que é **do robô e do site**:
 | Pacote de verdade, a partir da configuração do Mac | `scripts/android/montar-pacote.mjs` |
 | Publicar uma atualização assinada | `scripts/android/publicar-robo.mjs` |
 | Receber o sinal de vida do celular | `/api/robo/sinal` no site |
-| Ser avisado no Mac quando o celular some | `scripts/android/vigiar-sinal.mjs` |
+| Ser avisado quando o celular some | `scripts/android/instalar-vigia.sh` (serviço) e `vigiar-sinal.mjs` |
 
 O banco (Neon) e a IA (Anthropic) continuam na nuvem; o que vai para o celular é a conexão com o
 WhatsApp e a lógica do robô.
@@ -113,16 +113,29 @@ escreveu (ligou, caiu, atualizou). **Nunca** vai conversa, nome nem número de n
 - As duas pedem a chave `ROBO_SINAL_CHAVE` (24+ caracteres) em `Authorization: Bearer`. Sem essa
   variável no site, a rota recusa todo mundo.
 
-**Para ser avisado**, no Mac:
+**Para ser avisado**, um serviço do Mac vigia o sinal de vida o tempo todo:
 
 ```sh
-ROBO_SINAL_URL=https://<site>/api/robo/sinal ROBO_SINAL_CHAVE=<a chave> node scripts/android/vigiar-sinal.mjs
-ROBO_SINAL_URL=… ROBO_SINAL_CHAVE=… node scripts/android/vigiar-sinal.mjs --uma-vez   # só olha agora
+cd ~/pelada-publicar && scripts/android/instalar-vigia.sh          # instala (tirar: ... instalar-vigia.sh tirar)
+tail ~/Library/Logs/PeladaRobo/vigia.log                           # o que ele viu
 ```
 
-O vigia pergunta de 2 em 2 minutos e mostra uma notificação do macOS quando aparece um problema e
-quando volta ao normal. Ele só avisa com o Mac ligado: para ser avisado sempre, dá para apontar
-um serviço de monitoramento (com aviso por e-mail ou Telegram) para o mesmo endereço.
+Ele lê `ROBO_SINAL_URL` e `ROBO_SINAL_CHAVE` de
+`~/Library/Application Support/PeladaRobo/android-publicar.env`, pergunta de 2 em 2 minutos e
+mostra uma notificação do macOS quando aparece um problema e quando volta ao normal (sem repetir
+o mesmo aviso a cada volta). Para olhar na hora, sem serviço:
+
+```sh
+ROBO_SINAL_URL=… ROBO_SINAL_CHAVE=… node scripts/android/vigiar-sinal.mjs --uma-vez
+```
+
+**Aviso também no celular (opcional).** Com `ROBO_ALERTA_URL=<endereço>` no mesmo arquivo, o vigia
+manda o mesmo texto por POST para lá, no formato do [ntfy](https://ntfy.sh) (um tópico de nome
+difícil de adivinhar, assinado no app do ntfy no celular). Vai só a frase do problema, nunca
+conversa, nome nem número.
+
+Limites: o vigia só avisa com o Mac ligado e acordado. E um celular que vai para um lugar sem
+internet aparece como "sumiu" até voltar: nesse caso o aviso é esperado.
 
 Por que o aviso não chega pelo WhatsApp do robô: o número do robô está no celular que sumiu.
 
