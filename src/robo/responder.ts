@@ -307,12 +307,22 @@ export const timesEmSegredo = (c: ContextoDaResposta, now: Date) => temPropostaP
 const menosQuemPropos = (c: ContextoDaResposta, quemPropos: string) => c.admins.filter((a) => !ehAdmin(quemPropos, [a]));
 
 /** Aviso no privado dos outros organizadores: falha de envio não derruba a resposta (fica no log). */
-async function avisarOutros(c: ContextoDaResposta, texto: string, exceto: string[]): Promise<void> {
-  try {
-    await c.avisarOrganizadores(texto, exceto);
-  } catch (err) {
-    c.log(`aviso aos organizadores não saiu: ${(err as Error).message}`);
-  }
+// Os avisos aos outros organizadores saem em segundo plano, um depois do outro, sem segurar a
+// resposta de quem pediu. Pelo ZapGate cada envio mostra "digitando…" por vários segundos: esperar
+// dois ou três avisos passava dos 30 s do prazo da IA, a ação era desfeita e a pessoa recebia
+// "Não consegui responder agora" (aconteceu numa troca de jogadores depois de aprovar os times).
+const filaDeAvisos = new WeakMap<object, Promise<void>>();
+function avisarOutros(c: ContextoDaResposta, texto: string, exceto: string[]): Promise<void> {
+  const antes = filaDeAvisos.get(c.proposta) ?? Promise.resolve();
+  const envio = antes.then(async () => {
+    try {
+      await c.avisarOrganizadores(texto, exceto);
+    } catch (err) {
+      c.log(`aviso aos organizadores não saiu: ${(err as Error).message}`);
+    }
+  });
+  filaDeAvisos.set(c.proposta, envio);
+  return Promise.resolve();
 }
 
 /** Nova proposta: substitui a anterior (os votos zeram) e vai para o privado dos outros organizadores. */
