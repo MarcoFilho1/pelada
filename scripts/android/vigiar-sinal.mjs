@@ -7,6 +7,11 @@
 // desconectou, o robô parou) mostra uma notificação do macOS; quando volta ao normal, outra.
 // Não repete o mesmo aviso a cada volta. Só avisa com o Mac ligado: para ser avisado sempre,
 // aponte um serviço de monitoramento para o mesmo endereço (ele responde 503 quando há problema).
+//
+// Para rodar sempre, como serviço do Mac: scripts/android/instalar-vigia.sh.
+// Aviso também no celular (opcional): ROBO_ALERTA_URL=<endereço> faz o vigia mandar o mesmo texto
+// por POST para lá, no formato do ntfy (corpo = o texto, cabeçalho Title). Vai só a frase do
+// problema, nunca conversa, nome nem número.
 import { execFile } from 'node:child_process';
 
 const url = process.env.ROBO_SINAL_URL;
@@ -20,9 +25,17 @@ const INTERVALO_MS = 2 * 60_000;
 
 const hora = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+const alertaUrl = process.env.ROBO_ALERTA_URL;
+
 function notificar(titulo, texto) {
   const limpo = (s) => s.replaceAll('\\', '').replaceAll('"', "'");
   execFile('osascript', ['-e', `display notification "${limpo(texto)}" with title "${limpo(titulo)}" sound name "Basso"`], () => {});
+  // O aviso no celular é um extra: se falhar, o do Mac já saiu e o registro fica no log.
+  if (alertaUrl) {
+    fetch(alertaUrl, { method: 'POST', headers: { Title: titulo }, body: texto, signal: AbortSignal.timeout(15_000) }).catch((e) =>
+      console.log(`${hora()} não consegui mandar o aviso para o celular: ${e.cause?.code ?? e.message}`),
+    );
+  }
 }
 
 /** Devolve { problema, estado }: `problema` é `null` quando está tudo certo. */
