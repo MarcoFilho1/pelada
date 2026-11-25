@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Gerado: o robô empacotado para o app Android.
+    "dist/**",
+    // Ficam no lugar de bibliotecas no pacote do Android: precisam ser CommonJS com require().
+    "scripts/android/*.cjs",
   ]),
 ]);
 

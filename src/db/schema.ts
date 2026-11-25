@@ -210,3 +210,20 @@ export const duplasSeparadas = pgTable(
   },
   (t) => [uniqueIndex('duplas_separadas_par_uniq').on(t.jogadorAId, t.jogadorBId)],
 );
+
+// Sinal de vida do robô que roda num celular (docs/android.md): o app manda de minuto em minuto
+// como ele está. Uma linha por aparelho; cada sinal novo substitui o anterior.
+export const roboSinais = pgTable('robo_sinais', {
+  aparelho: text('aparelho').primaryKey(),
+  vistoEm: timestamptz('visto_em').notNull(),
+  /** O que o app contou (JSON já conferido e limitado por `limparSinal`). */
+  dados: text('dados').notNull(),
+});
+
+// O manifesto das atualizações do robô do celular (docs/android.md): o arquivo pequeno que o app
+// consulta para saber se há versão nova. Uma linha só ("atual"); publicar substitui.
+export const roboManifesto = pgTable('robo_manifesto', {
+  id: text('id').primaryKey(),
+  conteudo: text('conteudo').notNull(),
+  atualizadoEm: timestamptz('atualizado_em').notNull(),
+});
