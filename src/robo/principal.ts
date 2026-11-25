@@ -243,8 +243,12 @@ async function configurar(): Promise<void> {
 
 let cafe: ChildProcess | null = null;
 
-/** Dentro da janela, um `caffeinate -i` preso ao nosso pid (morre junto com o robô). */
+/**
+ * Dentro da janela, um `caffeinate -i` preso ao nosso pid (morre junto com o robô). Só no Mac:
+ * no app Android quem segura o aparelho acordado é o serviço do app (docs/android.md).
+ */
 function manterAcordado(sim: boolean): void {
+  if (process.platform !== 'darwin') return;
   if (sim && !cafe) {
     const filho = spawn('caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' });
     filho.on('exit', () => {
@@ -785,7 +789,7 @@ async function laco(): Promise<void> {
       // Uma linha só ao sair da janela (não uma por minuto a semana toda).
       if (estavaDentro !== false) log(`fora da janela (só responde marcações); próxima começa ${hora(proximaJanela(now))}`);
     } else {
-      if (estavaDentro !== true) log('janela aberta: o Mac fica acordado até quarta 20:30.');
+      if (estavaDentro !== true) log(process.platform === 'darwin' ? 'janela aberta: o Mac fica acordado até quarta 20:30.' : 'janela aberta até quarta 20:30.');
       manterAcordado(true);
       await emFila(async () => {
         // Bom dia de segunda, antes da primeira lista (só se ROBO_BOM_DIA_HORARIO estiver configurado).

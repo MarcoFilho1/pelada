@@ -6,6 +6,8 @@ import { COOKIE_ADMIN, COOKIE_ANOTADOR, COOKIE_JOGADOR, verificarToken } from '@
 const ENTRAR_JOGADOR = '/entrar';
 const ENTRAR_ADMIN = '/admin/entrar';
 const TROCAR_PIN = '/trocar-pin';
+/** Rotas do robô do celular: sem cookie; quem confere a chave é cada rota. */
+const ROTAS_DO_ROBO = ['/api/robo/sinal', '/api/robo/atualizacao'];
 
 /** Telas de partida: abrem também com o link de anotar (a página confere a chave no banco). */
 const TELA_DE_PARTIDA = /^\/admin\/(?:partidas|partida\/[^/]+(?:\/corrigir)?)\/?$/;
@@ -20,6 +22,7 @@ export async function proxy(req: NextRequest) {
   if (pathname === ENTRAR_JOGADOR || pathname === ENTRAR_ADMIN) return NextResponse.next();
   // O link de anotar (e o aviso de vencido) abre sem login: quem confere a chave é a rota.
   if (pathname.startsWith('/anotar/')) return NextResponse.next();
+  if (ROTAS_DO_ROBO.includes(pathname)) return NextResponse.next();
 
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     const admin = await verificarToken(req.cookies.get(COOKIE_ADMIN)?.value);

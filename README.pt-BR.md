@@ -120,6 +120,8 @@ Um número de WhatsApp sobrando entra no grupo como robô. Ele lê a lista do me
 
 Marque o robô com `ajuda` para ver todos os comandos.
 
+**Roda no Mac ou num celular Android.** O robô pode ficar num app Android, em segundo plano, no celular de quem organiza: o app leva dentro a conexão com o WhatsApp e o robô, se atualiza sozinho com versões assinadas e avisa quando o aparelho some. O app fica em [pelada-android](https://github.com/MarcoFilho1/pelada-android); o lado do robô e do site está em [docs/android.md](docs/android.md).
+
 <br clear="right">
 
 ## Rodar o seu
