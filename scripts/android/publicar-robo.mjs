@@ -19,6 +19,7 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { oQueApagar } from './guardar-duas.mjs';
 
 const arg = (nome) => process.argv.find((a) => a.startsWith(`--${nome}=`))?.slice(nome.length + 3);
 const caminhoDaChave = arg('chave') ?? join(homedir(), 'Library', 'Application Support', 'PeladaRobo', 'android-atualizacao.pem');
@@ -144,6 +145,34 @@ if (process.argv.includes('--subir')) {
     process.exit(1);
   }
   console.log(`publicado em ${destino}`);
+
+  // Com o manifesto novo no ar, sai do armazenamento o que ele não usa mais: fica a versão
+  // publicada e a anterior (a reserva). Falhar aqui não desfaz a publicação; só avisa.
+  try {
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    const arquivos = [];
+    let cursor = '';
+    do {
+      const r = await fetch(`https://blob.vercel-storage.com/?limit=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!r.ok) throw new Error(`a lista respondeu ${r.status}`);
+      const pagina = await r.json();
+      arquivos.push(...pagina.blobs);
+      cursor = pagina.hasMore ? pagina.cursor : '';
+    } while (cursor);
+    const noAr = [manifesto.robo.url, manifesto.app?.url].filter(Boolean);
+    const apagar = oQueApagar(arquivos, noAr);
+    for (const a of apagar) {
+      const r = spawnSync('npx', ['--yes', 'vercel', 'blob', 'delete', a.url, '--confirm-name', a.url], { cwd: tmpdir(), encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`não apaguei ${a.pathname}: ${`${r.stdout ?? ''}\n${r.stderr ?? ''}`.trim().slice(-200)}`);
+    }
+    const mb = Math.round(apagar.reduce((soma, a) => soma + a.size, 0) / 1048576);
+    console.log(apagar.length ? `armazenamento: ${apagar.length} arquivo(s) antigo(s) apagado(s), ${mb} MB livres a mais` : 'armazenamento: nada antigo para apagar');
+  } catch (e) {
+    console.error(`armazenamento: a limpeza dos arquivos antigos falhou (${e.message}). A publicação está feita.`);
+  }
 }
 
 writeFileSync(join(saida, 'manifesto.json'), JSON.stringify(manifesto, null, 2) + '\n');
