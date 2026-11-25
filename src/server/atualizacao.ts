@@ -10,7 +10,20 @@ import { roboManifesto } from '@/db/schema';
 const ID = 'atual';
 const HEX64 = /^[0-9a-f]{64}$/;
 
-type Item = { versao: string; numero: number; url: string; sha256: string; assinatura: string };
+/** `novidades`: o que mudou, em palavras do dono, para o app mostrar. Só texto: fica fora da assinatura. */
+type Item = { versao: string; numero: number; url: string; sha256: string; assinatura: string; novidades?: string[] };
+const MAX_NOVIDADES = 8;
+const MAX_LETRAS_DA_NOVIDADE = 200;
+
+/** As novidades que vieram no item: só texto, sem linha vazia, no máximo 8 de 200 letras. */
+function novidadesDe(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((l): l is string => typeof l === 'string')
+    .map((l) => l.trim().slice(0, MAX_LETRAS_DA_NOVIDADE))
+    .filter(Boolean)
+    .slice(0, MAX_NOVIDADES);
+}
 export type Manifesto = { robo?: Item; app?: Item; app_minimo?: number };
 
 function itemValido(v: unknown): v is Item {
@@ -40,7 +53,10 @@ export function limparManifesto(bruto: unknown): Manifesto | null {
   if (b.robo === undefined && b.app === undefined) return null;
   if (b.robo !== undefined && !itemValido(b.robo)) return null;
   if (b.app !== undefined && !itemValido(b.app)) return null;
-  const item = (i: Item): Item => ({ versao: i.versao, numero: i.numero, url: i.url, sha256: i.sha256, assinatura: i.assinatura });
+  const item = (i: Item): Item => {
+    const novidades = novidadesDe(i.novidades);
+    return { versao: i.versao, numero: i.numero, url: i.url, sha256: i.sha256, assinatura: i.assinatura, ...(novidades.length ? { novidades } : {}) };
+  };
   return {
     ...(b.robo ? { robo: item(b.robo as Item) } : {}),
     ...(b.app ? { app: item(b.app as Item) } : {}),

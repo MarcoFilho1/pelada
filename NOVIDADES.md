@@ -15,3 +15,4 @@ começando com `- `. Diga o que a pessoa passa a ver ou a poder fazer. Mudança 
 - O robô avisa no WhatsApp quando a bateria do celular fica baixa.
 - Responder confirmar ou ok aos times, no privado, vale como o sim.
 - O robô sabe o endereço da pelada e passa para quem pedir.
+- Com muitas mensagens na mesma hora, o aviso dos times aos organizadores espera a vez e chega depois, em vez de se perder.
