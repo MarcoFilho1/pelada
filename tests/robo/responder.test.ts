@@ -325,6 +325,36 @@ describe('responder: sorteio com 2 de 3', () => {
     expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_PROPOSTA);
   });
 
+  it('no privado, com times esperando o voto: "Confirmar" (e parecidos) do outro organizador é o voto nos times, não presença na lista', async () => {
+    // 25/11: o Pepe recebeu os times, respondeu "Confirmar" e o robô confirmou a presença dele na lista.
+    for (const palavra of ['Confirmar', 'confirmo', 'Confirmado!', 'confirmar os times', 'ok', 'Pode ser', 'aprovado', 'fechado']) {
+      const c = ctx({}, relogio.agora);
+      await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+      await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco'));
+      expect((await passo(palavra, c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe')))?.texto, palavra).toBe(`${TEXTO_SALVOS}\nMarco decide quando mandar no grupo.`);
+      expect(c.mexerNaLista, palavra).not.toHaveBeenCalled();
+      expect(c.perguntar, palavra).not.toHaveBeenCalled();
+    }
+  });
+
+  it('"confirmar" com nome, ou sem times esperando, continua sendo a lista', async () => {
+    const comTimes = ctx({}, relogio.agora);
+    await passo('sortear', comTimes, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', comTimes, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('confirmar Ana', comTimes, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
+    expect(comTimes.mexerNaLista).toHaveBeenCalled();
+    expect(comTimes.salvar).not.toHaveBeenCalled();
+    // Quem já votou e diz "confirmar" de novo não vota outra vez: segue o caminho normal.
+    const jaVotou = ctx({}, relogio.agora);
+    await passo('sortear', jaVotou, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('sim', jaVotou, ADMIN, noPrivado(ADMIN, 'Marco'));
+    await passo('confirmar', jaVotou, ADMIN, noPrivado(ADMIN, 'Marco'));
+    expect(jaVotou.salvar).not.toHaveBeenCalled();
+    const semTimes = ctx({}, relogio.agora);
+    await passo('confirmar', semTimes, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
+    expect(semTimes.salvar).not.toHaveBeenCalled();
+  });
+
   it('2º sim no grupo: salva, mas o grupo não recebe os times; quem sorteou recebe a pergunta no privado', async () => {
     const c = ctx({}, relogio.agora);
     await passo('sortear', c, ADMIN);
