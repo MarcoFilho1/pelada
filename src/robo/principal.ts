@@ -35,7 +35,7 @@ import { PedidosDoPrivado } from './juntar';
 import { MAX_ANALISES, casarDiarista, cobrancaAtiva, horaDeAvisarDono, jaPagou, novaCobranca, proximaManha, registrarPagamento, textoDoLembrete, textoParaODono, type Pix } from './cobranca';
 import { lerComprovante } from './comprovante';
 import { marcaDe } from '@/domain/lista';
-import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
+import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
@@ -315,14 +315,28 @@ async function laco(): Promise<void> {
       log(`ATENÇÃO: lista enviada, mas o estado não foi gravado (${(err as Error).message}).`);
     }
   };
+  // Desde quando este robô guarda estado: o fim de pelada de uma noite anterior não é dele.
+  if (!estado.desde) {
+    estado = { ...estado, desde: new Date().toISOString() };
+    gravar(estado);
+  }
   // Uma conexão só, aberta abaixo; mensagens que chegam enquanto ela abre esperam por ela.
   let conexao: Promise<WhatsApp> | null = null;
-  /** Resumo e lembrete do fim da pelada: no grupo, até as 23:15 (passam do silêncio das 23:00). */
-  const enviarNaNoite = async (texto: string) => {
+  /**
+   * Resumo e lembrete do fim da pelada, no grupo: à noite até as 23:30 (passam do silêncio das
+   * 23:00) ou, se não deu, na manhã seguinte até o meio-dia. `ate`: o fim da janela da vez.
+   */
+  const enviarNoFimDaPelada = async (texto: string, ate: Date) => {
     const wa = await conexao!;
-    if (new Date() >= fimDaNoite(dataDe(new Date()))) throw new Error('passou das 23:15; o fim da noite não sai mais');
+    if (new Date() >= ate) throw new Error('passou da hora; o fim da pelada não sai mais nesta janela');
     await wa.enviar(grupoId, texto);
   };
+  /**
+   * O app do celular cria este arquivo enquanto tem partida aberta ou partida anotada que ainda não
+   * chegou ao banco (anotação sem internet). Com ele, o resumo espera: sairia sem os gols da noite.
+   */
+  const arquivoDaAnotacao = process.env.ROBO_ANOTACAO_PENDENTE?.trim() || null;
+  const anotacaoPendente = () => arquivoDaAnotacao !== null && existsSync(arquivoDaAnotacao);
   /** Várias mensagens curtas no grupo, exatamente como separadas (pelo ZapGate, uma no limite). */
   const enviarPartesNoGrupo = async (partes: string[]) => {
     const wa = await conexao!;
@@ -659,12 +673,16 @@ async function laco(): Promise<void> {
 
   /**
    * O lembrete do Pix para os diaristas da lista: logo depois do resumo da noite ou, se o resumo
-   * ficou esperando uma partida aberta, a partir das 22:55 de qualquer jeito.
+   * ficou esperando uma partida aberta, a partir das 22:55 de qualquer jeito. Se a noite passou sem
+   * ele sair (celular sem internet), sai na manhã seguinte, depois do resumo.
    */
   const talvezLembrete = async (now: Date) => {
-    const hoje = dataDe(now);
-    if (!pix || !horaDeTentarResumo(now, estado.lembreteEnviado)) return;
-    if (estado.resumoEnviado !== hoje && now < paraDeEsperar(hoje)) return;
+    const vez = pix ? fimDePeladaDaVez(now, estado.lembreteEnviado, estado.desde) : null;
+    if (!pix || !vez) return;
+    const hoje = vez.data;
+    // Depois do resumo. Sem resumo: à noite, a partir das 22:55; de manhã, 20 minutos depois das 8h.
+    const semEsperar = vez.ontem ? new Date(vez.ate.getTime() - 220 * 60_000) : paraDeEsperar(hoje);
+    if (estado.resumoEnviado !== hoje && now < semEsperar) return;
     const marcar = (cobranca?: ReturnType<typeof novaCobranca>) => {
       estado = { ...estado, lembreteEnviado: hoje, ...(cobranca ? { cobranca } : {}) };
       gravar(estado);
@@ -679,9 +697,9 @@ async function laco(): Promise<void> {
       log('lembrete do Pix: nenhum diarista na lista de hoje');
       return marcar();
     }
-    await enviarNaNoite(textoDoLembrete(diaristas, pix));
+    await enviarNoFimDaPelada(textoDoLembrete(diaristas, pix, vez.ontem), vez.ate);
     marcar(novaCobranca(hoje, diaristas));
-    log(`lembrete do Pix mandado (${diaristas.length} diaristas)`);
+    log(`lembrete do Pix mandado (${diaristas.length} diaristas${vez.ontem ? ', da pelada de ontem' : ''})`);
   };
 
   /** Quem pagou e quem falta, no privado do dono; de madrugada, guarda para a manhã. */
@@ -760,13 +778,23 @@ async function laco(): Promise<void> {
 
   /**
    * O resumo do fim da pelada (22:35–22:40): destaques da noite e depois as tabelas gerais, uma
-   * mensagem cada. Espera a partida em andamento terminar (até as 23:00). Conta como mandado assim
-   * que a primeira mensagem sai: repetir o resumo seria pior que uma tabela faltando.
+   * mensagem cada. Espera a partida em andamento terminar (até as 22:55) e a anotação feita no app
+   * chegar ao banco (até o fim da janela). Conta como mandado assim que a primeira mensagem sai:
+   * repetir o resumo seria pior que uma tabela faltando. Se a noite passou sem ele sair, sai na
+   * manhã seguinte (8h ao meio-dia), como "ontem".
    */
   let esperandoPartida = false;
+  let esperandoAnotacao = false;
   const talvezResumo = async (now: Date) => {
-    if (!horaDeTentarResumo(now, estado.resumoEnviado)) return;
-    const hoje = dataDe(now);
+    const vez = fimDePeladaDaVez(now, estado.resumoEnviado, estado.desde);
+    if (!vez) return;
+    const hoje = vez.data;
+    if (anotacaoPendente()) {
+      if (!esperandoAnotacao) log('resumo: esperando a anotação feita no app chegar ao banco');
+      esperandoAnotacao = true;
+      return;
+    }
+    esperandoAnotacao = false;
     const marcar = () => {
       estado = { ...estado, resumoEnviado: hoje };
       gravar(estado);
@@ -774,29 +802,29 @@ async function laco(): Promise<void> {
     const peladaId = await idDaPeladaDaData(db, hoje);
     if (peladaId === null) return marcar();
     // Partida aberta: espera terminar, mas só até 22:55 (alguém pode ter esquecido de encerrar).
-    if (now < paraDeEsperar(hoje) && (await partidaEmAndamento(db, peladaId)) !== null) {
+    if (!vez.ontem && now < paraDeEsperar(hoje) && (await partidaEmAndamento(db, peladaId)) !== null) {
       if (!esperandoPartida) log('resumo da noite: esperando a partida em andamento terminar');
       esperandoPartida = true;
       return;
     }
     esperandoPartida = false;
     const { hoje: daNoite, geral } = await rankingsDaNoite(db, hoje);
-    const textos = textosDoResumo(daNoite, geral);
+    const textos = textosDoResumo(daNoite, geral, vez.ontem);
     if (!textos.length) {
       log('resumo da noite: nenhuma partida com gol ou vitória hoje; não manda');
       return marcar();
     }
     for (const [i, texto] of textos.entries()) {
       try {
-        await enviarNaNoite(texto);
+        await enviarNoFimDaPelada(texto, vez.ate);
       } catch (err) {
         log(`resumo da noite: a mensagem ${i + 1} de ${textos.length} não saiu (${(err as Error).message})`);
-        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até as 23:15)
+        if (i === 0) return; // nada saiu: tenta de novo no próximo minuto (até o fim da janela)
         continue;
       }
       if (i === 0) marcar();
     }
-    log(`resumo da noite mandado (${textos.length} mensagens)`);
+    log(`resumo ${vez.ontem ? 'da pelada de ontem' : 'da noite'} mandado (${textos.length} mensagens)`);
   };
 
   let estavaDentro: boolean | null = null;

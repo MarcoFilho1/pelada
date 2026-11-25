@@ -66,9 +66,9 @@ export function cobrancaAtiva(c: Cobranca | null | undefined, now: Date): c is C
   return !!c && now < new Date(c.ate);
 }
 
-export function textoDoLembrete(diaristas: Diarista[], pix: Pix): string {
+export function textoDoLembrete(diaristas: Diarista[], pix: Pix, ontem = false): string {
   return [
-    `💸 Diaristas de hoje: ${nomes(diaristas.map((d) => d.nome))}`,
+    `💸 Diaristas de ${ontem ? 'ontem' : 'hoje'}: ${nomes(diaristas.map((d) => d.nome))}`,
     `Pix de R$ ${pix.valor} pra chave ${pix.chave}`,
     'Depois manda o comprovante aqui no grupo',
   ].join('\n');
