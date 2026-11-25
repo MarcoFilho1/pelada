@@ -77,9 +77,22 @@ chave de assinatura, que o site nunca vê.
 node scripts/android/publicar-robo.mjs --subir   # empacota, assina, manda os arquivos e publica
 ```
 
-`--subir` lê `ROBO_ATUALIZACAO_URL` e `ROBO_PUBLICAR_CHAVE` do ambiente ou de
-`~/Library/Application Support/PeladaRobo/android-publicar.env`, e precisa rodar numa pasta ligada
-ao projeto na Vercel.
+`--subir` lê `ROBO_ATUALIZACAO_URL`, `ROBO_PUBLICAR_CHAVE` e `BLOB_READ_WRITE_TOKEN` (o token do
+Blob store do projeto na Vercel) do ambiente ou de
+`~/Library/Application Support/PeladaRobo/android-publicar.env`.
+
+**Publicar sozinho a cada merge na `main`.** Um serviço do Mac confere a `main` de 5 em 5
+minutos; quando ela muda e a mudança mexe no robô (código, dependências ou empacotamento), ele
+empacota, assina e publica, e mostra uma notificação. A chave de assinatura continua só no Mac;
+por isso só publica com o Mac ligado.
+
+```sh
+git clone <repositório> ~/pelada-publicar && cd ~/pelada-publicar
+scripts/android/instalar-publicador.sh          # instala; `tirar` desinstala
+tail ~/Library/Logs/PeladaRobo/publicar.log
+```
+
+A cópia tem de ficar fora da Mesa e de Documentos (o macOS não deixa serviços lerem essas pastas).
 
 Para incluir uma versão nova do próprio app:
 `publicar-robo.mjs --subir --app=caminho.apk --app-versao=0.2.0 --app-numero=2`. O app baixa o
