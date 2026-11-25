@@ -40,8 +40,9 @@ import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noi
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
+import { MIN_FALAS, RECADO_DO_CADERNO, apagarDia, aplicarPendente, aposLer, comSemente, diasParaLer, gravarCaderno, lerCaderno, lerComandoDoCaderno, lerFalas, lerODia, linhasDoCaderno, obedecer, ouvir, textoDoAnuncio } from './caderno';
 import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, CaixaNoBanco, ehPodeMergear } from './revisao';
-import { anotarNoDiario, limparDiarioDoBanco } from '@/server/ponte-do-robo';
+import { anotarNoDiario, limparDiarioDoBanco, tirarRecado } from '@/server/ponte-do-robo';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -515,6 +516,78 @@ async function laco(): Promise<void> {
       }
     }
   };
+  // ---- O caderno da resenha (caderno.ts): ouvir o grupo de dia, ler à noite, contar ao dono de manhã ----
+  // Ligado quando há IA; `ROBO_CADERNO=0` desliga. Fica na pasta do robô: as falas do dia são apagadas depois de lidas.
+  const cadernoLigado = !!ia && !!clienteIA && process.env.ROBO_CADERNO?.trim() !== '0';
+  const arquivoDoCaderno = join(pasta, 'caderno.json');
+  const pastaDoOuvido = join(pasta, 'ouvido');
+  let caderno = lerCaderno(arquivoDoCaderno);
+  const guardarCaderno = (novo: typeof caderno) => {
+    caderno = novo;
+    try {
+      gravarCaderno(arquivoDoCaderno, novo);
+    } catch (err) {
+      log(`caderno: não gravou (${(err as Error).message})`);
+    }
+  };
+  // Depois de uma falha (IA fora, dono sem conversa), espera meia hora: o laço roda de minuto em minuto.
+  let cadernoSoDepoisDe = 0;
+  let recadoDoCadernoVistoEm = 0;
+  const talvezCaderno = async (now: Date) => {
+    if (!cadernoLigado || now.getTime() < cadernoSoDepoisDe) return;
+    // Linhas que o Mac deixou no banco (a importação de uma conversa antiga): confere de 5 em 5 minutos.
+    if (now.getTime() - recadoDoCadernoVistoEm >= 5 * 60_000) {
+      recadoDoCadernoVistoEm = now.getTime();
+      const recado = await tirarRecado(db, RECADO_DO_CADERNO).catch(() => null);
+      if (recado) {
+        try {
+          const dados = JSON.parse(recado) as { dia?: unknown };
+          const antes = caderno.pendente?.novas.length ?? 0;
+          guardarCaderno(comSemente(caderno, typeof dados.dia === 'string' ? dados.dia : dataDe(now), dados));
+          log(`caderno: ${(caderno.pendente?.novas.length ?? 0) - antes} linha(s) chegaram do Mac`);
+        } catch (err) {
+          log(`caderno: recado do Mac estragado, ignorado (${(err as Error).message})`);
+        }
+      }
+    }
+    const dia = diasParaLer(pastaDoOuvido, now, caderno.lido)[0];
+    if (dia) {
+      const falas = lerFalas(pastaDoOuvido, dia);
+      try {
+        const proposta = falas.length < MIN_FALAS ? { novas: [], tirar: [] } : await lerODia(clienteIA!, ia!.modelo || 'claude-haiku-5-5', caderno.notas, falas, dia, registrarUso);
+        guardarCaderno(aposLer(caderno, dia, proposta));
+        apagarDia(pastaDoOuvido, dia);
+        log(`caderno: li ${falas.length} fala(s) de ${dia}: ${proposta.novas.length} linha(s) nova(s), ${proposta.tirar.length} para tirar`);
+      } catch (err) {
+        cadernoSoDepoisDe = now.getTime() + 30 * 60_000;
+        log(`caderno: a leitura de ${dia} falhou (tento em 30 min): ${(err as Error).message}`);
+        return;
+      }
+    }
+    // O que a IA propôs só vale depois que o dono recebeu o aviso; de madrugada o aviso espera as 08:00.
+    const aviso = textoDoAnuncio(caderno);
+    if (caderno.pendente && !aviso) guardarCaderno(aplicarPendente(caderno));
+    if (!aviso || emSilencio(now)) return;
+    try {
+      await avisarDono([aviso]);
+      guardarCaderno(aplicarPendente(caderno));
+      log(`caderno: aviso mandado ao dono; ${caderno.notas.length} linha(s) valendo`);
+    } catch (err) {
+      cadernoSoDepoisDe = now.getTime() + 30 * 60_000;
+      log(`caderno: o aviso ao dono não saiu (tento em 30 min): ${(err as Error).message}`);
+    }
+  };
+  /** "caderno", "caderno tira 2": só o dono, no privado. */
+  const talvezComandoDoCaderno = (m: MensagemRecebida): string | null => {
+    if (!cadernoLigado || !m.privado || !m.remetenteTelefone || !admins[0] || !ehAdmin(m.remetenteTelefone, [admins[0]])) return null;
+    const cmd = lerComandoDoCaderno(m.texto);
+    if (!cmd) return null;
+    const r = obedecer(caderno, cmd);
+    guardarCaderno(r.caderno);
+    if (cmd.tipo !== 'ver') log(`caderno: o dono mandou tirar; ficaram ${r.caderno.notas.length} linha(s)`);
+    return r.resposta;
+  };
+
   /** "pode mergear" do dono no privado, com revisão pendente: solta o script de merge, que sobrevive ao reinício. */
   const talvezMergear = async (m: MensagemRecebida): Promise<string | null> => {
     if (!m.privado || !m.remetenteTelefone || !admins[0] || !ehAdmin(m.remetenteTelefone, [admins[0]]) || !ehPodeMergear(m.texto)) return null;
@@ -573,6 +646,13 @@ async function laco(): Promise<void> {
         anotar();
         return;
       }
+      const doCaderno = talvezComandoDoCaderno(m);
+      if (doCaderno) {
+        await enviar(doCaderno);
+        enviado.push(doCaderno);
+        anotar();
+        return;
+      }
       const r = await responder(m, {
         estadoGrupoId: grupoId,
         freio,
@@ -615,7 +695,7 @@ async function laco(): Promise<void> {
         urlSite,
         // Leitura primeiro, ações depois: a ordem das ferramentas é fixa (prefixo do cache).
         perguntar: (texto, { agora, acoes, quem, ehJonas, jogador, privado, historico }) =>
-          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
+          perguntarEmPartes(texto, { aoUsar: registrarUso, aoParar: avisarIaParada, chave: ia!.chave, modelo: ia!.modelo, cliente: clienteIA!, caderno: cadernoLigado ? linhasDoCaderno(caderno) : undefined, ferramentas: [...ferramentasDeLeitura(db, agora, { timesPendentes: () => anuncio.atual !== null || (proposta.atual !== null && !propostaVencida(proposta.atual, agora())) }), ...acoes], agora, quem, ehJonas, jogador, privado, historico }),
         enviar: async (texto: string, op?: { cancelavel?: () => boolean }) => {
           const r = await enviar(texto, op);
           if (r !== 'cancelada') enviado.push(texto);
@@ -790,6 +870,8 @@ async function laco(): Promise<void> {
   };
 
   const aoReceber = (m: MensagemRecebida) => {
+    // O ouvido do caderno: tudo o que o grupo escreve, com ou sem marcação. O robô só guarda; não responde por isso.
+    if (cadernoLigado && !m.privado && m.grupoId === grupoId && m.texto.trim()) ouvir(pastaDoOuvido, { quando: m.quando, quem: m.remetenteNome, texto: m.texto });
     // Foto ou PDF no grupo (sem marcar o robô): pode ser comprovante de Pix.
     const grupoDoPix = m.grupoId === grupoId || (grupoDeTesteDoPix !== null && m.grupoId === grupoDeTesteDoPix);
     if (m.midia && !m.privado && grupoDoPix && !m.mencionaORobo && !m.respondeAoRobo) {
@@ -885,6 +967,7 @@ async function laco(): Promise<void> {
     await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezBateria(now)).catch((err) => log(`aviso de bateria falhou: ${(err as Error).message}`));
+    await emFila(() => talvezCaderno(now)).catch((err) => log(`caderno falhou: ${(err as Error).message}`));
     const dentro = dentroDaJanela(now);
     if (!dentro) {
       manterAcordado(false);
