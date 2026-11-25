@@ -118,7 +118,21 @@ if (process.argv.includes('--subir')) {
     return url;
   };
   manifesto.robo.url = subir(manifesto.robo, 'robo');
-  if (manifesto.app) manifesto.app.url = subir(manifesto.app, 'app');
+  if (manifesto.app) {
+    manifesto.app.url = subir(manifesto.app, 'app');
+  } else {
+    // Publicar só o robô não pode apagar a oferta do app que já estava no ar: um aparelho com o
+    // app antigo deixaria de ver a versão nova. O que está publicado é mantido como está.
+    const atual = await fetch(destino, { headers: { Authorization: `Bearer ${chaveDePublicar}` }, signal: AbortSignal.timeout(30_000) });
+    if (atual.ok) {
+      const publicado = await atual.json();
+      if (publicado.app) manifesto.app = publicado.app;
+      if (publicado.app_minimo && !manifesto.app_minimo) manifesto.app_minimo = publicado.app_minimo;
+    } else if (atual.status !== 404) {
+      console.error(`Não consegui ler o manifesto que está no ar (${atual.status}); parei para não apagar a oferta do app.`);
+      process.exit(1);
+    }
+  }
   const resposta = await fetch(destino, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${chaveDePublicar}`, 'Content-Type': 'application/json' },
