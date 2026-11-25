@@ -1187,7 +1187,12 @@ async function responderComando(cmd: Comando, m: MensagemRecebida, c: ContextoDa
   } catch (err) {
     // Parte da resposta já chegou (ou pode ter chegado): não é erro para quem pediu (nada de ❌).
     if (enviadas > 0 || err instanceof EnvioIncerto) {
-      c.log(`resposta saiu pela metade (${enviadas} de ${partes.length} partes): ${(err as Error).message}`);
+      // Nenhuma parte confirmada não é "pela metade": o WhatsApp só não confirmou, e ela pode ter saído inteira.
+      c.log(
+        enviadas > 0
+          ? `resposta saiu pela metade (${enviadas} de ${partes.length} partes): ${(err as Error).message}`
+          : `resposta sem confirmação do WhatsApp (pode ter saído): ${(err as Error).message}`,
+      );
       return terminar();
     }
     c.log(`resposta não saiu (não tenta de novo): ${(err as Error).message}`);
