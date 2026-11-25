@@ -16,7 +16,7 @@ import {
 export const estadoManualEnum = pgEnum('estado_manual', ['aberta', 'fechada', 'cancelada']);
 export const tipoPresencaEnum = pgEnum('tipo_presenca', ['M', 'D']);
 export const statusPresencaEnum = pgEnum('status_presenca', ['pendente', 'confirmado', 'removido']);
-export const corTimeEnum = pgEnum('cor_time', ['azul', 'laranja', 'verde', 'preto']);
+export const corTimeEnum = pgEnum('cor_time', ['azul', 'laranja', 'verde', 'preto', 'branco', 'amarelo']);
 export const resultadoEnum = pgEnum('resultado_partida', ['A', 'B', 'empate']);
 export const ladoEnum = pgEnum('lado_partida', ['A', 'B']);
 export const tipoLanceEnum = pgEnum('tipo_lance', ['gol', 'assistencia']);

@@ -5,7 +5,7 @@ const s = (m: number, seg: number) => (m * 60 + seg) * 1000;
 const [MANOEL, PAULO, JOSENILDO, BARTOLOMEU, GIANLUCA] = [1, 2, 3, 4, 5];
 
 describe('linhaDoTempo', () => {
-  it('a partida real Verde 3×1 Azul: cada assistência fica com o gol dela', () => {
+  it('a partida real Verde 3×1 Branco: cada assistência fica com o gol dela', () => {
     let id = 0;
     const l = (jogadorId: number, tipo: 'gol' | 'assistencia', lado: 'A' | 'B', tempoMs: number): LanceNoTempo => ({ id: ++id, jogadorId, tipo, lado, tempoMs });
     const eventos = linhaDoTempo([

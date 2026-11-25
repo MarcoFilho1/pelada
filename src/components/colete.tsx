@@ -1,13 +1,15 @@
 import type { Cor } from '@/domain/sorteio';
 
 /** Nome do time pela cor do colete. */
-export const NOME_DA_COR: Record<Cor, string> = { azul: 'Azul', laranja: 'Laranja', verde: 'Verde', preto: 'Preto' };
+export const NOME_DA_COR: Record<Cor, string> = { branco: 'Branco', preto: 'Preto', verde: 'Verde', amarelo: 'Amarelo', azul: 'Azul', laranja: 'Laranja' };
 
 const FUNDO: Record<Cor, string> = {
+  branco: 'bg-colete-branco',
+  preto: 'bg-chao ring-2 ring-inset ring-apagado',
+  verde: 'bg-colete-verde',
+  amarelo: 'bg-colete-amarelo',
   azul: 'bg-colete-azul',
   laranja: 'bg-colete-laranja',
-  verde: 'bg-colete-verde',
-  preto: 'bg-chao ring-2 ring-inset ring-apagado',
 };
 
 /** Bolinha com a cor do colete. O preto ganha contorno para aparecer no fundo preto. */

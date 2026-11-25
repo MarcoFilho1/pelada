@@ -17,17 +17,17 @@ async function criar(nome: string) {
 }
 
 /** Pelada em `data` com 2 times de 2 (Ana+Bia x Caio+Davi) e uma partida encerrada. */
-async function peladaJogada(data: string, resultadoPor: (a: { azul: number; laranja: number }) => Promise<void>) {
+async function peladaJogada(data: string, resultadoPor: (a: { branco: number; preto: number }) => Promise<void>) {
   const [p] = await db.insert(peladas).values({ data }).returning({ id: peladas.id });
   await salvarTimesDefinitivos(db, p.id, [[ana, bia], [caio, davi]]);
-  const [azul, laranja] = (await timesDaPelada(db, p.id)).map((t) => t.id);
-  await resultadoPor({ azul, laranja });
+  const [branco, preto] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+  await resultadoPor({ branco, preto });
   return p.id;
 }
 
-async function jogar(peladaId: number, azul: number, laranja: number, lancesFeitos: [number, 'gol' | 'assistencia'][], dia: string) {
+async function jogar(peladaId: number, branco: number, preto: number, lancesFeitos: [number, 'gol' | 'assistencia'][], dia: string) {
   const inicio = new Date(`${dia}T20:40:00-03:00`);
-  const id = await iniciarPartida(db, peladaId, azul, laranja, inicio);
+  const id = await iniciarPartida(db, peladaId, branco, preto, inicio);
   for (const [j, t] of lancesFeitos) await registrarLance(db, id, j, t);
   await encerrarPartida(db, id, new Date(inicio.getTime() + 5 * 60_000));
   return id;
@@ -41,13 +41,13 @@ beforeEach(async () => {
 describe('ranking do servidor', () => {
   async function cenario() {
     // 04/11: Ana+Bia 2x0 Caio+Davi (Ana 2 gols, Bia 1 assist).  11/11: empate 0x0.
-    await peladaJogada('2026-11-04', async ({ azul, laranja }) => {
+    await peladaJogada('2026-11-04', async ({ branco, preto }) => {
       const [p] = await db.select().from(peladas).where(eq(peladas.data, '2026-11-04'));
-      await jogar(p.id, azul, laranja, [[ana, 'gol'], [ana, 'gol'], [bia, 'assistencia']], '2026-11-04');
+      await jogar(p.id, branco, preto, [[ana, 'gol'], [ana, 'gol'], [bia, 'assistencia']], '2026-11-04');
     });
-    await peladaJogada('2026-11-11', async ({ azul, laranja }) => {
+    await peladaJogada('2026-11-11', async ({ branco, preto }) => {
       const [p] = await db.select().from(peladas).where(eq(peladas.data, '2026-11-11'));
-      const id = await iniciarPartida(db, p.id, azul, laranja, new Date('2026-11-11T20:40:00-03:00'));
+      const id = await iniciarPartida(db, p.id, branco, preto, new Date('2026-11-11T20:40:00-03:00'));
       await encerrarPartida(db, id, new Date('2026-11-11T20:48:00-03:00'));
     });
   }
@@ -84,8 +84,8 @@ describe('ranking do servidor', () => {
     await cenario();
     const [p] = await db.insert(peladas).values({ data: '2026-11-18' }).returning({ id: peladas.id });
     await salvarTimesDefinitivos(db, p.id, [[ana, bia], [caio, davi]]);
-    const [azul, laranja] = (await timesDaPelada(db, p.id)).map((t) => t.id);
-    const id = await iniciarPartida(db, p.id, azul, laranja, new Date('2026-11-18T20:40:00-03:00'));
+    const [branco, preto] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+    const id = await iniciarPartida(db, p.id, branco, preto, new Date('2026-11-18T20:40:00-03:00'));
     await registrarLance(db, id, ana, 'gol');
     expect((await rankingDoPeriodo(db, { tipo: 'geral' })).find((l) => l.nome === 'Ana')!.jogos).toBe(2);
 
@@ -102,25 +102,25 @@ describe('ranking do servidor', () => {
     expect(e.historico).toEqual([
       {
         peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 1, derrotas: 0, gols: 0, assistencias: 0,
-        partidas: [expect.objectContaining({ corDoTime: 'azul', corAdversario: 'laranja', placarTime: 0, placarAdversario: 0, resultado: 'E' })],
+        partidas: [expect.objectContaining({ corDoTime: 'branco', corAdversario: 'preto', placarTime: 0, placarAdversario: 0, resultado: 'E' })],
       },
       {
         peladaData: '2026-11-04', jogos: 1, vitorias: 1, empates: 0, derrotas: 0, gols: 2, assistencias: 0,
-        partidas: [expect.objectContaining({ corDoTime: 'azul', corAdversario: 'laranja', placarTime: 2, placarAdversario: 0, resultado: 'V', gols: 2 })],
+        partidas: [expect.objectContaining({ corDoTime: 'branco', corAdversario: 'preto', placarTime: 2, placarAdversario: 0, resultado: 'V', gols: 2 })],
       },
     ]);
     // do outro lado, as cores e o placar se invertem
     const caioHist = (await estatisticasDoJogador(db, caio, { tipo: 'mes', ano: 2026, mes: 11 })).historico;
-    expect(caioHist[1].partidas[0]).toMatchObject({ corDoTime: 'laranja', corAdversario: 'azul', placarTime: 0, placarAdversario: 2, resultado: 'D' });
+    expect(caioHist[1].partidas[0]).toMatchObject({ corDoTime: 'preto', corAdversario: 'branco', placarTime: 0, placarAdversario: 2, resultado: 'D' });
     const vazio = await estatisticasDoJogador(db, ana, { tipo: 'ano', ano: 2025 });
     expect(vazio).toEqual({ linha: null, historico: [] });
   });
 
   it('filtro por período na virada de dezembro para janeiro', async () => {
     for (const dia of ['2026-12-30', '2027-01-06']) {
-      await peladaJogada(dia, async ({ azul, laranja }) => {
+      await peladaJogada(dia, async ({ branco, preto }) => {
         const [p] = await db.select().from(peladas).where(eq(peladas.data, dia));
-        await jogar(p.id, azul, laranja, [[ana, 'gol']], dia);
+        await jogar(p.id, branco, preto, [[ana, 'gol']], dia);
       });
     }
     const jogos = async (periodo: Parameters<typeof rankingDoPeriodo>[1]) => (await rankingDoPeriodo(db, periodo))[0]?.jogos ?? 0;

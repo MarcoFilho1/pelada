@@ -1,8 +1,13 @@
 export type JogadorNota = { id: number; nome: string; nota: number }
 
-/** Cores dos coletes, na ordem dos times. */
-export const CORES = ['azul', 'laranja', 'verde', 'preto'] as const
-export type Cor = (typeof CORES)[number]
+/** Cores dos coletes da pelada, na ordem dos times. */
+export const CORES = ['branco', 'preto', 'verde', 'amarelo'] as const
+/**
+ * Uma cor de colete. `azul` e `laranja` são as de antes dos coletes de verdade: nenhum time novo
+ * nasce com elas, mas o banco ainda aceita e as telas sabem mostrar (um robô ainda não atualizado
+ * pode gravar uma).
+ */
+export type Cor = (typeof CORES)[number] | 'azul' | 'laranja'
 
 /** Nota ou soma de notas para a tela: 3.5 → '3,5'. */
 export const formatarNota = (n: number) => n.toFixed(1).replace('.', ',')

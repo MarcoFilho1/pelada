@@ -11,6 +11,8 @@ colors:
   lima: "#c6f24e"
   erro: "#ff6166"
   erro-fundo: "#2c1a1c"
+  colete-branco: "#ffffff"
+  colete-amarelo: "#ffc933"
   colete-azul: "#4d8dff"
   colete-laranja: "#ff9a3d"
   colete-verde: "#2fbf6a"
@@ -163,9 +165,10 @@ Preto de refletor apagado, branco de tinta de placa, e duas cores de sinal usada
 - **Fundo de erro** (#2c1a1c): placa que recebeu PIN errado.
 
 ### Coletes (identidade dos times)
-- **Azul** (#4d8dff), **Laranja** (#ff9a3d), **Verde** (#2fbf6a) e **Preto** (o próprio chão #000 com contorno
-  #b4b4b4 de 2px, para aparecer no fundo preto). Só na bolinha de 16px que identifica o time; nunca em texto,
-  botão, fundo ou borda. O verde do colete é mais fechado que o lima, para não ser lido como "confirmado".
+- **Branco** (#ffffff), **Preto** (o próprio chão #000 com contorno #b4b4b4 de 2px, para aparecer no fundo
+  preto), **Verde** (#2fbf6a) e **Amarelo** (#ffc933): as cores dos coletes de verdade da pelada, nessa ordem.
+  Azul (#4d8dff) e laranja (#ff9a3d) ficam só para times de antes da troca. Só na bolinha de 16px que identifica o time; nunca em texto,
+  botão, fundo ou borda. O verde do colete é mais fechado que o lima, e o amarelo mais quente, para não serem lidos como "confirmado".
 
 ### Named Rules
 **A Regra do Sinal Raro.** Lima e vermelho só aparecem quando carregam significado: lima para algo pendurado

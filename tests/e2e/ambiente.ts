@@ -7,8 +7,8 @@ export const E2E = {
   banco: './.pglite-e2e',
   usuario: 'admin-e2e',
   senha: 'senha-do-e2e-123',
-  azul: ['Pepe', 'Rafa', 'Tonho', 'Zé'],
-  laranja: ['Biel', 'Duda', 'Igor', 'Lucas'],
+  branco: ['Pepe', 'Rafa', 'Tonho', 'Zé'],
+  preto: ['Biel', 'Duda', 'Igor', 'Lucas'],
   // Sem time e fora da lista: o sorteio com COMPLETE marca os 8 dos times + estes 6 (14), e `semTime`
   // entra no lugar de um COMPLETE.
   sorteio: ['Caio', 'Enzo', 'Fábio', 'Gui', 'Hugo', 'Ivo'],

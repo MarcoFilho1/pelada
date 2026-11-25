@@ -69,7 +69,7 @@ describe('lerTimesColados', () => {
   });
 
   it('ignora linhas de cabeçalho e de conta (data, hora, ":" e "?")', () => {
-    const zap = '🎲 Times sorteados:\n\n🔵 Azul (7,0)\n- Ana 4,0\n- Beto 3,0\n\n🟠 Laranja (7,0)\n- Caio 4,0\n- COMPLETE 3,0\n\nDiferença: 0,0\nConfirma? Responda *sim* em até 10 minutos ✅';
+    const zap = '🎲 Times sorteados:\n\n⚪ Branco (7,0)\n- Ana 4,0\n- Beto 3,0\n\n⚫ Preto (7,0)\n- Caio 4,0\n- COMPLETE 3,0\n\nDiferença: 0,0\nConfirma? Responda *sim* em até 10 minutos ✅';
     expect(nomes(lerTimesColados(zap))).toEqual([
       [['Ana', 'Beto'], []],
       [['Caio'], [3]],

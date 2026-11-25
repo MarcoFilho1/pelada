@@ -41,7 +41,7 @@ export function limparLinha(linha: string): string {
 
 /** "Time 1 (12.0)", "time", "⚽ Time 2:" abrem um time; e também "🔵 Azul (7,0)", o cabeçalho da proposta do robô. */
 const ehComecoDeTime = (linha: string) =>
-  /^[^\p{L}\d]*time\b/iu.test(linha) || /^[^\p{L}\d]*(?:azul|laranja|verde|preto)\s*\(\s*\d+(?:[.,]\d+)?\s*\)$/iu.test(linha);
+  /^[^\p{L}\d]*time\b/iu.test(linha) || /^[^\p{L}\d]*(?:branco|preto|verde|amarelo|azul|laranja)\s*\(\s*\d+(?:[.,]\d+)?\s*\)$/iu.test(linha);
 /**
  * Cabeçalho ou conta, não é jogador: "Pelada…", data ("04/11"), hora ("20:30"), um rótulo no começo ("Diferença: 0,5",
  * "Times sorteados:") ou pergunta (termina em "?").

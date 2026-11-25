@@ -56,7 +56,9 @@
   --color-erro: #ff6166; /* erro como texto e marca (6,6:1 no chão) */
   --color-erro-fundo: #2c1a1c; /* placa com erro */
   /* Coletes dos times: só na bolinha de identidade do time, nunca em texto, botão ou fundo. */
-  --color-colete-azul: #4d8dff;
+  --color-colete-branco: #ffffff;
+  --color-colete-amarelo: #ffc933; /* mais quente que o lima, para não ser lido como "confirmado" */
+  --color-colete-azul: #4d8dff; /* azul e laranja: só para times antigos */
   --color-colete-laranja: #ff9a3d;
   --color-colete-verde: #2fbf6a;
 

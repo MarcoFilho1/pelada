@@ -61,12 +61,12 @@ describe('previaDeImportar', () => {
 });
 
 describe('importarTimes', () => {
-  it('salva exatamente a prévia: Azul e Laranja, o COMPLETE no Laranja, e as notas não mudam', async () => {
+  it('salva exatamente a prévia: Branco e Preto, o COMPLETE no Preto, e as notas não mudam', async () => {
     expect(await importarTimes(peladaId, COLADO)).toEqual({ ok: true });
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => [t.cor, t.jogadores.map((j) => j.nome).sort(), t.completes.map((c) => c.nota)])).toEqual([
-      ['azul', ['Ana', 'Beto'], []],
-      ['laranja', ['Caio', 'Davi Lima'], [2.5]],
+      ['branco', ['Ana', 'Beto'], []],
+      ['preto', ['Caio', 'Davi Lima'], [2.5]],
     ]);
     const notas = (await db.select({ nome: jogadores.nome, nota: jogadores.nota }).from(jogadores)).map((j) => `${j.nome} ${j.nota}`);
     expect(notas).toContain('Ana 3.0');
@@ -81,11 +81,11 @@ describe('importarTimes', () => {
 
   it('com partida em andamento recusa e os times continuam os de antes', async () => {
     expect(await importarTimes(peladaId, COLADO)).toEqual({ ok: true });
-    const [azul, laranja] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
-    await iniciarPartida(db, peladaId, azul, laranja, new Date('2026-11-11T20:40:00-03:00'));
+    const [branco, preto] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
+    await iniciarPartida(db, peladaId, branco, preto, new Date('2026-11-11T20:40:00-03:00'));
     const r = await importarTimes(peladaId, 'Time 1\nAna\nCaio\nTime 2\nBeto\nDavi');
     expect(r).toMatchObject({ ok: false, erro: expect.stringMatching(/andamento/i) });
-    expect((await timesDaPelada(db, peladaId)).map((t) => t.id)).toEqual([azul, laranja]);
+    expect((await timesDaPelada(db, peladaId)).map((t) => t.id)).toEqual([branco, preto]);
   });
 
   it('pedido estranho: recusado sem tocar no banco', async () => {
