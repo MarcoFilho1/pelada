@@ -39,6 +39,7 @@ import { marcaDe } from '@/domain/lista';
 import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
+import { comEsperaDoLimite } from './limite';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
 import { MIN_FALAS, RECADO_DO_CADERNO, apagarDia, aplicarPendente, aposLer, comSemente, diasParaLer, gravarCaderno, lerCaderno, lerComandoDoCaderno, lerFalas, lerODia, linhasDoCaderno, obedecer, ouvir, textoDoAnuncio } from './caderno';
 import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, CaixaNoBanco, ehPodeMergear } from './revisao';
@@ -411,7 +412,11 @@ async function laco(): Promise<void> {
           log('aviso a um organizador não saiu: o número não tem WhatsApp');
           continue;
         }
-        await wa.enviar(jid, texto);
+        // O limite por hora recusou? O aviso espera a vaga e sai depois, em vez de se perder
+        // (os avisos já saem em segundo plano: esperar aqui não segura a resposta de ninguém).
+        await comEsperaDoLimite(() => wa.enviar(jid, texto), {
+          aoEsperar: (tipo, ms) => log(`aviso a um organizador segurado pelo limite (por ${tipo}); tenta de novo em ${Math.round(ms / 1000)} s`),
+        });
       } catch (err) {
         log(`aviso a um organizador não saiu: ${(err as Error).message}`);
       }

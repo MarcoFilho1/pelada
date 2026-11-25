@@ -11,6 +11,16 @@ describe('limparManifesto', () => {
     expect(limparManifesto({ robo: { ...item, intruso: 1 }, app: item, app_minimo: 3, outro: 'x' })).toEqual({ robo: item, app: item, app_minimo: 3 });
   });
 
+  it('guarda as novidades do item, limpas (25/11: o site jogava o campo fora e o app não recebia)', () => {
+    const novidades = ['  O robô aprende com a resenha.  ', '', 7, 'x'.repeat(300), ...Array.from({ length: 10 }, (_, i) => `linha ${i}`)];
+    const r = limparManifesto({ robo: { ...item, novidades }, app: item });
+    expect(r?.robo?.novidades).toHaveLength(8);
+    expect(r?.robo?.novidades?.[0]).toBe('O robô aprende com a resenha.');
+    expect(r?.robo?.novidades?.[1]).toHaveLength(200);
+    expect(r?.app).toEqual(item);
+    expect(limparManifesto({ robo: { ...item, novidades: 'texto' } })).toEqual({ robo: item });
+  });
+
   it('recusa o que não é manifesto', () => {
     for (const ruim of [null, 'x', [], {}, { robo: null }, { robo: { ...item, url: 'http://sem-https/x' } }, { robo: { ...item, sha256: 'curto' } }, { robo: { ...item, numero: -1 } }, { robo: { ...item, versao: '../fora' } }, { robo: item, app: { ...item, assinatura: '' } }]) {
       expect(limparManifesto(ruim)).toBeNull();
