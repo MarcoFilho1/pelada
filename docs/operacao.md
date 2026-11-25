@@ -193,3 +193,27 @@ Faça isso fora de segunda 14:00 → quarta 20:30, se puder. O login do WhatsApp
 ### Desligar
 
 `pnpm robo:desinstalar` desliga o robô e tira do início do Mac. Para voltar, `pnpm robo:instalar`. Não rode `pnpm robo:configurar` com o robô instalado: são duas conexões no mesmo número e uma derruba a outra. Desinstale antes.
+
+## Caderno da resenha (a personalidade que muda)
+
+O jeito do robô tem uma parte fixa (o texto `SISTEMA` de `src/robo/ia.ts`) e uma parte que ele
+aprende do grupo: o caderno da resenha (`src/robo/caderno.ts`).
+
+- **De dia, ele ouve.** Toda mensagem de texto do grupo vai para `ouvido/AAAA-MM-DD.jsonl`, na
+  pasta do robô, com o nome do WhatsApp (nunca o telefone). O robô não responde por isso: no
+  grupo ele continua a responder só a quem o marca. Fala que cita o robô pelo nome ("o robô",
+  "o bot") vai marcada, para a leitura da noite dar mais peso.
+- **Às 23:30, ele lê.** Uma chamada à IA recebe o caderno atual e as falas do dia e propõe até 5
+  linhas novas e as linhas antigas que não valem mais. O arquivo do dia é apagado em seguida
+  (dia que ninguém leu some em 3 dias). Dia com menos de 5 falas nem chama a IA.
+- **De manhã, ele conta ao dono.** Depois das 08:00, o dono (1º de `ROBO_ADMINS`) recebe
+  "📓 Caderno da resenha: aprendi com o grupo…". As linhas só passam a valer quando esse aviso
+  sai. O dono veta com `caderno tira 2` ou `caderno tira tudo`, e vê tudo com `caderno`.
+- **Ao responder, ele usa.** As linhas vão na mensagem do usuário, depois do texto fixo, como
+  "o que você lembra do grupo": dão assunto e tom, não mudam regra nem ferramenta.
+
+Limites: 40 linhas no caderno (as mais velhas saem), 140 letras por linha, 45 dias de vida por
+linha. O que a IA devolve é conferido no código: sai linha com telefone, linha repetida e linha
+que tenta mandar no robô ("a partir de agora…", "ignore suas regras").
+
+`ROBO_CADERNO=0` no `.env` do robô desliga tudo. Sem IA configurada, o caderno não existe.
