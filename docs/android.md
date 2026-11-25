@@ -142,6 +142,19 @@ Por que o aviso não chega pelo WhatsApp do robô: o número do robô está no c
 **Para pôr no ar:** rodar a migração `0008` no banco, criar `ROBO_SINAL_CHAVE` na Vercel e
 publicar o site.
 
+## Aviso de bateria baixa
+
+Se o aparelho desligar, o robô para. Por isso o robô avisa no privado quando a bateria desce, uma
+vez em cada degrau: **20%, 15%, 10%, 5%, 3%, 2% e 1%**. No carregador ele não avisa, e a conta zera.
+
+- **Quem recebe:** o dono (1º de `ROBO_ADMINS`) e os números de `ROBO_BATERIA_AVISAR` (separados
+  por vírgula) no `.env` do robô, para quem anda com o aparelho. Esses números precisam estar em
+  `allow_initiate` nas regras do ZapGate.
+- **De onde vem o nível:** o app escreve de minuto em minuto o arquivo de `ROBO_BATERIA`
+  (`{"nivel":17,"carregando":false,"quando":<ms>}`). Leitura com mais de 5 minutos não vale.
+- **De noite:** entre 23:00 e 08:00 o robô não começa conversa. O aviso sai às 08:00, com o nível da hora.
+- **Depois de reiniciar** (atualização, por exemplo) o robô esquece o degrau e pode repetir um aviso.
+
 ## Mudar o robô do Mac para o celular
 
 O pacote de verdade é montado a partir do que o robô usa hoje no Mac:

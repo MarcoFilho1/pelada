@@ -3,7 +3,7 @@
 //   pnpm robo:ensaio [--agora=ISO] [--estado=caminho]   uma decisão, só imprime
 //   pnpm robo:configurar [--nome="Outro grupo"]         QR + escolher o grupo
 import { spawn, type ChildProcess } from 'node:child_process';
-import { closeSync, existsSync, openSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, renameSync } from 'node:fs';
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +15,7 @@ import { idDaPeladaDaData } from '@/server/pelada';
 import { partidaEmAndamento } from '@/server/partidas';
 import { rankingsDaNoite } from '@/server/ranking';
 import { decidir, emSilencio } from './agenda';
+import { avisoDaBateria, lerBateria, quemAvisarDaBateria } from './bateria';
 import { aposEnvio, gravarEstado, lerEstado, nomeDoGrupo, pastaDoRobo } from './estado';
 import { criarLinkAnotador } from '@/server/anotador';
 import { cadastrarJogadores } from '@/server/jogadores';
@@ -433,6 +434,47 @@ async function laco(): Promise<void> {
     ).catch(() => {});
   };
 
+  // ---- Bateria baixa do aparelho (só no celular: o app escreve o arquivo de `ROBO_BATERIA`) ----
+  const arquivoDaBateria = process.env.ROBO_BATERIA?.trim() || null;
+  // O dono (1º de ROBO_ADMINS) e quem mais estiver em ROBO_BATERIA_AVISAR (quem anda com o aparelho).
+  const avisadosDaBateria = [...new Set([...(admins[0] ? [admins[0].replace(/\D/g, '')] : []), ...quemAvisarDaBateria(process.env)])];
+  let degrauAvisado: number | null = null;
+  let falhaDaBateria = '';
+  const talvezBateria = async (now: Date) => {
+    if (!arquivoDaBateria || !avisadosDaBateria.length || !existsSync(arquivoDaBateria)) return;
+    const leitura = lerBateria(readFileSync(arquivoDaBateria, 'utf8'), now.getTime());
+    if (!leitura) return;
+    const r = avisoDaBateria(leitura, degrauAvisado);
+    if (!r.texto) {
+      degrauAvisado = r.avisado;
+      return;
+    }
+    // Entre 23:00 e 08:00 o ZapGate recusa mensagem que o robô começa: o aviso sai de manhã, com o nível da hora.
+    if (emSilencio(now)) return;
+    const wa = await conexao!;
+    let saiu = 0;
+    let motivo = '';
+    for (const numero of avisadosDaBateria) {
+      try {
+        const jid = await conversaDe(numero);
+        if (!jid) throw new Error('o número não tem WhatsApp');
+        await wa.enviar(jid, r.texto);
+        saiu++;
+      } catch (err) {
+        motivo = (err as Error).message;
+      }
+    }
+    // Se não saiu para ninguém, tenta de novo na próxima volta (uma linha só no registro por motivo).
+    if (!saiu) {
+      if (falhaDaBateria !== motivo) log(`bateria em ${leitura.nivel}%: o aviso não saiu (${motivo}); tenta de novo`);
+      falhaDaBateria = motivo;
+      return;
+    }
+    falhaDaBateria = '';
+    degrauAvisado = r.avisado;
+    log(`bateria em ${leitura.nivel}%: aviso mandado a ${saiu} de ${avisadosDaBateria.length}`);
+  };
+
   // ---- Auto-revisão: avisos ao dono e o "pode mergear" ----
   const noCelular = usaPonteNoBanco();
   const caixa = noCelular ? new CaixaNoBanco(db, () => new Date()) : new CaixaDaRevisao(join(homedir(), 'Library/Logs/PeladaRobo/revisao'), () => new Date());
@@ -842,6 +884,7 @@ async function laco(): Promise<void> {
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
     await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
+    await emFila(() => talvezBateria(now)).catch((err) => log(`aviso de bateria falhou: ${(err as Error).message}`));
     const dentro = dentroDaJanela(now);
     if (!dentro) {
       manterAcordado(false);
