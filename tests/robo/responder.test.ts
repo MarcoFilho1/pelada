@@ -1379,6 +1379,18 @@ describe('privado: memória da conversa, troca nos times e desfazer', () => {
     expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN]);
   });
 
+  it('trocar_nos_times depois de aprovar: o aviso aos outros não segura a resposta (o envio pelo WhatsApp demora)', async () => {
+    // O ZapGate mostra "digitando…" antes de cada envio: dois organizadores passam fácil dos 30 s do prazo da IA.
+    // Esperar o aviso estourava o prazo, a troca era desfeita e quem pediu recebia "Não consegui responder agora".
+    const c = ctx({ avisarOrganizadores: vi.fn(() => new Promise<void>(() => {})), trocarNosTimes: vi.fn(async () => ({ proposta: proposta(), feitas: ['Ana ↔ Bia'] })) });
+    c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), votos: [ADMIN] });
+    const f = ferramentasDoOrganizador(noPrivado('x'), c).find((x) => x.nome === 'trocar_nos_times')!;
+    const r = await Promise.race([f.executar({ trocas: 'Ana por Bia' }), new Promise((ok) => setTimeout(() => ok('travou'), 300))]);
+    expect(r).not.toBe('travou');
+    expect((r as TextoPronto).texto).toContain('🔁 Troquei: Ana ↔ Bia.');
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN]);
+  });
+
   it('trocar_nos_times: sem proposta, proposta de outro ou troca que não dá', async () => {
     const semProposta = ctx({ trocarNosTimes: vi.fn() });
     await expect(ferramentasDoOrganizador(noPrivado('x'), semProposta).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'A por B' })).rejects.toThrow(
