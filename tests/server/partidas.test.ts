@@ -50,7 +50,7 @@ async function novaPelada(data: string): Promise<number> {
   return p.id;
 }
 
-/** Pelada de hoje com 4 times de 2: azul [a1, a2], laranja [l1, l2], verde [v1, v2], preto [p1, p2]. */
+/** Pelada de hoje com 4 times de 2: branco [a1, a2], preto [l1, l2], verde [v1, v2], amarelo [p1, p2]. */
 async function cenario() {
   const peladaId = await novaPelada(HOJE);
   const [a1, a2, l1, l2, v1, v2, p1, p2] = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo']);
@@ -60,13 +60,13 @@ async function cenario() {
     [v1, v2],
     [p1, p2],
   ]);
-  const [azul, laranja, verde, preto] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
+  const [branco, preto, verde, amarelo] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
   return {
     peladaId,
-    azul,
-    laranja,
-    verde,
+    branco,
     preto,
+    verde,
+    amarelo,
     a1,
     a2,
     l1,
@@ -95,13 +95,13 @@ beforeEach(async () => {
 describe('iniciarPartida', () => {
   it('grava a partida com a hora de início e a foto do elenco por lado', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
 
     const [p] = await db.select().from(partidas).where(eq(partidas.id, id));
     expect(p).toMatchObject({
       peladaId: c.peladaId,
-      timeAId: c.azul,
-      timeBId: c.laranja,
+      timeAId: c.branco,
+      timeBId: c.preto,
       encerradaEm: null,
       resultado: null,
     });
@@ -125,49 +125,49 @@ describe('iniciarPartida', () => {
   it('a foto só leva jogadores ativos', async () => {
     const c = await cenario();
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.a2));
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const ids = (await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id))).map((j) => j.jogadorId);
     expect(ids.sort()).toEqual([c.a1, c.l1, c.l2].sort());
   });
 
   it('mexer no time depois não muda a foto da partida (Review Focus 4)', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.a2, 'gol');
     const antes = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id));
 
-    await moverJogador(db, c.a2, c.azul, null); // sai do Azul
-    await moverJogador(db, c.l1, c.laranja, c.azul); // vai pro Azul
+    await moverJogador(db, c.a2, c.branco, null); // sai do Branco
+    await moverJogador(db, c.l1, c.preto, c.branco); // vai pro Branco
 
     const agora = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id));
     expect(agora).toEqual(antes);
     expect(await placarDe(id)).toEqual({ A: 1, B: 0 });
     // A próxima partida já usa os times novos.
     await encerrarPartida(db, id, depois(8 * MIN));
-    const nova = await iniciarPartida(db, c.peladaId, c.azul, c.verde, depois(9 * MIN));
+    const nova = await iniciarPartida(db, c.peladaId, c.branco, c.verde, depois(9 * MIN));
     const ladoA = (await partidaAoVivo(db, nova, depois(9 * MIN)))!.lados.A.jogadores.map((j) => j.id);
     expect(ladoA.sort()).toEqual([c.a1, c.l1].sort());
   });
 
   it('recusa uma segunda partida com outra em andamento; depois de encerrar, pode', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
-    const erro = await iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE).catch((e) => e);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
+    const erro = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, NOITE).catch((e) => e);
     expect(erro).toBeInstanceOf(ErroPartida);
     expect(erro.motivo).toBe('partida_em_andamento');
 
     await encerrarPartida(db, id, depois(8 * MIN));
-    expect(await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN))).toBeGreaterThan(id);
+    expect(await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(9 * MIN))).toBeGreaterThan(id);
   });
 
   it('o banco recusa uma segunda partida aberta na mesma pelada (índice único parcial)', async () => {
     const c = await cenario();
-    await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const insere = (encerradaEm: Date | null) =>
       db.insert(partidas).values({
         peladaId: c.peladaId,
         timeAId: c.verde,
-        timeBId: c.preto,
+        timeBId: c.amarelo,
         encerradaEm,
       });
     const erro = await insere(null).then(
@@ -185,8 +185,8 @@ describe('iniciarPartida', () => {
   it('duas partidas iniciadas ao mesmo tempo: só uma entra', async () => {
     const c = await cenario();
     const r = await Promise.allSettled([
-      iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE),
-      iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE),
+      iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE),
+      iniciarPartida(db, c.peladaId, c.verde, c.amarelo, NOITE),
     ]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect(r.find((x) => x.status === 'rejected')).toMatchObject({
@@ -197,22 +197,22 @@ describe('iniciarPartida', () => {
 
   it('recusa o mesmo time dos dois lados, time vazio, time de outra pelada e pelada que não é de hoje', async () => {
     const c = await cenario();
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.azul, NOITE))).toBe('mesmo_time');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.branco, NOITE))).toBe('mesmo_time');
 
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.p1));
-    await moverJogador(db, c.p2, c.preto, null);
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.preto, NOITE))).toBe('time_vazio');
+    await moverJogador(db, c.p2, c.amarelo, null);
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.amarelo, NOITE))).toBe('time_vazio');
 
     const outra = await novaPelada('2026-11-04');
     const [x] = await criar(['Xavier']);
     await salvarTimesDefinitivos(db, outra, [[x]]);
     const [timeDaOutra] = await timesDaPelada(db, outra);
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, timeDaOutra.id, NOITE))).toBe('time_inexistente');
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, 999_999, NOITE))).toBe('time_inexistente');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, timeDaOutra.id, NOITE))).toBe('time_inexistente');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, 999_999, NOITE))).toBe('time_inexistente');
 
     const quinta = new Date('2026-11-12T20:40:00-03:00');
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, quinta))).toBe('pelada_nao_e_hoje');
-    expect(await motivo(iniciarPartida(db, 999_999, c.azul, c.laranja, NOITE))).toBe('pelada_inexistente');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, quinta))).toBe('pelada_nao_e_hoje');
+    expect(await motivo(iniciarPartida(db, 999_999, c.branco, c.preto, NOITE))).toBe('pelada_inexistente');
     expect(await db.select().from(partidas)).toHaveLength(0);
   });
 
@@ -220,24 +220,24 @@ describe('iniciarPartida', () => {
     const c = await cenario();
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.l1));
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, c.l2));
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE))).toBe('time_vazio');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE))).toBe('time_vazio');
   });
 
   it('recusa iniciar com a pelada cancelada (T11-b)', async () => {
     const c = await cenario();
     await db.update(peladas).set({ estadoManual: 'cancelada' }).where(eq(peladas.id, c.peladaId));
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE))).toBe('pelada_cancelada');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE))).toBe('pelada_cancelada');
     expect(await db.select().from(partidas)).toHaveLength(0);
 
     await db.update(peladas).set({ estadoManual: 'fechada' }).where(eq(peladas.id, c.peladaId));
-    expect(await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE)).toBeGreaterThan(0);
+    expect(await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE)).toBeGreaterThan(0);
   });
 });
 
 describe('registrarLance e desfazerUltimo', () => {
   it('dois gols seguidos = dois lances; desfazer tira só o último (Review Focus 2)', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.a1, 'gol');
     await registrarLance(db, id, c.a1, 'gol');
     expect(await placarDe(id)).toEqual({ A: 2, B: 0 });
@@ -249,7 +249,7 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('desfazer várias vezes seguidas vai tirando do último para o primeiro; sem lances, nada', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const gol = await registrarLance(db, id, c.a1, 'gol');
     await registrarLance(db, id, c.l1, 'gol');
     await registrarLance(db, id, c.a2, 'assistencia');
@@ -264,7 +264,7 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('dois admins desfazendo ao mesmo tempo: cada um tira um lance, do último para trás', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const primeiro = await registrarLance(db, id, c.a1, 'gol');
     await registrarLance(db, id, c.a2, 'gol');
     await registrarLance(db, id, c.l1, 'gol');
@@ -274,7 +274,7 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('devolve o id do lance desfeito, ou null quando não tinha lance', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const gol = await registrarLance(db, id, c.a1, 'gol');
     expect(await desfazerUltimo(db, id)).toBe(gol);
     expect(await desfazerUltimo(db, id)).toBeNull();
@@ -282,7 +282,7 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('com o id esperado: só desfaz se ele ainda for o último (dois admins no mesmo Desfazer, T11-b)', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const primeiro = await registrarLance(db, id, c.a1, 'gol');
     const segundo = await registrarLance(db, id, c.a2, 'gol');
 
@@ -305,16 +305,16 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('dois admins anotando ao mesmo tempo: os dois lances ficam', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await Promise.all([registrarLance(db, id, c.a1, 'gol'), registrarLance(db, id, c.l1, 'gol')]);
     expect(await placarDe(id)).toEqual({ A: 1, B: 1 });
   });
 
   it('desfazer só mexe na partida pedida, mesmo que outra tenha lance mais novo', async () => {
     const c = await cenario();
-    const p1 = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const p1 = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await encerrarPartida(db, p1, depois(8 * MIN));
-    const p2 = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN));
+    const p2 = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(9 * MIN));
     const golP2 = await registrarLance(db, p2, c.v1, 'gol');
     await corrigirPartida(db, p1, {
       adicionar: [{ jogadorId: c.a1, tipo: 'gol' }],
@@ -328,7 +328,7 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('assistência fica registrada mas não muda o placar', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.a2, 'assistencia');
     await registrarLance(db, id, c.a1, 'gol');
     expect(await placarDe(id)).toEqual({ A: 1, B: 0 });
@@ -337,9 +337,9 @@ describe('registrarLance e desfazerUltimo', () => {
 
   it('recusa jogador fora da partida (mesmo que esteja no time agora) e partida encerrada', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect(await motivo(registrarLance(db, id, c.v1, 'gol'))).toBe('fora_da_partida');
-    await moverJogador(db, c.v1, c.verde, c.azul);
+    await moverJogador(db, c.v1, c.verde, c.branco);
     expect(await motivo(registrarLance(db, id, c.v1, 'gol'))).toBe('fora_da_partida');
 
     await encerrarPartida(db, id, depois(8 * MIN));
@@ -355,7 +355,7 @@ describe('registrarLance e desfazerUltimo', () => {
 describe('encerrarPartida', () => {
   it('1 × 1 grava empate e a hora do encerramento', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.a1, 'gol');
     await registrarLance(db, id, c.l2, 'gol');
     expect(await encerrarPartida(db, id, depois(8 * MIN))).toBe('empate');
@@ -367,18 +367,18 @@ describe('encerrarPartida', () => {
 
   it('vitória do lado com mais gols; 0 × 0 é empate', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.l1, 'gol');
     await registrarLance(db, id, c.a1, 'assistencia');
     expect(await encerrarPartida(db, id, depois(3 * MIN))).toBe('B');
 
-    const outra = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(4 * MIN));
+    const outra = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(4 * MIN));
     expect(await encerrarPartida(db, outra, depois(12 * MIN))).toBe('empate');
   });
 
   it('encerrar de novo: ja_encerrada, sem mudar nada', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await encerrarPartida(db, id, depois(8 * MIN));
     expect(await motivo(encerrarPartida(db, id, depois(10 * MIN)))).toBe('ja_encerrada');
     const [p] = await db.select().from(partidas).where(eq(partidas.id, id));
@@ -390,7 +390,7 @@ describe('encerrarPartida', () => {
 describe('corrigirPartida', () => {
   it('adiciona e remove lances e recalcula o resultado', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const golErrado = await registrarLance(db, id, c.a1, 'gol');
     expect(await encerrarPartida(db, id, depois(8 * MIN))).toBe('A');
 
@@ -412,7 +412,7 @@ describe('corrigirPartida', () => {
 
   it('só em partida encerrada, com jogadores e lances da própria partida', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect(
       await motivo(
         corrigirPartida(db, id, {
@@ -422,7 +422,7 @@ describe('corrigirPartida', () => {
     ).toBe('nao_encerrada');
     await encerrarPartida(db, id, depois(8 * MIN));
 
-    const outra = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(9 * MIN));
+    const outra = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(9 * MIN));
     const golDaOutra = await registrarLance(db, outra, c.v1, 'gol');
     expect(
       await motivo(
@@ -441,7 +441,7 @@ describe('corrigirPartida', () => {
 describe('corrigirContagem', () => {
   it('+1 põe um lance do jogador; −1 tira o mais recente dele daquele tipo; o resultado acompanha', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const golAntigo = await registrarLance(db, id, c.a1, 'gol');
     const assist = await registrarLance(db, id, c.a1, 'assistencia');
     const golNovo = await registrarLance(db, id, c.a1, 'gol');
@@ -460,7 +460,7 @@ describe('corrigirContagem', () => {
 
   it('recusa −1 sem lance daquele tipo, jogador fora da partida e partida não encerrada', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, id, c.a1, 'assistencia');
     expect(await motivo(corrigirContagem(db, id, c.a1, 'gol', 1))).toBe('nao_encerrada');
     await encerrarPartida(db, id, depois(8 * MIN));
@@ -475,7 +475,7 @@ describe('corrigirContagem', () => {
 describe('partidaAoVivo', () => {
   it('traz placar, lados com cores e números de cada jogador, cronômetro e os lances em ordem', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const l1 = await registrarLance(db, id, c.a1, 'gol');
     const l2 = await registrarLance(db, id, c.a2, 'assistencia');
     const l3 = await registrarLance(db, id, c.a1, 'gol');
@@ -501,16 +501,16 @@ describe('partidaAoVivo', () => {
       ],
       lados: {
         A: {
-          timeId: c.azul,
-          cor: 'azul',
+          timeId: c.branco,
+          cor: 'branco',
           jogadores: [
             { id: c.a1, nome: 'Ana', gols: 2, assistencias: 0, completando: false, goleiro: false },
             { id: c.a2, nome: 'Bia', gols: 0, assistencias: 1, completando: false, goleiro: false },
           ],
         },
         B: {
-          timeId: c.laranja,
-          cor: 'laranja',
+          timeId: c.preto,
+          cor: 'preto',
           jogadores: [
             { id: c.l1, nome: 'Caio', gols: 1, assistencias: 0, completando: false, goleiro: false },
             { id: c.l2, nome: 'Davi', gols: 0, assistencias: 0, completando: false, goleiro: false },
@@ -522,7 +522,7 @@ describe('partidaAoVivo', () => {
 
   it('sugere encerrar no 3º gol e quando o tempo acaba', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect((await partidaAoVivo(db, id, depois(8 * MIN)))!).toMatchObject({
       sugerirEncerrar: 'tempo',
       tempoDeJogoMs: 8 * MIN,
@@ -533,7 +533,7 @@ describe('partidaAoVivo', () => {
 
   it('partida encerrada: resultado, cronômetro parado na hora do encerramento e sem sugestão', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     for (let i = 0; i < 3; i++) await registrarLance(db, id, c.a1, 'gol');
     await encerrarPartida(db, id, depois(5 * MIN));
     expect(await partidaAoVivo(db, id, depois(60 * MIN))).toMatchObject({
@@ -547,7 +547,7 @@ describe('partidaAoVivo', () => {
 
   it('pausar para o cronômetro e continuar desconta o tempo parado', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await pausarPartida(db, id, depois(2 * MIN));
     await pausarPartida(db, id, depois(3 * MIN)); // já pausada: nada muda
     expect(await partidaAoVivo(db, id, depois(5 * MIN))).toMatchObject({ tempoDeJogoMs: 2 * MIN, pausadaEm: depois(2 * MIN) });
@@ -561,7 +561,7 @@ describe('partidaAoVivo', () => {
 
   it('o lance guarda o tempo de jogo, sem as pausas', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await pausarPartida(db, id, depois(MIN));
     await continuarPartida(db, id, depois(3 * MIN));
     const l = await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN));
@@ -571,7 +571,7 @@ describe('partidaAoVivo', () => {
 
   it('encerrar pausada fecha a pausa: o tempo final é o da pausa', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await pausarPartida(db, id, depois(6 * MIN));
     await encerrarPartida(db, id, depois(9 * MIN));
     expect(await partidaAoVivo(db, id, depois(60 * MIN))).toMatchObject({ tempoDeJogoMs: 6 * MIN, pausadaEm: null, pausadoMs: 3 * MIN });
@@ -581,7 +581,7 @@ describe('partidaAoVivo', () => {
 
   it('sem lances: lista vazia; partida que não existe: null', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect((await partidaAoVivo(db, id, NOITE))!.lances).toEqual([]);
     expect(await partidaAoVivo(db, 999_999, NOITE)).toBeNull();
   });
@@ -591,7 +591,7 @@ describe('noite: partidaEmAndamento, historicoDaPelada e filaDeTimes', () => {
   it('partidaEmAndamento: o id da que está rolando, ou null', async () => {
     const c = await cenario();
     expect(await partidaEmAndamento(db, c.peladaId)).toBeNull();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect(await partidaEmAndamento(db, c.peladaId)).toBe(id);
     await encerrarPartida(db, id, depois(8 * MIN));
     expect(await partidaEmAndamento(db, c.peladaId)).toBeNull();
@@ -599,20 +599,20 @@ describe('noite: partidaEmAndamento, historicoDaPelada e filaDeTimes', () => {
 
   it('historicoDaPelada: só as encerradas, na ordem, com placar, cores e resultado', async () => {
     const c = await cenario();
-    const p1 = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const p1 = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, p1, c.a1, 'gol');
     await encerrarPartida(db, p1, depois(8 * MIN));
-    const p2 = await iniciarPartida(db, c.peladaId, c.azul, c.verde, depois(9 * MIN));
+    const p2 = await iniciarPartida(db, c.peladaId, c.branco, c.verde, depois(9 * MIN));
     await registrarLance(db, p2, c.v1, 'gol');
     await registrarLance(db, p2, c.a2, 'gol');
     await encerrarPartida(db, p2, depois(17 * MIN));
-    await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(18 * MIN)); // em andamento
+    await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(18 * MIN)); // em andamento
 
     expect(await historicoDaPelada(db, c.peladaId)).toEqual([
       {
         id: p1,
-        timeA: { id: c.azul, cor: 'azul' },
-        timeB: { id: c.laranja, cor: 'laranja' },
+        timeA: { id: c.branco, cor: 'branco' },
+        timeB: { id: c.preto, cor: 'preto' },
         placar: { A: 1, B: 0 },
         resultado: 'A',
         iniciadaEm: NOITE,
@@ -620,7 +620,7 @@ describe('noite: partidaEmAndamento, historicoDaPelada e filaDeTimes', () => {
       },
       {
         id: p2,
-        timeA: { id: c.azul, cor: 'azul' },
+        timeA: { id: c.branco, cor: 'branco' },
         timeB: { id: c.verde, cor: 'verde' },
         placar: { A: 1, B: 1 },
         resultado: 'empate',
@@ -632,17 +632,17 @@ describe('noite: partidaEmAndamento, historicoDaPelada e filaDeTimes', () => {
 
   it('filaDeTimes: começa na ordem dos times e segue quem perde sai, empate saem os dois', async () => {
     const c = await cenario();
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.azul, c.laranja, c.verde, c.preto]);
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.branco, c.preto, c.verde, c.amarelo]);
 
-    const p1 = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const p1 = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await registrarLance(db, p1, c.l1, 'gol');
-    await encerrarPartida(db, p1, depois(8 * MIN)); // Laranja vence: fica
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.laranja, c.verde, c.preto, c.azul]);
+    await encerrarPartida(db, p1, depois(8 * MIN)); // Preto vence: fica
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.preto, c.verde, c.amarelo, c.branco]);
 
-    const p2 = await iniciarPartida(db, c.peladaId, c.laranja, c.verde, depois(9 * MIN));
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.laranja, c.verde, c.preto, c.azul]); // em andamento não conta
+    const p2 = await iniciarPartida(db, c.peladaId, c.preto, c.verde, depois(9 * MIN));
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.preto, c.verde, c.amarelo, c.branco]); // em andamento não conta
     await encerrarPartida(db, p2, depois(17 * MIN)); // 0 × 0: saem os dois
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.preto, c.azul, c.laranja, c.verde]);
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.amarelo, c.branco, c.preto, c.verde]);
   });
 
   it('pelada sem times: fila e histórico vazios', async () => {
@@ -665,14 +665,14 @@ describe('partidasAbertasDeOutrasPeladas (Parte 5)', () => {
     expect(encerrada).toBeNull(); // só uma em andamento por pelada
 
     const c = await cenario();
-    const rolandoHoje = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const rolandoHoje = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
 
     expect(await partidasAbertasDeOutrasPeladas(db, c.peladaId)).toEqual([
       {
         id: aberta,
         data: '2026-11-04',
-        corA: 'azul',
-        corB: 'laranja',
+        corA: 'branco',
+        corB: 'preto',
         placar: { A: 1, B: 0 },
       },
     ]);
@@ -689,7 +689,7 @@ describe('cancelar pelada com partida (Parte 5, P5-c)', () => {
     const c = await cenario();
     await definirEstadoManual(db, c.peladaId, 'cancelada'); // sem partida: pode
     await definirEstadoManual(db, c.peladaId, null);
-    await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
 
     const erro = await definirEstadoManual(db, c.peladaId, 'cancelada').catch((e) => e);
     expect(erro).toBeInstanceOf(ErroLista);
@@ -706,7 +706,7 @@ describe('cancelar pelada com partida (Parte 5, P5-c)', () => {
 describe('sorteio novo depois de partidas (Parte 8)', () => {
   it('filaDeTimes parte dos times novos na ordem 1..4 e moverJogador não mexe nos arquivados', async () => {
     const c = await cenario();
-    const partidaId = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const partidaId = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await encerrarPartida(db, partidaId, depois(MIN));
 
     await salvarTimesDefinitivos(db, c.peladaId, [[c.a1], [c.l1], [c.v1], [c.p1, c.p2]], [], depois(2 * MIN));
@@ -717,31 +717,31 @@ describe('sorteio novo depois de partidas (Parte 8)', () => {
     const antes = await db
       .select()
       .from(timeJogadores)
-      .where(inArray(timeJogadores.timeId, [c.azul, c.laranja, c.verde, c.preto]));
+      .where(inArray(timeJogadores.timeId, [c.branco, c.preto, c.verde, c.amarelo]));
     await moverJogador(db, c.a1, novos[0], novos[1]);
     await moverJogador(db, c.p2, novos[3], null);
     const depoisMover = await db
       .select()
       .from(timeJogadores)
-      .where(inArray(timeJogadores.timeId, [c.azul, c.laranja, c.verde, c.preto]));
+      .where(inArray(timeJogadores.timeId, [c.branco, c.preto, c.verde, c.amarelo]));
     expect(depoisMover).toEqual(antes);
   });
 
   it('iniciarPartida recusa time arquivado e a foto do elenco nasce com completando = false', async () => {
     const c = await cenario();
-    const partidaId = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const partidaId = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const fotos = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, partidaId));
     expect(fotos.length).toBeGreaterThan(0);
     expect(fotos.every((f) => f.completando === false)).toBe(true);
     await encerrarPartida(db, partidaId, depois(MIN));
 
     await salvarTimesDefinitivos(db, c.peladaId, [[c.a1], [c.l1]], [], depois(2 * MIN));
-    expect(await motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, depois(3 * MIN)))).toBe('time_inexistente');
+    expect(await motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, depois(3 * MIN)))).toBe('time_inexistente');
   });
 });
 
 describe('quem completa a partida (Parte 8)', () => {
-  /** Azul [a1, a2] e laranja [l1, l2] com 1 COMPLETE cada, verde [v1, v2], preto [p1, p2], mais Ivo sem time. */
+  /** Branco [a1, a2] e preto [l1, l2] com 1 COMPLETE cada, verde [v1, v2], amarelo [p1, p2], mais Ivo sem time. */
   async function comComplete() {
     const peladaId = await novaPelada(HOJE);
     const [a1, a2, l1, l2, v1, v2, p1, p2, ivo] = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo', 'Ivo']);
@@ -752,13 +752,13 @@ describe('quem completa a partida (Parte 8)', () => {
       [[3], [3], [], []],
       NOITE,
     );
-    const [azul, laranja, verde, preto] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
-    return { peladaId, azul, laranja, verde, preto, a1, a2, l1, l2, v1, v2, p1, p2, ivo };
+    const [branco, preto, verde, amarelo] = (await timesDaPelada(db, peladaId)).map((t) => t.id);
+    return { peladaId, branco, preto, verde, amarelo, a1, a2, l1, l2, v1, v2, p1, p2, ivo };
   }
 
   it('quem vem de outro time entra na foto com completando e o lado certo; o gol dele conta; o time dele não muda', async () => {
     const c = await comComplete();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [c.v1], B: [] });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [c.v1], B: [] });
     const fotos = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id));
     expect(fotos.find((f) => f.jogadorId === c.v1)).toMatchObject({ lado: 'A', completando: true });
     expect(fotos.filter((f) => f.completando)).toHaveLength(1);
@@ -777,7 +777,7 @@ describe('quem completa a partida (Parte 8)', () => {
 
   it('jogador sem time também pode completar', async () => {
     const c = await comComplete();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [c.ivo], B: [] });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [c.ivo], B: [] });
     const fotos = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id));
     expect(fotos.find((f) => f.jogadorId === c.ivo)).toMatchObject({ lado: 'A', completando: true });
   });
@@ -786,7 +786,7 @@ describe('quem completa a partida (Parte 8)', () => {
     const c = await comComplete();
     const [j2] = await criar(['Jaci']);
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, j2));
-    const tenta = (completam: { A: number[]; B: number[] }) => motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, completam));
+    const tenta = (completam: { A: number[]; B: number[] }) => motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, completam));
     expect(await tenta({ A: [c.a2], B: [] })).toBe('completa_invalido');
     expect(await tenta({ A: [c.l1], B: [] })).toBe('completa_invalido');
     expect(await tenta({ A: [c.v1], B: [c.v1] })).toBe('completa_invalido');
@@ -797,7 +797,7 @@ describe('quem completa a partida (Parte 8)', () => {
 
   it('mais ids que COMPLETEs do lado é completes_demais', async () => {
     const c = await comComplete();
-    const tenta = (completam: { A: number[]; B: number[] }) => motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, completam));
+    const tenta = (completam: { A: number[]; B: number[] }) => motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, completam));
     expect(await tenta({ A: [c.v1, c.v1], B: [] })).toBe('completes_demais');
     expect(await tenta({ A: [c.v1, c.v2], B: [] })).toBe('completes_demais');
     expect(await tenta({ A: [], B: [c.v1, c.v2] })).toBe('completes_demais');
@@ -806,7 +806,7 @@ describe('quem completa a partida (Parte 8)', () => {
 
   it('sem ids com COMPLETE: inicia só com o elenco (jogar sem)', async () => {
     const c = await comComplete();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     const fotos = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, id));
     expect(fotos).toHaveLength(4);
     expect(fotos.every((f) => !f.completando)).toBe(true);
@@ -814,7 +814,7 @@ describe('quem completa a partida (Parte 8)', () => {
 
   it('o ranking conta vitória e gol de quem completou', async () => {
     const c = await comComplete();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [c.v1], B: [] });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [c.v1], B: [] });
     await registrarLance(db, id, c.v1, 'gol');
     await encerrarPartida(db, id, depois(2 * MIN));
     const r = await rankingDoPeriodo(db, { tipo: 'geral' });
@@ -828,7 +828,7 @@ describe('quem completa a partida (Parte 8)', () => {
     const [zeca] = await criar(['Zeca']);
     const [jaci] = await criar(['Jaci']);
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, jaci));
-    const q = await quemPodeCompletar(db, c.peladaId, c.azul, c.laranja);
+    const q = await quemPodeCompletar(db, c.peladaId, c.branco, c.preto);
     expect(q.deFora.map((j) => j.nome)).toEqual(['Edu', 'Fábio', 'Gil', 'Hugo']);
     expect(q.semTime.map((j) => j.nome)).toEqual(['Ivo', 'Zeca']);
     expect(q.semTime.find((j) => j.id === zeca)).toMatchObject({ nota: 3 });
@@ -836,31 +836,31 @@ describe('quem completa a partida (Parte 8)', () => {
 });
 
 describe('noite com 3 times', () => {
-  it('salva Azul, Laranja e Verde; a fila gira entre os 3 e a partida começa e é anotada', async () => {
+  it('salva Branco, Preto e Verde; a fila gira entre os 3 e a partida começa e é anotada', async () => {
     const peladaId = await novaPelada(HOJE);
     const ids = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo', 'Ivo', 'Jonas', 'Leo', 'Lia', 'Mel']);
     // 13 jogadores em 3 times: 5, 4 e 4, sem COMPLETE.
     await salvarTimesDefinitivos(db, peladaId, [ids.slice(0, 5), ids.slice(5, 9), ids.slice(9, 13)], [], NOITE);
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => [t.cor, t.ordem, t.jogadores.length])).toEqual([
-      ['azul', 1, 5],
-      ['laranja', 2, 4],
+      ['branco', 1, 5],
+      ['preto', 2, 4],
       ['verde', 3, 4],
     ]);
-    const [azul, laranja, verde] = ts.map((t) => t.id);
-    expect(await filaDeTimes(db, peladaId)).toEqual([azul, laranja, verde]);
+    const [branco, preto, verde] = ts.map((t) => t.id);
+    expect(await filaDeTimes(db, peladaId)).toEqual([branco, preto, verde]);
 
-    const p1 = await iniciarPartida(db, peladaId, azul, laranja, NOITE);
+    const p1 = await iniciarPartida(db, peladaId, branco, preto, NOITE);
     await registrarLance(db, p1, ids[5], 'gol');
     expect(await placarDe(p1)).toEqual({ A: 0, B: 1 });
-    await encerrarPartida(db, p1, depois(8 * MIN)); // Laranja vence: fica; Azul vai para o fim
-    expect(await filaDeTimes(db, peladaId)).toEqual([laranja, verde, azul]);
+    await encerrarPartida(db, p1, depois(8 * MIN)); // Preto vence: fica; Branco vai para o fim
+    expect(await filaDeTimes(db, peladaId)).toEqual([preto, verde, branco]);
 
-    const p2 = await iniciarPartida(db, peladaId, laranja, verde, depois(9 * MIN));
+    const p2 = await iniciarPartida(db, peladaId, preto, verde, depois(9 * MIN));
     await encerrarPartida(db, p2, depois(17 * MIN)); // 0 × 0: saem os dois
-    expect(await filaDeTimes(db, peladaId)).toEqual([azul, laranja, verde]);
+    expect(await filaDeTimes(db, peladaId)).toEqual([branco, preto, verde]);
 
-    const p3 = await iniciarPartida(db, peladaId, azul, laranja, depois(18 * MIN));
+    const p3 = await iniciarPartida(db, peladaId, branco, preto, depois(18 * MIN));
     expect(await partidaEmAndamento(db, peladaId)).toBe(p3);
   });
 
@@ -869,7 +869,7 @@ describe('noite com 3 times', () => {
     const ids = await criar(['Ana', 'Bia', 'Caio', 'Davi', 'Edu', 'Fábio', 'Gil', 'Hugo', 'Ivo', 'Jonas', 'Leo']);
     await salvarTimesDefinitivos(db, peladaId, [ids.slice(0, 4), ids.slice(4, 8), ids.slice(8, 11)], [[], [], [3]], NOITE);
     const ts = await timesDaPelada(db, peladaId);
-    expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
+    expect(ts.map((t) => t.cor)).toEqual(['branco', 'preto', 'verde']);
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual([[], [], [3]]);
   });
 });
@@ -877,7 +877,7 @@ describe('noite com 3 times', () => {
 describe('goleiros', () => {
   it('goleiro de fora entra no lado, aparece primeiro e o gol dele conta no placar', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: null });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [], B: [] }, { A: c.v1, B: null });
     await registrarLance(db, id, c.v1, 'gol');
     const v = (await partidaAoVivo(db, id, NOITE))!;
     expect(v.placar).toEqual({ A: 1, B: 0 });
@@ -888,7 +888,7 @@ describe('goleiros', () => {
   it('recusa goleiro dos dois times, repetido, de quem completa ou inativo', async () => {
     const c = await cenario();
     const ini = (g: { A: number | null; B: number | null }, completam = { A: [] as number[], B: [] as number[] }) =>
-      motivo(iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, completam, g));
+      motivo(iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, completam, g));
     expect(await ini({ A: c.a1, B: null })).toBe('goleiro_invalido');
     expect(await ini({ A: null, B: c.a2 })).toBe('goleiro_invalido');
     expect(await ini({ A: c.v1, B: c.v1 })).toBe('goleiro_invalido');
@@ -899,7 +899,7 @@ describe('goleiros', () => {
 
   it('no ranking, goleiro ganha gols e assistências mas não jogo, vitória ou presença', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: c.v1, B: c.v2 });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [], B: [] }, { A: c.v1, B: c.v2 });
     await registrarLance(db, id, c.v1, 'gol');
     await registrarLance(db, id, c.v2, 'assistencia');
     await encerrarPartida(db, id, depois(5 * MIN));
@@ -912,20 +912,20 @@ describe('goleiros', () => {
   it('goleirosDaNoite: quem agarra primeiro e os goleiros da última partida com o time', async () => {
     const c = await cenario();
     await db.update(jogadores).set({ agarra: true }).where(eq(jogadores.id, c.p2));
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE, { A: [], B: [] }, { A: null, B: c.v1 });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE, { A: [], B: [] }, { A: null, B: c.v1 });
     await encerrarPartida(db, id, depois(MIN));
     const g = await goleirosDaNoite(db, c.peladaId);
     expect(g.jogadores[0]).toMatchObject({ id: c.p2, agarra: true });
-    expect(g.anteriores).toEqual([{ jogadorId: c.v1, timeId: c.laranja }]);
+    expect(g.anteriores).toEqual([{ jogadorId: c.v1, timeId: c.preto }]);
   });
 });
 
 describe('detalhesDaPartida', () => {
   it('número na noite, goleiros, tempo total e a linha do tempo com as assistências ligadas', async () => {
     const c = await cenario();
-    const primeira = await iniciarPartida(db, c.peladaId, c.verde, c.preto, NOITE);
+    const primeira = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, NOITE);
     await encerrarPartida(db, primeira, depois(MIN));
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, depois(2 * MIN), { A: [], B: [] }, { A: null, B: c.v1 });
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, depois(2 * MIN), { A: [], B: [] }, { A: null, B: c.v1 });
     await registrarLance(db, id, c.a2, 'assistencia', depois(4 * MIN));
     await registrarLance(db, id, c.a1, 'gol', depois(4 * MIN + 2_000));
     await registrarLance(db, id, c.v1, 'gol', depois(6 * MIN));
@@ -946,7 +946,7 @@ describe('detalhesDaPartida', () => {
 
   it('lance antigo sem tempo_ms usa a hora em que foi tocado', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await db.insert(lances).values({ partidaId: id, jogadorId: c.a1, tipo: 'gol', criadoEm: depois(3 * MIN + 30_000) });
     await encerrarPartida(db, id, depois(8 * MIN));
     const d = (await detalhesDaPartida(db, id, depois(9 * MIN)))!;
@@ -963,21 +963,21 @@ describe('moeda do empate', () => {
 
   it('4 times: a moeda aparece quando um dos empatados for entrar, e quem ganha entra', async () => {
     const c = await cenario();
-    const id = await empate(c, c.azul, c.laranja, NOITE);
-    expect(await moedaDaNoite(db, c.peladaId)).toBeNull(); // a próxima é verde × preto
-    const v = await iniciarPartida(db, c.peladaId, c.verde, c.preto, depois(2 * MIN));
+    const id = await empate(c, c.branco, c.preto, NOITE);
+    expect(await moedaDaNoite(db, c.peladaId)).toBeNull(); // a próxima é verde × amarelo
+    const v = await iniciarPartida(db, c.peladaId, c.verde, c.amarelo, depois(2 * MIN));
     await registrarLance(db, v, c.v1, 'gol');
     await encerrarPartida(db, v, depois(3 * MIN));
     expect(await moedaDaNoite(db, c.peladaId)).toEqual({
       partidaId: id,
-      timeA: { id: c.azul, cor: 'azul' },
-      timeB: { id: c.laranja, cor: 'laranja' },
+      timeA: { id: c.branco, cor: 'branco' },
+      timeB: { id: c.preto, cor: 'preto' },
       fixo: { id: c.verde, cor: 'verde' },
       resultado: null,
     });
     expect(await jogarMoeda(db, id, () => 0.99)).toBe('B');
     expect(await jogarMoeda(db, id, () => 0)).toBe('B'); // já jogada: não muda
-    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.laranja, c.azul, c.preto]);
+    expect(await filaDeTimes(db, c.peladaId)).toEqual([c.verde, c.preto, c.branco, c.amarelo]);
     expect((await moedaDaNoite(db, c.peladaId))!.resultado).toBe('B');
   });
 
@@ -994,22 +994,22 @@ describe('moeda do empate', () => {
 
   it('quem jogou menos na noite tem 70%; mesmo número, 50%', async () => {
     const c = await cenario();
-    await empate(c, c.azul, c.verde, NOITE); // azul: 1 jogo
-    const id = await empate(c, c.laranja, c.azul, depois(2 * MIN)); // laranja 1, azul 2
-    // laranja (A) jogou menos: ganha com sorteio < 0.7
+    await empate(c, c.branco, c.verde, NOITE); // branco: 1 jogo
+    const id = await empate(c, c.preto, c.branco, depois(2 * MIN)); // preto 1, branco 2
+    // preto (A) jogou menos: ganha com sorteio < 0.7
     expect(await jogarMoeda(db, id, () => 0.69)).toBe('A');
-    // verde (A, 2 jogos) contra preto (B, 1 jogo): o verde só ganha com sorteio < 0.3
-    const outra = await empate(c, c.verde, c.preto, depois(4 * MIN));
+    // verde (A, 2 jogos) contra amarelo (B, 1 jogo): o verde só ganha com sorteio < 0.3
+    const outra = await empate(c, c.verde, c.amarelo, depois(4 * MIN));
     expect(await jogarMoeda(db, outra, () => 0.31)).toBe('B');
     // mesmo número de jogos: meio a meio
-    const meio = await empate(c, c.laranja, c.preto, depois(6 * MIN)); // laranja 2, preto 2
+    const meio = await empate(c, c.preto, c.amarelo, depois(6 * MIN)); // preto 2, amarelo 2
     expect(await jogarMoeda(db, meio, () => 0.49)).toBe('A');
     expect((await db.select().from(partidas).where(eq(partidas.id, meio)))[0].desempate).toBe('A');
   });
 
   it('sem moeda: vitória, partida aberta ou só 2 times', async () => {
     const c = await cenario();
-    const aberta = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const aberta = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     expect(await motivo(jogarMoeda(db, aberta))).toBe('sem_empate');
     await registrarLance(db, aberta, c.a1, 'gol');
     await encerrarPartida(db, aberta, depois(MIN));

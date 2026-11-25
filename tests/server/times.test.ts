@@ -157,7 +157,7 @@ describe('estadoDaPelada e participantesPadrao', () => {
 });
 
 describe('salvarTimesDefinitivos e timesDaPelada', () => {
-  it('grava os times com as cores na ordem azul, laranja, verde, preto', async () => {
+  it('grava os times com as cores na ordem branco, preto, verde, amarelo', async () => {
     const peladaId = await novaPelada('2026-11-11');
     const ids = await criar(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
     await db.update(jogadores).set({ nota: '4.5' }).where(eq(jogadores.id, ids[0]));
@@ -169,10 +169,10 @@ describe('salvarTimesDefinitivos e timesDaPelada', () => {
     ]);
     const ts = await timesDaPelada(db, peladaId);
     expect(ts.map((t) => [t.cor, t.ordem])).toEqual([
-      ['azul', 1],
-      ['laranja', 2],
+      ['branco', 1],
+      ['preto', 2],
       ['verde', 3],
-      ['preto', 4],
+      ['amarelo', 4],
     ]);
     expect(ts[0].jogadores).toEqual([
       { id: ids[0], nome: 'A', nota: 4.5 },
@@ -385,79 +385,79 @@ describe('moverJogador', () => {
       [ids[0], ids[1]],
       [ids[2], ids[3]],
     ]);
-    const [azul, laranja] = await timesDaPelada(db, peladaId);
-    return { peladaId, ids, azul: azul.id, laranja: laranja.id };
+    const [branco, preto] = await timesDaPelada(db, peladaId);
+    return { peladaId, ids, branco: branco.id, preto: preto.id };
   }
   const elencos = async (peladaId: number) => (await timesDaPelada(db, peladaId)).map((t) => t.jogadores.map((j) => j.id).sort());
 
   it('tira de um time e põe em outro', async () => {
-    const { peladaId, ids, azul, laranja } = await cenario();
-    await moverJogador(db, ids[0], azul, laranja);
+    const { peladaId, ids, branco, preto } = await cenario();
+    await moverJogador(db, ids[0], branco, preto);
     expect(await elencos(peladaId)).toEqual([[ids[1]], [ids[0], ids[2], ids[3]].sort()]);
   });
 
   it('tira do time (para = null)', async () => {
-    const { peladaId, ids, laranja } = await cenario();
-    await moverJogador(db, ids[3], laranja, null);
+    const { peladaId, ids, preto } = await cenario();
+    await moverJogador(db, ids[3], preto, null);
     expect(await elencos(peladaId)).toEqual([[ids[0], ids[1]].sort(), [ids[2]]]);
   });
 
   it('põe quem estava fora (de = null)', async () => {
-    const { peladaId, ids, azul } = await cenario();
+    const { peladaId, ids, branco } = await cenario();
     const [novo] = await criar(['Novo']);
-    await moverJogador(db, novo, null, azul);
+    await moverJogador(db, novo, null, branco);
     expect(await elencos(peladaId)).toEqual([[ids[0], ids[1], novo].sort(), [ids[2], ids[3]].sort()]);
   });
 
   it('um time por jogador por pelada: pôr sem dizer de onde tira do time antigo', async () => {
-    const { peladaId, ids, laranja } = await cenario();
-    await moverJogador(db, ids[0], null, laranja);
+    const { peladaId, ids, preto } = await cenario();
+    await moverJogador(db, ids[0], null, preto);
     expect(await elencos(peladaId)).toEqual([[ids[1]], [ids[0], ids[2], ids[3]].sort()]);
   });
 
   it('o mesmo jogador pode estar num time de outra pelada', async () => {
-    const { peladaId, ids, azul } = await cenario();
+    const { peladaId, ids, branco } = await cenario();
     const outra = await novaPelada('2026-11-18');
     await salvarTimesDefinitivos(db, outra, [[ids[2]]]);
-    await moverJogador(db, ids[2], null, azul);
+    await moverJogador(db, ids[2], null, branco);
     expect((await elencos(peladaId))[0]).toContain(ids[2]);
     expect((await elencos(outra))[0]).toEqual([ids[2]]);
   });
 
   it('recusa pôr jogador desativado num time, mas deixa tirá-lo', async () => {
-    const { peladaId, ids, azul, laranja } = await cenario();
+    const { peladaId, ids, branco, preto } = await cenario();
     const [inativo] = await criar(['Zé'], { ativo: false });
-    await expect(moverJogador(db, inativo, null, azul)).rejects.toMatchObject({
+    await expect(moverJogador(db, inativo, null, branco)).rejects.toMatchObject({
       motivo: 'jogador_inativo',
     });
     await db.update(jogadores).set({ ativo: false }).where(eq(jogadores.id, ids[2]));
-    await expect(moverJogador(db, ids[2], laranja, azul)).rejects.toMatchObject({ motivo: 'jogador_inativo' });
-    await moverJogador(db, ids[2], laranja, null);
+    await expect(moverJogador(db, ids[2], preto, branco)).rejects.toMatchObject({ motivo: 'jogador_inativo' });
+    await moverJogador(db, ids[2], preto, null);
     expect((await elencos(peladaId))[1]).toEqual([ids[3]]);
   });
 
   it('recusa time inexistente, jogador fora do time de origem e times de peladas diferentes', async () => {
-    const { ids, azul, laranja } = await cenario();
+    const { ids, branco, preto } = await cenario();
     const outra = await novaPelada('2026-11-18');
     await salvarTimesDefinitivos(db, outra, [[ids[0]]]);
     const [timeDaOutra] = await timesDaPelada(db, outra);
-    await expect(moverJogador(db, ids[0], azul, 999_999)).rejects.toMatchObject({ motivo: 'time_inexistente' });
-    await expect(moverJogador(db, ids[2], azul, laranja)).rejects.toMatchObject({ motivo: 'fora_do_time' });
-    await expect(moverJogador(db, ids[1], azul, timeDaOutra.id)).rejects.toMatchObject({ motivo: 'peladas_diferentes' });
+    await expect(moverJogador(db, ids[0], branco, 999_999)).rejects.toMatchObject({ motivo: 'time_inexistente' });
+    await expect(moverJogador(db, ids[2], branco, preto)).rejects.toMatchObject({ motivo: 'fora_do_time' });
+    await expect(moverJogador(db, ids[1], branco, timeDaOutra.id)).rejects.toMatchObject({ motivo: 'peladas_diferentes' });
     await expect(moverJogador(db, ids[1], null, null)).rejects.toBeInstanceOf(ErroTimes);
   });
 
   it('mesmo time de origem e destino: não faz nada', async () => {
-    const { peladaId, ids, azul } = await cenario();
-    await moverJogador(db, ids[0], azul, azul);
+    const { peladaId, ids, branco } = await cenario();
+    await moverJogador(db, ids[0], branco, branco);
     expect((await elencos(peladaId))[0]).toEqual([ids[0], ids[1]].sort());
   });
 
   it('pôr num time com COMPLETE: o jogador ocupa a vaga de um COMPLETE (o mais antigo)', async () => {
-    const { peladaId, ids, azul, laranja } = await cenario();
-    const primeiro = await adicionarComplete(db, azul, 2.5);
-    const segundo = await adicionarComplete(db, azul, 3.5);
-    await moverJogador(db, ids[2], laranja, azul);
+    const { peladaId, ids, branco, preto } = await cenario();
+    const primeiro = await adicionarComplete(db, branco, 2.5);
+    const segundo = await adicionarComplete(db, branco, 3.5);
+    await moverJogador(db, ids[2], preto, branco);
     const [a, l] = await timesDaPelada(db, peladaId);
     expect(a.jogadores.map((j) => j.id).sort()).toEqual([ids[0], ids[1], ids[2]].sort());
     expect(a.completes).toEqual([{ id: segundo, nota: 3.5 }]);
@@ -466,7 +466,7 @@ describe('moverJogador', () => {
     expect(primeiro).toBeLessThan(segundo);
     // quem estava fora também consome
     const [novo] = await criar(['Novo']);
-    await moverJogador(db, novo, null, azul);
+    await moverJogador(db, novo, null, branco);
     expect((await timesDaPelada(db, peladaId))[0].completes).toEqual([]);
   });
 
@@ -474,14 +474,14 @@ describe('moverJogador', () => {
     const peladaId = await novaPelada('2026-11-11');
     const ids = await criar(['A', 'B', 'C', 'D', 'E']);
     await salvarTimesDefinitivos(db, peladaId, [[ids[0], ids[1], ids[2], ids[3]], [ids[4]]], [[], [3]]);
-    const [azul, laranja] = await timesDaPelada(db, peladaId);
+    const [branco, preto] = await timesDaPelada(db, peladaId);
     const [novo] = await criar(['Novo']);
-    await moverJogador(db, novo, null, azul.id);
+    await moverJogador(db, novo, null, branco.id);
     const [a, l] = await timesDaPelada(db, peladaId);
     expect(a.jogadores).toHaveLength(5);
     expect(a.completes).toEqual([]);
     expect(l.completes).toHaveLength(1); // o COMPLETE do outro time fica
-    expect(laranja.completes).toHaveLength(1);
+    expect(preto.completes).toHaveLength(1);
   });
 });
 

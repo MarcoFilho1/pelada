@@ -346,11 +346,11 @@ describe('perguntar (Claude)', () => {
   });
 
   describe('sorteio pela IA', () => {
-    const PROPOSTA = '🎲 Times sorteados:\n\n🔵 Azul (7,0)\n- Ana 7,0\n\nConfirma? Responda *sim* em até 10 minutos ✅';
+    const PROPOSTA = '🎲 Times sorteados:\n\n⚪ Branco (7,0)\n- Ana 7,0\n\nConfirma? Responda *sim* em até 10 minutos ✅';
     const sorteio = (executar = vi.fn(async () => new TextoPronto(PROPOSTA, 'sorteio'))) => ferramenta('pedir_sorteio', executar, { sorteio: true });
 
     it('o texto da proposta sai exatamente como foi guardado; do modelo só uma linha curta antes', async () => {
-      const reescrita = `Bora! 🎲\nTimes: Azul com Ana e Bia (inventado)\n${'x'.repeat(300)}`;
+      const reescrita = `Bora! 🎲\nTimes: Branco com Ana e Bia (inventado)\n${'x'.repeat(300)}`;
       const r = await perguntar('sorteia', base(falso(chamada('pedir_sorteio', {}), texto(reescrita)).cliente, [sorteio()]));
       expect(r).toBe(`Bora! 🎲\n\n${PROPOSTA}`);
       const semTexto = await perguntar('sorteia', base(falso(chamada('pedir_sorteio', {}), mensagem([{ type: 'text', text: PROPOSTA }])).cliente, [sorteio()]));

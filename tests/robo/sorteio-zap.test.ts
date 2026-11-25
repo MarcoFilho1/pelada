@@ -91,7 +91,7 @@ describe('sortearTimesDaNoite + montarProposta', () => {
     expect(p).toMatchObject({ origem: 'sorteio', quemPropos: ADMIN, quemProposNome: 'Marco', criadaEm: QUARTA, peladaId, votos: [], data: '2026-11-11' });
     expect(p.elencos.flat()).toHaveLength(10);
     expect(p.completes).toHaveLength(p.elencos.length);
-    expect(p.blocos).toMatch(/^🔵 Azul \(\d+,\d\)\n- \S+ \d,\d/);
+    expect(p.blocos).toMatch(/^⚪ Branco \(\d+,\d\)\n- \S+ \d,\d/);
     expect(p.blocos).toContain('- COMPLETE ');
     expect(p.blocos).toMatch(/\n\nDiferença: \d+,\d$/);
     // Com COMPLETE nos times, a linha que explica o que ele é (a IA chegou a dizer que era erro).
@@ -158,14 +158,14 @@ describe('sortearTimesDaNoite + montarProposta', () => {
     expect(await sortearTimesDaNoite(db, QUARTA, rng)).toEqual({ erro: '👥 Poucos confirmados para sortear.' });
   });
 
-  it('padrão 4; com 3: Azul, Laranja e Verde (10 jogadores: 4, 3, 3 com 2 COMPLETE)', async () => {
+  it('padrão 4; com 3: Branco, Preto e Verde (10 jogadores: 4, 3, 3 com 2 COMPLETE)', async () => {
     expect((await proposta(4)).elencos).toHaveLength(4);
     const p = await proposta(3);
     expect(p.elencos).toHaveLength(3);
     expect(p.completes.flat()).toHaveLength(2);
     expect(p.elencos.map((e, i) => e.length + p.completes[i].length)).toEqual([4, 4, 4]);
     expect(p.blocos).toContain('🟢 Verde');
-    expect(p.blocos).not.toContain('⚫');
+    expect(p.blocos).not.toContain('🟡');
   });
 });
 
@@ -195,7 +195,7 @@ describe('salvarProposta', () => {
     const p = await proposta(3);
     expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
     const ts = await timesDaPelada(db, peladaId);
-    expect(ts.map((t) => t.cor)).toEqual(['azul', 'laranja', 'verde']);
+    expect(ts.map((t) => t.cor)).toEqual(['branco', 'preto', 'verde']);
     expect(ts.map((t) => t.jogadores.map((j) => j.id).sort())).toEqual(p.elencos.map((e) => [...e].sort()));
     expect(ts.map((t) => t.completes.map((c) => c.nota))).toEqual(p.completes);
   });
@@ -230,7 +230,7 @@ describe('importarTimesColados', () => {
     expect(r.times.map((t) => t.jogadores.map((j) => j.nome))).toEqual([['Ana', 'Beto', 'Caio', 'Davi'], ['Edu', 'Fabio', 'Gil', 'Hugo']]);
     expect(r.times[0].soma).toBe(2 + 3 + 4 + 5);
     const p = montarProposta('importado', quem, QUARTA, r);
-    expect(p.texto.startsWith('📥 Times importados por Marco para quarta, 11/11:\n\n🔵 Azul (14,0)')).toBe(true);
+    expect(p.texto.startsWith('📥 Times importados por Marco para quarta, 11/11:\n\n⚪ Branco (14,0)')).toBe(true);
     // Importado salva sem conferir a lista (os times vieram de fora).
     expect(await salvarProposta(db, mais(1), p)).toEqual({ ok: true });
   });
@@ -328,8 +328,8 @@ describe('trocarNaProposta (troca jogadores entre os times de uma proposta)', ()
     const r = await trocarNaProposta(db, p, [{ de: 'ana', por: 'Caio' }], DEPOIS);
     if ('erro' in r) throw new Error(r.erro);
     expect(r.proposta.elencos).toEqual([[await idDe('Caio'), await idDe('Beto')], [await idDe('Ana'), await idDe('Davi')]]);
-    expect(r.proposta.blocos).toContain('🔵 Azul (7,0)\n- Caio 4,0\n- Beto 3,0');
-    expect(r.proposta.blocos).toContain('🟠 Laranja (7,0)\n- Ana 2,0\n- Davi 5,0');
+    expect(r.proposta.blocos).toContain('⚪ Branco (7,0)\n- Caio 4,0\n- Beto 3,0');
+    expect(r.proposta.blocos).toContain('⚫ Preto (7,0)\n- Ana 2,0\n- Davi 5,0');
     expect(r.proposta.votos).toEqual([]);
     expect(r.proposta.criadaEm).toEqual(DEPOIS);
     expect(r.proposta.texto).toContain(INSTRUCOES_VOTO);

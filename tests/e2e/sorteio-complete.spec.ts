@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { E2E } from './ambiente';
 
-// A pelada de hoje já tem os times definitivos da semente (Azul e Laranja, 8 jogadores). Este teste
+// A pelada de hoje já tem os times definitivos da semente (Branco e Preto, 8 jogadores). Este teste
 // sorteia de novo com 14 (os 8 + 6 sem time), marca o sorteio com 2 COMPLETE como definitivo e põe um
 // jogador sem time no lugar de um deles. Roda depois do anotador.spec.ts (ordem alfabética, 1 worker):
 // aí a pelada já tem 1 partida jogada e marcar pede a confirmação na tela; rodando sozinho, não pede.

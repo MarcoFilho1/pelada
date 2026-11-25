@@ -18,7 +18,7 @@ import type { Moeda3D } from './moeda-3d';
 type Lado = 'A' | 'B';
 type PedidoDeOrientacao = { requestPermission?: () => Promise<'granted' | 'denied'> };
 
-const COR_DA_FACE: Record<Cor, string> = { azul: '#4d8dff', laranja: '#ff9a3d', verde: '#2fbf6a', preto: '#1c1c1c' };
+const COR_DA_FACE: Record<Cor, string> = { branco: '#f4f4f4', preto: '#1c1c1c', verde: '#2fbf6a', amarelo: '#ffc933', azul: '#4d8dff', laranja: '#ff9a3d' };
 const INCLINACAO_MAX = 22;
 
 const reduzido = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

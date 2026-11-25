@@ -62,7 +62,7 @@ const TIMES: TimesPropostos = {
     { jogadores: [{ id: 2, nome: 'Bia', nota: 2.5 }], completes: [], soma: 2.5 },
   ],
 };
-const BLOCOS = '🔵 Azul (3,0)\n- Ana 3,0\n\n🟠 Laranja (2,5)\n- Bia 2,5\n\nDiferença: 0,5';
+const BLOCOS = '⚪ Branco (3,0)\n- Ana 3,0\n\n⚫ Preto (2,5)\n- Bia 2,5\n\nDiferença: 0,5';
 const textoProposta = (nome = 'Zeca', origem: 'sorteio' | 'importado' = 'sorteio') =>
   `${origem === 'sorteio' ? '🎲 Times sorteados' : '📥 Times importados'} por ${nome}:\n\n${BLOCOS}\n\n${INSTRUCOES_VOTO}`;
 
@@ -331,7 +331,7 @@ describe('responder: sorteio com 2 de 3', () => {
     await passo('sim', c, ADMIN);
     const r = await passo('sim', c, OUTRO_ADMIN, { remetenteNome: 'Pepe' });
     expect(r?.texto).toBe(`${TEXTO_SALVOS}\nZeca decide quando mandar no grupo.`);
-    expect(r?.texto).not.toContain('Azul');
+    expect(r?.texto).not.toContain('Branco');
     expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
   });
 
@@ -476,12 +476,12 @@ describe('importar times (privado)', () => {
 
 describe('times com proposta pendente (sem vazar)', () => {
   it('no grupo: "ainda não foram definidos", mesmo com times salvos; sem proposta, os salvos', async () => {
-    const c = ctx({ consultar: vi.fn(async () => '👕 Times de hoje:\n\n🔵 Azul\n- Ana') });
+    const c = ctx({ consultar: vi.fn(async () => '👕 Times de hoje:\n\n⚪ Branco\n- Ana') });
     c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00') });
     expect((await responder(msg('times'), c))?.texto).toBe(TEXTO_TIMES_INDEFINIDOS);
     expect(c.consultar).not.toHaveBeenCalled();
     c.proposta.atual = null;
-    expect((await responder(msg('times'), c))?.texto).toBe('👕 Times de hoje:\n\n🔵 Azul\n- Ana');
+    expect((await responder(msg('times'), c))?.texto).toBe('👕 Times de hoje:\n\n⚪ Branco\n- Ana');
   });
 
   it('proposta vencida não trava mais', async () => {
@@ -888,7 +888,7 @@ describe('responder: brincadeira com o calvinho (quem pede é o Jonas)', () => {
     ajuda: PREFIXOS_CALVINHO.ajuda!,
   };
   const doJonas = (texto: string, over: Partial<MensagemRecebida> = {}) => msg(texto, { remetenteTelefone: JONAS, remetenteNome: 'Jonas', ...over });
-  const consultaTimes = async () => '👕 Times de hoje:\n\n🔵 Azul\n- Ana';
+  const consultaTimes = async () => '👕 Times de hoje:\n\n⚪ Branco\n- Ana';
 
   it.each(Object.keys(PREFIXOS))('%s: uma das variantes, uma linha antes do texto normal', async (comando) => {
     for (const rng of [() => 0, () => 0.999]) {
