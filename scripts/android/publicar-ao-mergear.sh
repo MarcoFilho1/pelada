@@ -14,6 +14,17 @@ MARCA="$HOME/Library/Application Support/PeladaRobo/android-publicado.txt"
 hora() { date "+%Y-%m-%d %H:%M"; }
 avisar() { osascript -e "display notification \"$2\" with title \"$1\"" >/dev/null 2>&1 || true; }
 
+# Com o robô num celular, o "pode mergear" do dono chega pelo banco: se há um pedido, junta o PR
+# (testes antes, sempre) antes de olhar a main. O merge muda a main, e a publicação sai logo abaixo.
+if [ -f "$HOME/Library/Application Support/PeladaRobo/robo-no-celular" ]; then
+  PEDIDO=$(node scripts/revisao/ponte.mjs tirar pedido 2>/dev/null || true)
+  PR=$(printf '%s' "$PEDIDO" | sed -n 's/.*"pr":\([0-9][0-9]*\).*/\1/p')
+  if [ -n "$PR" ]; then
+    echo "$(hora) pedido de juntar o PR #$PR (\"pode mergear\" do dono)"
+    zsh scripts/revisao/mergear.sh "$PR" >> "$HOME/Library/Logs/PeladaRobo/revisao.log" 2>&1 || echo "$(hora) o merge do PR #$PR falhou (veja revisao.log)"
+  fi
+fi
+
 git fetch -q origin main || { echo "$(hora) não consegui buscar a main (sem internet?)"; exit 0; }
 NOVA=$(git rev-parse origin/main)
 ANTIGA=$(cat "$MARCA" 2>/dev/null || echo "")

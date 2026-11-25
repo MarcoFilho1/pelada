@@ -8,13 +8,14 @@ Responda e escreva tudo em português do Brasil.
 - Conversas do dia (uma linha JSON por conversa: quem falou, o que chegou, o que o robô mandou, erro):
   `$CONVERSAS` (arquivo do dia; pode não existir se ninguém falou com o robô).
 - Log do robô do dia: as linhas de `$ROBO_LOG` que começam com a data de hoje (`$HOJE`).
-- Mensagens que saíram pelo ZapGate (só leitura!): `sqlite3 -readonly "$GATE_DB"`, tabela `activity`
+- (Só se `$GATE_DB` for um arquivo que existe; com o robô num celular ele não está disponível: pule.)
+  Mensagens que saíram pelo ZapGate (só leitura!): `sqlite3 -readonly "$GATE_DB"`, tabela `activity`
   (colunas at em ms UTC, kind, chat, parts, preview, status).
 
 ## O que procurar
 Respostas erradas ou que não entenderam o pedido, pedidos ignorados, erros, mensagens que saíram em bloco
 quando deviam sair em partes, textos repetidos ou estranhos, ferramentas da IA que falharam.
-Quedas de internet do Mac (ENOTFOUND, ETIMEDOUT, EHOSTUNREACH) não são defeito do código: só mencione.
+Quedas de internet do aparelho onde o robô roda (ENOTFOUND, ETIMEDOUT, EHOSTUNREACH) não são defeito do código: só mencione.
 
 ## Como corrigir (para cada problema real)
 1. Ache a causa raiz no código antes de mexer.

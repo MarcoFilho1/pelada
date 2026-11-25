@@ -39,7 +39,8 @@ import { fimDaNoite, horaDeTentarResumo, paraDeEsperar, textosDoResumo } from '.
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
-import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, ehPodeMergear } from './revisao';
+import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, CaixaNoBanco, ehPodeMergear } from './revisao';
+import { anotarNoDiario, limparDiarioDoBanco } from '@/server/ponte-do-robo';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -57,7 +58,22 @@ const pastaAuth = join(pasta, 'auth');
 function hora(d: Date): string {
   return new Date(d.getTime() - 3 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
 }
-const log = (linha: string) => console.log(`${hora(new Date())} ${linha}`);
+/**
+ * Com o robô longe do Mac da auto-revisão (num celular), o que ele escreve vai também para o banco,
+ * que é a ponte entre os dois (docs/android.md). Ligado no laço, depois que o banco existe.
+ */
+let espelharNoBanco: ((tipo: 'conversa' | 'log', dados: string, quando: Date) => void) | null = null;
+const log = (linha: string) => {
+  const agora = new Date();
+  console.log(`${hora(agora)} ${linha}`);
+  // A volta de cada minuto sem novidade não interessa à revisão.
+  if (linha !== 'nada a enviar') espelharNoBanco?.('log', `${hora(agora)} ${linha}`, agora);
+};
+
+/** O robô usa o banco como ponte quando não está no Mac, ou quando `ROBO_PONTE=banco` manda. */
+function usaPonteNoBanco(): boolean {
+  return process.env.ROBO_PONTE === 'banco' || (process.env.ROBO_PONTE !== 'pasta' && process.platform !== 'darwin');
+}
 
 function parar(msg: string, codigo = 1): never {
   console.error(msg);
@@ -404,7 +420,13 @@ async function laco(): Promise<void> {
   };
 
   // ---- Auto-revisão: avisos ao dono e o "pode mergear" ----
-  const caixa = new CaixaDaRevisao(join(homedir(), 'Library/Logs/PeladaRobo/revisao'), () => new Date());
+  const noCelular = usaPonteNoBanco();
+  const caixa = noCelular ? new CaixaNoBanco(db, () => new Date()) : new CaixaDaRevisao(join(homedir(), 'Library/Logs/PeladaRobo/revisao'), () => new Date());
+  if (noCelular) {
+    // Nunca atrapalha o robô: uma linha que não foi para o banco só deixa a revisão com menos contexto.
+    espelharNoBanco = (tipo, dados, quando) => void anotarNoDiario(db, tipo, dados, quando).catch((err) => console.error(`ponte: não anotei no banco (${(err as Error).message})`));
+    log('ponte com o Mac pelo banco: conversas, registro e recados da revisão');
+  }
   /** Mensagens ao dono (1º de ROBO_ADMINS), numa entrega só pelo ZapGate; lança se não saiu. */
   const avisarDono = async (partes: string[]) => {
     const wa = await conexao!;
@@ -416,23 +438,23 @@ async function laco(): Promise<void> {
   // Entre 23:00 e 08:00 o ZapGate recusa mensagem que o robô começa (anti-ban): os avisos esperam a manhã.
   const conferirRevisao = async (now: Date) => {
     if (emSilencio(now)) return;
-    const r = caixa.novoResultado();
+    const r = await caixa.novoResultado();
     if (r) {
       try {
         await avisarDono(avisoDaRevisao(r));
         log(`revisão: aviso mandado ao dono (${r.status}${r.pr ? `, PR #${r.pr}` : ''})`);
       } catch (err) {
-        caixa.devolverResultado(r);
+        await caixa.devolverResultado(r);
         log(`revisão: aviso não saiu (tenta na próxima volta): ${(err as Error).message}`);
       }
     }
-    const mg = caixa.resultadoDoMerge();
+    const mg = await caixa.resultadoDoMerge();
     if (mg) {
       log(`revisão: merge do PR #${mg.pr} ${mg.status === 'ok' ? 'ok' : `falhou (${mg.motivo})`}`);
       try {
-        await avisarDono([avisoDoMerge(mg)]);
+        await avisarDono([avisoDoMerge(mg, noCelular)]);
       } catch (err) {
-        caixa.devolverMerge(mg);
+        await caixa.devolverMerge(mg);
         log(`revisão: aviso do merge não saiu (tenta na próxima volta): ${(err as Error).message}`);
       }
     }
@@ -440,8 +462,13 @@ async function laco(): Promise<void> {
   /** "pode mergear" do dono no privado, com revisão pendente: solta o script de merge, que sobrevive ao reinício. */
   const talvezMergear = async (m: MensagemRecebida): Promise<string | null> => {
     if (!m.privado || !m.remetenteTelefone || !admins[0] || !ehAdmin(m.remetenteTelefone, [admins[0]]) || !ehPodeMergear(m.texto)) return null;
-    const pr = caixa.comecarMerge();
+    const pr = await caixa.comecarMerge();
     if (pr === null) return null;
+    if (noCelular) {
+      // Longe do Mac, o robô só deixa o pedido no banco: quem junta é o Mac, que confere a cada 5 minutos.
+      log(`revisão: "pode mergear" do dono; pedido de juntar o PR #${pr} deixado para o Mac`);
+      return `⏳ Pedi para juntar o PR #${pr}: o Mac roda os testes e junta em alguns minutos. Te aviso quando terminar.`;
+    }
     const saida = openSync(join(homedir(), 'Library/Logs/PeladaRobo/revisao.log'), 'a');
     try {
       const filho = spawn('/bin/zsh', [join(process.cwd(), 'scripts/revisao/mergear.sh'), String(pr)], { detached: true, stdio: ['ignore', saida, saida] });
@@ -475,8 +502,11 @@ async function laco(): Promise<void> {
     if (m.privado && m.remetenteTelefone && ehAdmin(m.remetenteTelefone, admins)) conversas.set(m.remetenteTelefone, m.grupoId);
     // O que de fato saiu, para o diário das conversas (a auto-revisão lê).
     const enviado: string[] = [];
-    const anotar = (erro?: string) =>
-      registrarConversa(PASTA_DO_DIARIO, { quando: m.quando.toISOString(), onde: m.privado ? 'privado' : 'grupo', quem: m.remetenteNome, recebido: m.texto, enviado, ...(erro ? { erro } : {}) });
+    const anotar = (erro?: string) => {
+      const entrada = { quando: m.quando.toISOString(), onde: m.privado ? ('privado' as const) : ('grupo' as const), quem: m.remetenteNome, recebido: m.texto, enviado, ...(erro ? { erro } : {}) };
+      registrarConversa(PASTA_DO_DIARIO, entrada);
+      espelharNoBanco?.('conversa', JSON.stringify(entrada), m.quando);
+    };
     const enviar = m.privado ? enviarNoPrivado(m.grupoId) : enviarNoGrupo;
     const enviarPartes = m.privado ? enviarPartesNoPrivado(m.grupoId) : (partes: string[]) => enviarPartesNoGrupo(partes);
     try {
@@ -778,6 +808,7 @@ async function laco(): Promise<void> {
     if (diaDaLimpeza !== dataDe(now)) {
       diaDaLimpeza = dataDe(now);
       const apagados = limparDiario(PASTA_DO_DIARIO, now);
+      if (espelharNoBanco) void limparDiarioDoBanco(db, now).catch(() => {});
       if (apagados.length) log(`diário: apagados ${apagados.length} dia(s) com mais de 7 dias`);
     }
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
