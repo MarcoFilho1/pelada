@@ -541,3 +541,9 @@ describe('fala que só repete a mudança na lista sai (o texto pronto já diz)',
     expect(await perguntarEmPartes('me bota', base(cliente, [entrou()]))).toEqual(['Davidson chega cedo hoje', '✅ David entrou na lista! (pedido por David)']);
   });
 });
+
+describe('o que o robô sabe de cor', () => {
+  it('o endereço da pelada está nas instruções (25/11: pediram no grupo e ele não sabia)', () => {
+    expect(SISTEMA).toContain('Rua Dr. San Juan, 193 - Estados, João Pessoa - PB, CEP 58030-226');
+  });
+});
