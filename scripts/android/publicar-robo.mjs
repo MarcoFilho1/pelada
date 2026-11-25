@@ -20,6 +20,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, w
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { oQueApagar } from './guardar-duas.mjs';
+import { novidadesDoTopo } from './novidades.mjs';
 
 const arg = (nome) => process.argv.find((a) => a.startsWith(`--${nome}=`))?.slice(nome.length + 3);
 const caminhoDaChave = arg('chave') ?? join(homedir(), 'Library', 'Application Support', 'PeladaRobo', 'android-atualizacao.pem');
@@ -71,6 +72,10 @@ if (!nomeDaVersao || !Number.isFinite(numero)) {
 const bytes = readFileSync(arquivo);
 const robo = { versao: nomeDaVersao, numero, url: `robo-${nomeDaVersao}.mjs`, sha256: sha256(bytes) };
 robo.assinatura = assinar('robo', robo);
+// O que mudou, para o app mostrar ao dono (Ajustes › Última atualização). Não entra na assinatura:
+// é só texto para ler, e o app velho ignora o campo.
+const novidades = existsSync('NOVIDADES.md') ? novidadesDoTopo(readFileSync('NOVIDADES.md', 'utf8')) : null;
+if (novidades) robo.novidades = novidades.linhas;
 copyFileSync(arquivo, join(saida, robo.url));
 const manifesto = { robo };
 
@@ -82,6 +87,9 @@ if (apk) {
     process.exit(1);
   }
   item.assinatura = assinar('app', item);
+  // --app-novidades="uma|outra": o que mudou no app (o app também traz as próprias novidades embutidas).
+  const doApp = (arg('app-novidades') ?? '').split('|').map((l) => l.trim()).filter(Boolean);
+  if (doApp.length) item.novidades = doApp.slice(0, 8);
   copyFileSync(apk, join(saida, item.url));
   manifesto.app = item;
 }
