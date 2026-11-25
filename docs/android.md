@@ -81,6 +81,11 @@ node scripts/android/publicar-robo.mjs --subir   # empacota, assina, manda os ar
 Blob store do projeto na Vercel) do ambiente ou de
 `~/Library/Application Support/PeladaRobo/android-publicar.env`.
 
+O manifesto leva também as **novidades**: a primeira seção do `NOVIDADES.md` (raiz do repositório),
+escrita para o dono, sem termo técnico. O app guarda cada atualização com essas linhas e mostra em
+Ajustes › Última atualização. Mudou algo que o dono percebe? Acrescente a linha no `NOVIDADES.md`
+no mesmo PR.
+
 Depois de publicar, o `--subir` apaga do armazenamento o que o manifesto novo não usa mais. Ficam
 a versão no ar e a anterior (a reserva, para voltar atrás), do app e do robô. Cada app ocupa uns
 70 MB e o plano grátis da Vercel dá 1 GB: sem essa limpeza o espaço enche em poucos dias. A regra
