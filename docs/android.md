@@ -81,6 +81,11 @@ node scripts/android/publicar-robo.mjs --subir   # empacota, assina, manda os ar
 Blob store do projeto na Vercel) do ambiente ou de
 `~/Library/Application Support/PeladaRobo/android-publicar.env`.
 
+Depois de publicar, o `--subir` apaga do armazenamento o que o manifesto novo não usa mais. Ficam
+a versão no ar e a anterior (a reserva, para voltar atrás), do app e do robô. Cada app ocupa uns
+70 MB e o plano grátis da Vercel dá 1 GB: sem essa limpeza o espaço enche em poucos dias. A regra
+está em `scripts/android/guardar-duas.mjs`.
+
 **Publicar sozinho a cada merge na `main`.** Um serviço do Mac confere a `main` de 5 em 5
 minutos; quando ela muda e a mudança mexe no robô (código, dependências ou empacotamento), ele
 empacota, assina e publica, e mostra uma notificação. A chave de assinatura continua só no Mac;
