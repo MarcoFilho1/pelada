@@ -13,6 +13,7 @@ import {
   aplicarPendente,
   aposLer,
   citaORobo,
+  comSemente,
   diasParaLer,
   gravarCaderno,
   lerCaderno,
@@ -28,6 +29,7 @@ import {
   type Caderno,
   type Nota,
 } from '@/robo/caderno';
+import { falasDaExportacao } from '@/robo/caderno-importar';
 import { perguntar, SISTEMA, type ClienteIA } from '@/robo/ia';
 
 const pasta = () => mkdtempSync(join(tmpdir(), 'caderno-'));
@@ -271,5 +273,51 @@ describe('o robô usa o caderno ao responder', () => {
     expect(usuario(pedidos[1])).not.toContain('O que você lembra do grupo');
     expect(JSON.stringify(pedidos[0].system)).toBe(JSON.stringify(pedidos[1].system));
     expect(JSON.stringify(pedidos[0].system)).toContain(SISTEMA.slice(0, 20));
+  });
+});
+
+describe('linhas que chegam do Mac (importação de uma conversa antiga)', () => {
+  it('ficam pendentes, conferidas, sem mexer no dia já lido', () => {
+    const c = comSemente(com([nota(1, 'linha um')], { lido: '2026-11-25' }), '2026-11-25', { novas: ['Uma resenha de ontem no grupo', 'linha um', 'liga 83 98888-7777'], tirar: [1] });
+    expect(c.pendente).toEqual({ dia: '2026-11-25', novas: ['Uma resenha de ontem no grupo'], tirar: [] });
+    expect(c.lido).toBe('2026-11-25');
+    expect(linhasDoCaderno(c)).toEqual(['linha um']);
+  });
+
+  it('juntam-se ao que já esperava o dono, sem repetir; recado estragado não muda nada', () => {
+    const antes = aposLer(com([]), '2026-11-25', { novas: ['A linha da leitura da noite'], tirar: [] });
+    const c = comSemente(antes, '2026-11-25', { novas: ['a linha da leitura da noite', 'Outra resenha importada'] });
+    expect(c.pendente?.novas).toEqual(['A linha da leitura da noite', 'Outra resenha importada']);
+    expect(comSemente(antes, '2026-11-25', null)).toBe(antes);
+    expect(comSemente(antes, '2026-11-25', { novas: 'texto' })).toBe(antes);
+  });
+});
+
+describe('conversa exportada pelo WhatsApp', () => {
+  const conversa = [
+    '[24/11/26, 08:23:06] ~ Bartô Neto 🦊: ‎This message was deleted.',
+    '[24/11/26, 08:24:25] ~ Caio: O bot só trabalha a partir das 9h?',
+    '[24/11/26, 08:34:33] Marco Filho: A principio a partir das 8',
+    'Mas depende do meu pc',
+    '[24/11/26, 08:40:07] Assistente Marco: ✅ Cadastrado: Luciano (2,0).',
+    '[24/11/26, 09:00:00] +55 83 98888-7777: me liga no 83 98888-7777',
+    '[24/11/26, 09:01:00] pepe: ‎image omitted',
+    '[25/11/26, 10:00:00] pepe: hoje tem',
+    '[26/11/26, 10:00:00] pepe: fora do pedido',
+    '25/11/2026 11:30 - jonas: formato do Android',
+  ].join('\r\n');
+
+  it('separa por dia, junta as linhas de continuação e tira robô, mídia, apagadas e telefones', () => {
+    const r = falasDaExportacao(conversa, ['2026-11-24', '2026-11-25'], 'Assistente Marco');
+    expect(r.get('2026-11-24')).toEqual([
+      { quando: '2026-11-24T08:24:25-03:00', quem: 'Caio', texto: 'O bot só trabalha a partir das 9h?', cita: true },
+      { quando: '2026-11-24T08:34:33-03:00', quem: 'Marco Filho', texto: 'A principio a partir das 8 Mas depende do meu pc', cita: false },
+      { quando: '2026-11-24T09:00:00-03:00', quem: 'alguém', texto: 'me liga no (telefone)', cita: false },
+    ]);
+    expect(r.get('2026-11-25')?.map((f) => `${f.quem}: ${f.texto}`)).toEqual(['pepe: hoje tem', 'jonas: formato do Android']);
+  });
+
+  it('dia sem nenhuma fala volta vazio', () => {
+    expect(falasDaExportacao(conversa, ['2026-11-20'], 'Assistente Marco').get('2026-11-20')).toEqual([]);
   });
 });

@@ -40,9 +40,9 @@ import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noi
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
 import { umaVolta } from './volta';
 import { PASTA_DO_DIARIO, limparDiario, registrarConversa } from './diario';
-import { MIN_FALAS, apagarDia, aplicarPendente, aposLer, diasParaLer, gravarCaderno, lerCaderno, lerComandoDoCaderno, lerFalas, lerODia, linhasDoCaderno, obedecer, ouvir, textoDoAnuncio } from './caderno';
+import { MIN_FALAS, RECADO_DO_CADERNO, apagarDia, aplicarPendente, aposLer, comSemente, diasParaLer, gravarCaderno, lerCaderno, lerComandoDoCaderno, lerFalas, lerODia, linhasDoCaderno, obedecer, ouvir, textoDoAnuncio } from './caderno';
 import { avisoDaRevisao, avisoDoMerge, CaixaDaRevisao, CaixaNoBanco, ehPodeMergear } from './revisao';
-import { anotarNoDiario, limparDiarioDoBanco } from '@/server/ponte-do-robo';
+import { anotarNoDiario, limparDiarioDoBanco, tirarRecado } from '@/server/ponte-do-robo';
 import type { WhatsApp } from './whatsapp';
 
 // O Node tenta IPv6 e IPv4 do banco com só 250 ms cada; na internet lenta de casa as duas estouravam
@@ -532,8 +532,24 @@ async function laco(): Promise<void> {
   };
   // Depois de uma falha (IA fora, dono sem conversa), espera meia hora: o laço roda de minuto em minuto.
   let cadernoSoDepoisDe = 0;
+  let recadoDoCadernoVistoEm = 0;
   const talvezCaderno = async (now: Date) => {
     if (!cadernoLigado || now.getTime() < cadernoSoDepoisDe) return;
+    // Linhas que o Mac deixou no banco (a importação de uma conversa antiga): confere de 5 em 5 minutos.
+    if (now.getTime() - recadoDoCadernoVistoEm >= 5 * 60_000) {
+      recadoDoCadernoVistoEm = now.getTime();
+      const recado = await tirarRecado(db, RECADO_DO_CADERNO).catch(() => null);
+      if (recado) {
+        try {
+          const dados = JSON.parse(recado) as { dia?: unknown };
+          const antes = caderno.pendente?.novas.length ?? 0;
+          guardarCaderno(comSemente(caderno, typeof dados.dia === 'string' ? dados.dia : dataDe(now), dados));
+          log(`caderno: ${(caderno.pendente?.novas.length ?? 0) - antes} linha(s) chegaram do Mac`);
+        } catch (err) {
+          log(`caderno: recado do Mac estragado, ignorado (${(err as Error).message})`);
+        }
+      }
+    }
     const dia = diasParaLer(pastaDoOuvido, now, caderno.lido)[0];
     if (dia) {
       const falas = lerFalas(pastaDoOuvido, dia);
