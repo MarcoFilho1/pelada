@@ -53,7 +53,7 @@ export function limparSinal(bruto: unknown): Sinal | null {
 }
 
 /** Confere o cabeçalho `Authorization: Bearer <chave>` sem vazar tempo. Sem chave configurada, ninguém passa. Pura. */
-export function chaveDoSinalConfere(cabecalho: string | null, esperada: string | undefined): boolean {
+export function chaveConfere(cabecalho: string | null, esperada: string | undefined): boolean {
   if (!esperada || esperada.length < 24 || !cabecalho?.startsWith('Bearer ')) return false;
   const resumo = (s: string) => createHash('sha256').update(s).digest();
   return timingSafeEqual(resumo(cabecalho.slice(7)), resumo(esperada));
@@ -85,3 +85,6 @@ export function problemaDoSinal(e: EstadoDoSinal | null): string | null {
   if (!e.sinal.roboRodando) return 'O WhatsApp está conectado, mas o robô não está rodando.';
   return null;
 }
+
+/** O nome antigo, mantido para a rota do sinal. */
+export const chaveDoSinalConfere = chaveConfere;

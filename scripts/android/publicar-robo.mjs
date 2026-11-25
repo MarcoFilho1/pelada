@@ -9,6 +9,7 @@
 //   --versao=..  --numero=.. força a versão e o número (para testes)
 //   --app=app.apk --app-versao=0.2.0 --app-numero=2    inclui uma versão nova do próprio app
 //   --app-minimo=2           o robô desta versão só entra em apps a partir deste número
+//   --subir                  além de gerar, manda os arquivos e publica o manifesto no site
 //
 // O que sai em dist/android/publicar/ (manifesto.json e os arquivos) é para subir, do jeito que
 // está, para onde o `atualizacao_url` do pacote aponta. A chave privada nunca sai do computador:
@@ -84,6 +85,46 @@ if (apk) {
   manifesto.app = item;
 }
 if (arg('app-minimo')) manifesto.app_minimo = Number(arg('app-minimo'));
+
+// --subir: manda os arquivos para o armazenamento de arquivos da Vercel (cada um num endereço com
+// um sufixo sorteado, que só aparece dentro do manifesto) e publica o manifesto no site.
+// Precisa, no ambiente ou em ~/Library/Application Support/PeladaRobo/android-publicar.env:
+//   ROBO_ATUALIZACAO_URL=https://<site>/api/robo/atualizacao   ROBO_PUBLICAR_CHAVE=<a chave de publicar>
+// e de uma pasta ligada ao projeto na Vercel (PELADA_VERCEL_DIR, padrão: esta), com um Blob store.
+if (process.argv.includes('--subir')) {
+  const arquivoEnv = join(homedir(), 'Library', 'Application Support', 'PeladaRobo', 'android-publicar.env');
+  if (existsSync(arquivoEnv)) process.loadEnvFile(arquivoEnv);
+  const destino = process.env.ROBO_ATUALIZACAO_URL;
+  const chaveDePublicar = process.env.ROBO_PUBLICAR_CHAVE;
+  if (!destino || !chaveDePublicar) {
+    console.error(`Para --subir faltam ROBO_ATUALIZACAO_URL e ROBO_PUBLICAR_CHAVE (no ambiente ou em ${arquivoEnv}).`);
+    process.exit(1);
+  }
+  const pastaVercel = process.env.PELADA_VERCEL_DIR ?? process.cwd();
+  const subir = (item, pasta) => {
+    const texto = execFileSync('npx', ['--yes', 'vercel', 'blob', 'put', join(process.cwd(), saida, item.url), '--pathname', `${pasta}/${item.url}`, '--add-random-suffix', '--access', 'public'], {
+      cwd: pastaVercel,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const url = texto.match(/https:\/\/[^\s"']+/)?.[0];
+    if (!url) throw new Error(`não entendi a resposta do envio de ${item.url}: ${texto.slice(0, 200)}`);
+    return url;
+  };
+  manifesto.robo.url = subir(manifesto.robo, 'robo');
+  if (manifesto.app) manifesto.app.url = subir(manifesto.app, 'app');
+  const resposta = await fetch(destino, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${chaveDePublicar}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(manifesto),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resposta.ok) {
+    console.error(`O site recusou o manifesto: ${resposta.status} ${await resposta.text()}`);
+    process.exit(1);
+  }
+  console.log(`publicado em ${destino}`);
+}
 
 writeFileSync(join(saida, 'manifesto.json'), JSON.stringify(manifesto, null, 2) + '\n');
 console.log(`pronto em ${saida}/: robô ${robo.versao}${manifesto.app ? `, app ${manifesto.app.versao}` : ''}`);

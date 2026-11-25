@@ -60,12 +60,31 @@ node scripts/android/publicar-robo.mjs chave    # uma vez: cria a chave e mostra
 node scripts/android/publicar-robo.mjs          # empacota, assina e gera dist/android/publicar/
 ```
 
-O conteúdo de `dist/android/publicar/` é para subir, como está, para o endereço que o pacote
-informa (`atualizacao_url`, só HTTPS). Se o servidor pedir senha, o `atualizacao_token` do pacote
-é mandado como `Authorization: Bearer`.
+**Onde ficam os arquivos.** O manifesto fica no próprio site (`/api/robo/atualizacao`, tabela
+`robo_manifesto`, migração `0009`); os arquivos (o robô e, quando há, o APK) ficam no
+armazenamento de arquivos da Vercel (Blob), cada um num endereço com um sufixo sorteado que só
+aparece dentro do manifesto.
+
+- `GET /api/robo/atualizacao`: o app pergunta se há versão nova. Pede `ROBO_ATUALIZACAO_CHAVE`,
+  que vai no pacote do aparelho (`atualizacao_token`) e só lê.
+- `PUT /api/robo/atualizacao`: publica um manifesto. Pede `ROBO_PUBLICAR_CHAVE`, que fica só com
+  quem publica.
+
+São duas chaves de propósito. E nenhuma delas basta para mandar código ao robô: isso exige a
+chave de assinatura, que o site nunca vê.
+
+```sh
+node scripts/android/publicar-robo.mjs --subir   # empacota, assina, manda os arquivos e publica
+```
+
+`--subir` lê `ROBO_ATUALIZACAO_URL` e `ROBO_PUBLICAR_CHAVE` do ambiente ou de
+`~/Library/Application Support/PeladaRobo/android-publicar.env`, e precisa rodar numa pasta ligada
+ao projeto na Vercel.
 
 Para incluir uma versão nova do próprio app:
-`publicar-robo.mjs --app=caminho.apk --app-versao=0.2.0 --app-numero=2`.
+`publicar-robo.mjs --subir --app=caminho.apk --app-versao=0.2.0 --app-numero=2`. O app baixa o
+APK sozinho e mostra o botão de instalar; o Android sempre pede a confirmação de quem está com o
+aparelho (instalar em silêncio não é permitido a apps comuns).
 
 ## Sinal de vida
 

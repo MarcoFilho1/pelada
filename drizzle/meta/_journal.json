@@ -64,6 +64,13 @@
       "when": 1795558482568,
       "tag": "0008_free_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795564954921,
+      "tag": "0009_wise_lockjaw",
+      "breakpoints": true
     }
   ]
 }

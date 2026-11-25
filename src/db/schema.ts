@@ -219,3 +219,11 @@ export const roboSinais = pgTable('robo_sinais', {
   /** O que o app contou (JSON já conferido e limitado por `limparSinal`). */
   dados: text('dados').notNull(),
 });
+
+// O manifesto das atualizações do robô do celular (docs/android.md): o arquivo pequeno que o app
+// consulta para saber se há versão nova. Uma linha só ("atual"); publicar substitui.
+export const roboManifesto = pgTable('robo_manifesto', {
+  id: text('id').primaryKey(),
+  conteudo: text('conteudo').notNull(),
+  atualizadoEm: timestamptz('atualizado_em').notNull(),
+});
