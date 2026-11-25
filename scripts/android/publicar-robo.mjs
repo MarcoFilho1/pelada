@@ -14,7 +14,7 @@
 // O que sai em dist/android/publicar/ (manifesto.json e os arquivos) é para subir, do jeito que
 // está, para onde o `atualizacao_url` do pacote aponta. A chave privada nunca sai do computador:
 // é ela que impede outra pessoa de mandar código para o robô.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -105,13 +105,15 @@ if (process.argv.includes('--subir')) {
     process.exit(1);
   }
   const subir = (item, pasta) => {
-    const texto = execFileSync('npx', ['--yes', 'vercel', 'blob', 'put', join(process.cwd(), saida, item.url), '--pathname', `${pasta}/${item.url}`, '--add-random-suffix', '--access', 'public'], {
+    // A ferramenta escreve o endereço ora na saída normal, ora na de avisos: lê as duas.
+    const r = spawnSync('npx', ['--yes', 'vercel', 'blob', 'put', join(process.cwd(), saida, item.url), '--pathname', `${pasta}/${item.url}`, '--add-random-suffix', '--access', 'public'], {
       // Fora de qualquer pasta de projeto: assim a ferramenta usa só o token do ambiente.
       cwd: tmpdir(),
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const url = texto.match(/https:\/\/[^\s"']+/)?.[0];
+    const texto = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
+    if (r.status !== 0) throw new Error(`o envio de ${item.url} falhou: ${texto.trim().slice(-300)}`);
+    const url = texto.match(/https:\/\/[^\s"']+blob\.vercel-storage\.com\/[^\s"']+/)?.[0];
     if (!url) throw new Error(`não entendi a resposta do envio de ${item.url}: ${texto.slice(0, 200)}`);
     return url;
   };
