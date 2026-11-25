@@ -17,7 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
 const arg = (nome) => process.argv.find((a) => a.startsWith(`--${nome}=`))?.slice(nome.length + 3);
@@ -90,7 +90,7 @@ if (arg('app-minimo')) manifesto.app_minimo = Number(arg('app-minimo'));
 // um sufixo sorteado, que só aparece dentro do manifesto) e publica o manifesto no site.
 // Precisa, no ambiente ou em ~/Library/Application Support/PeladaRobo/android-publicar.env:
 //   ROBO_ATUALIZACAO_URL=https://<site>/api/robo/atualizacao   ROBO_PUBLICAR_CHAVE=<a chave de publicar>
-// e de uma pasta ligada ao projeto na Vercel (PELADA_VERCEL_DIR, padrão: esta), com um Blob store.
+//   BLOB_READ_WRITE_TOKEN=<o token do Blob store do projeto na Vercel>
 if (process.argv.includes('--subir')) {
   const arquivoEnv = join(homedir(), 'Library', 'Application Support', 'PeladaRobo', 'android-publicar.env');
   if (existsSync(arquivoEnv)) process.loadEnvFile(arquivoEnv);
@@ -100,10 +100,14 @@ if (process.argv.includes('--subir')) {
     console.error(`Para --subir faltam ROBO_ATUALIZACAO_URL e ROBO_PUBLICAR_CHAVE (no ambiente ou em ${arquivoEnv}).`);
     process.exit(1);
   }
-  const pastaVercel = process.env.PELADA_VERCEL_DIR ?? process.cwd();
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error(`Para --subir falta também BLOB_READ_WRITE_TOKEN (o token do Blob store do projeto na Vercel), no ambiente ou em ${arquivoEnv}.`);
+    process.exit(1);
+  }
   const subir = (item, pasta) => {
     const texto = execFileSync('npx', ['--yes', 'vercel', 'blob', 'put', join(process.cwd(), saida, item.url), '--pathname', `${pasta}/${item.url}`, '--add-random-suffix', '--access', 'public'], {
-      cwd: pastaVercel,
+      // Fora de qualquer pasta de projeto: assim a ferramenta usa só o token do ambiente.
+      cwd: tmpdir(),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
