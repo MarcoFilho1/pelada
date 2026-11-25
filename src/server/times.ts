@@ -89,7 +89,7 @@ async function todosAtivos(tx: Tx, ids: number[]): Promise<boolean> {
 }
 
 /**
- * Marca os times como definitivos. Cores na ordem azul, laranja, verde, preto; `completes[i]` são
+ * Marca os times como definitivos. Cores na ordem branco, preto, verde, amarelo; `completes[i]` são
  * as notas dos COMPLETE do time `i`. Sem partida na pelada, os times antigos são apagados. Com
  * partida, são arquivados (as partidas apontam para eles) e os novos passam a ser os atuais.
  */

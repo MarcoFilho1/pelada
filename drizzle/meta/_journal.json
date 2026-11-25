@@ -85,6 +85,13 @@
       "when": 1795612890265,
       "tag": "0011_skinny_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795614448584,
+      "tag": "0012_curly_dust",
+      "breakpoints": true
     }
   ]
 }

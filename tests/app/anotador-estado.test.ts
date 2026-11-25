@@ -28,8 +28,8 @@ beforeEach(async () => {
     [ids[0], ids[1]],
     [ids[2], ids[3]],
   ]);
-  const [azul, laranja] = (await timesDaPelada(db, p.id)).map((t) => t.id);
-  partidaId = await iniciarPartida(db, p.id, azul, laranja, new Date());
+  const [branco, preto] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+  partidaId = await iniciarPartida(db, p.id, branco, preto, new Date());
 });
 
 const estado = async () => (await lerEstado(db, partidaId))!;

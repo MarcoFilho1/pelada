@@ -29,7 +29,7 @@ travar. Só para esta pelada: sem multi-tenant, sem cobrança.
 ## Operating Context
 
 - Pelada às quartas, 20:30–22:30, fuso America/Recife. Lista abre segunda 00:00; prazo do
-  mensalista quarta 14:00. 16 vagas, 4 times de 4 (coletes azul, laranja, verde, preto).
+  mensalista quarta 14:00. 16 vagas, 4 times de 4 (coletes branco, preto, verde, amarelo).
 - Uso no celular, em grande parte à noite e ao ar livre, na quadra com refletores *(inferido do
   horário e do pedido de contraste alto)*.
 - Entrada do jogador: "Quem é você?" → digita o nome → escolhe o seu → PIN de 4 números.

@@ -88,7 +88,7 @@ export function paraWhatsApp(texto: string): string {
   return `⚠️ ${texto.replace(/Recarregue a página\./g, 'Tente de novo.')}`;
 }
 
-export const EMOJI_COR: Record<string, string> = { azul: '🔵', laranja: '🟠', verde: '🟢', preto: '⚫' };
+export const EMOJI_COR: Record<string, string> = { branco: '⚪', preto: '⚫', verde: '🟢', amarelo: '🟡', azul: '🔵', laranja: '🟠' };
 const maiuscula = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** Os times com notas, a soma de cada um e a diferença; igual na proposta e no anúncio do grupo. */

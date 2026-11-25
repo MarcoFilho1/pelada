@@ -92,15 +92,15 @@ describe('resumoDoPainel', () => {
     const [pelada] = await db.insert(peladas).values({ data: QUARTA }).returning({ id: peladas.id });
     const [a, b, c, d] = await criar(['Ana', 'Bia', 'Caio', 'Davi']);
     await salvarTimesDefinitivos(db, pelada.id, [[a], [b], [c], [d]]);
-    const [azul, laranja, verde] = (await timesDaPelada(db, pelada.id)).map((t) => t.id);
+    const [branco, preto, verde] = (await timesDaPelada(db, pelada.id)).map((t) => t.id);
     const encerrada = { peladaId: pelada.id, encerradaEm: QUARTA_NOITE, resultado: 'A' as const };
     await db.insert(partidas).values([
-      { ...encerrada, timeAId: azul, timeBId: laranja },
-      { ...encerrada, timeAId: verde, timeBId: azul },
+      { ...encerrada, timeAId: branco, timeBId: preto },
+      { ...encerrada, timeAId: verde, timeBId: branco },
     ]);
     const [aberta] = await db
       .insert(partidas)
-      .values({ peladaId: pelada.id, timeAId: azul, timeBId: laranja })
+      .values({ peladaId: pelada.id, timeAId: branco, timeBId: preto })
       .returning({ id: partidas.id });
 
     const r = await resumoDoPainel(db, QUARTA_NOITE);

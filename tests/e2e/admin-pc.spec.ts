@@ -138,8 +138,8 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
 
   // Times salvos: a busca e o "Sortear de novo" ficam na coluna da esquerda, ao lado dos cartões.
   const sortearDeNovo = page.getByRole('button', { name: 'Sortear de novo' });
-  const azul = page.getByRole('region', { name: 'Azul', exact: true });
-  const [esquerda, cartao] = [await sortearDeNovo.boundingBox(), await azul.boundingBox()];
+  const branco = page.getByRole('region', { name: 'Branco', exact: true });
+  const [esquerda, cartao] = [await sortearDeNovo.boundingBox(), await branco.boundingBox()];
   expect(esquerda!.x + esquerda!.width).toBeLessThan(cartao!.x);
   expect(esquerda!.y).toBeLessThan(cartao!.y + cartao!.height);
 
@@ -158,7 +158,7 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
   await sortear.click();
 
   // Os 4 cartões na mesma linha, à direita de "Quem joga", que continua à vista.
-  const cartoes = page.getByRole('region', { name: /^(Azul|Laranja|Verde|Preto)$/ });
+  const cartoes = page.getByRole('region', { name: /^(Branco|Preto|Verde|Amarelo)$/ });
   await expect(cartoes).toHaveCount(4);
   const caixas = await Promise.all((await cartoes.all()).map((c) => c.boundingBox()));
   expect(new Set(caixas.map((c) => Math.round(c!.y))).size).toBe(1);
@@ -166,10 +166,10 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
   expect(quemJoga!.x + quemJoga!.width).toBeLessThan(caixas[0]!.x);
   await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toBeVisible();
 
-  // Escolher um jogador do Azul abre o painel ao lado dos cartões (sem cobrir nenhum), no lugar de "Quem joga".
-  const laranja = page.getByRole('region', { name: 'Laranja', exact: true });
-  const doAzul = azul.locator('button[aria-pressed]').first();
-  const doLaranja = laranja.locator('button[aria-pressed]').first();
+  // Escolher um jogador do Branco abre o painel ao lado dos cartões (sem cobrir nenhum), no lugar de "Quem joga".
+  const preto = page.getByRole('region', { name: 'Preto', exact: true });
+  const doAzul = branco.locator('button[aria-pressed]').first();
+  const doLaranja = preto.locator('button[aria-pressed]').first();
   const [nomeAzul, nomeLaranja] = [(await doAzul.innerText()).split('\n')[0], (await doLaranja.innerText()).split('\n')[0]];
   await doAzul.click();
   await expect(doAzul).toHaveAttribute('aria-pressed', 'true');
@@ -178,22 +178,22 @@ test('sorteio no PC: quem joga à esquerda, os 4 times numa linha, e o escolhido
   expect((await painel.boundingBox())!.x).toBeLessThan(caixas[0]!.x);
   await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeHidden();
 
-  // Clicar em alguém do Laranja troca os dois de time e fecha o painel; "Quem joga" volta.
+  // Clicar em alguém do Preto troca os dois de time e fecha o painel; "Quem joga" volta.
   await doLaranja.click();
-  await expect(azul.getByRole('button', { name: new RegExp(`^${nomeLaranja} nota`) })).toBeVisible();
-  await expect(laranja.getByRole('button', { name: new RegExp(`^${nomeAzul} nota`) })).toBeVisible();
+  await expect(branco.getByRole('button', { name: new RegExp(`^${nomeLaranja} nota`) })).toBeVisible();
+  await expect(preto.getByRole('button', { name: new RegExp(`^${nomeAzul} nota`) })).toBeVisible();
   await expect(painel).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Quem joga' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   // A escolha "3 times / 4 times" fica à vista no alto da coluna dos times: trocar para 3 invalida a proposta, e
-  // sortear de novo mostra 3 cartões (Azul, Laranja e Verde) na mesma linha.
+  // sortear de novo mostra 3 cartões (Branco, Preto e Verde) na mesma linha.
   await page.getByRole('radio', { name: '3 times' }).click();
   await expect(page.getByText('Agora são 3 times. Sorteie de novo para ver os times.').locator('visible=true')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Sortear 14 em 3 times' }).click();
   await expect(cartoes).toHaveCount(3);
-  await expect(page.getByRole('region', { name: 'Preto', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Amarelo', exact: true })).toHaveCount(0);
   const tres = await Promise.all((await cartoes.all()).map((c) => c.boundingBox()));
   expect(new Set(tres.map((c) => Math.round(c!.y))).size).toBe(1);
   await expect(page.getByRole('button', { name: 'Marcar como definitivo' })).toBeVisible();

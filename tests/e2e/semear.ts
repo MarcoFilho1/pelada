@@ -23,12 +23,12 @@ async function main() {
   const criados = await db
     .insert(schema.jogadores)
     .values([
-      ...[...E2E.azul, ...E2E.laranja, ...E2E.sorteio, E2E.semTime].map((nome) => ({ nome, pinPrecisaTrocar: false })),
+      ...[...E2E.branco, ...E2E.preto, ...E2E.sorteio, E2E.semTime].map((nome) => ({ nome, pinPrecisaTrocar: false })),
       ...Object.values(E2E.novatos).map((nome) => ({ nome })),
     ])
     .returning({ id: schema.jogadores.id, nome: schema.jogadores.nome });
   const idDe = (nome: string) => criados.find((j) => j.nome === nome)!.id;
-  const elencos = [E2E.azul.map(idDe), E2E.laranja.map(idDe)];
+  const elencos = [E2E.branco.map(idDe), E2E.preto.map(idDe)];
 
   // Nada aqui depende de a rodada atravessar a meia-noite ou de que dia da semana é hoje:
   // - o anotador precisa da pelada de HOJE (iniciar partida exige data = hoje); semeamos hoje e
@@ -63,8 +63,8 @@ async function main() {
     for (const [nome, tipo] of gols) await registrarLance(db, partida, idDe(nome), tipo as 'gol' | 'assistencia');
     await encerrarPartida(db, partida, new Date(inicio.getTime() + 5 * 60_000));
   };
-  await jogar([[E2E.azul[0], 'gol'], [E2E.azul[1], 'assistencia'], [E2E.azul[0], 'gol'], [E2E.laranja[0], 'gol'], [E2E.azul[2], 'gol']], 0);
-  await jogar([[E2E.laranja[1], 'gol'], [E2E.laranja[2], 'assistencia'], [E2E.azul[3], 'gol']], 10);
+  await jogar([[E2E.branco[0], 'gol'], [E2E.branco[1], 'assistencia'], [E2E.branco[0], 'gol'], [E2E.preto[0], 'gol'], [E2E.branco[2], 'gol']], 0);
+  await jogar([[E2E.preto[1], 'gol'], [E2E.preto[2], 'assistencia'], [E2E.branco[3], 'gol']], 10);
   console.log(`Ranking semeado em ${mesDe(noJogo)}.`);
 
   // Uma quarta de três semanas atrás só para o novato do jogador no PC ter "Quartas" no perfil (contra o Juca,

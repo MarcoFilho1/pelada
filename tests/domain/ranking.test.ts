@@ -9,7 +9,7 @@ function partida(
   b: number[],
   lances: PartidaEncerrada['lances'] = [],
   encerradaEm = new Date(`${peladaData}T23:00:00Z`),
-  cores: [PartidaEncerrada['corA'], PartidaEncerrada['corB']] = ['azul', 'laranja'],
+  cores: [PartidaEncerrada['corA'], PartidaEncerrada['corB']] = ['branco', 'preto'],
 ): PartidaEncerrada {
   return {
     id: ++seq,
@@ -149,7 +149,7 @@ describe('pontosDe', () => {
 describe('historicoDoJogador', () => {
   it('uma linha por quarta, mais recente primeiro, com as partidas da noite em ordem', () => {
     const p1 = partida('2026-11-04', 'A', [1], [2], [{ jogadorId: 1, tipo: 'gol' }], new Date('2026-11-04T23:40:00Z'));
-    const p2 = partida('2026-11-04', 'empate', [3], [1], [], new Date('2026-11-04T23:55:00Z'), ['verde', 'azul']);
+    const p2 = partida('2026-11-04', 'empate', [3], [1], [], new Date('2026-11-04T23:55:00Z'), ['verde', 'branco']);
     const p3 = partida('2026-11-11', 'B', [1], [2], [{ jogadorId: 1, tipo: 'assistencia' }, { jogadorId: 2, tipo: 'gol' }]);
     // fora de ordem de propósito: dentro da noite, a mais antiga primeiro
     const ps = [p2, p3, p1];
@@ -157,14 +157,14 @@ describe('historicoDoJogador', () => {
       {
         peladaData: '2026-11-11', jogos: 1, vitorias: 0, empates: 0, derrotas: 1, gols: 0, assistencias: 1,
         partidas: [
-          { partidaId: p3.id, corDoTime: 'azul', corAdversario: 'laranja', placarTime: 0, placarAdversario: 1, resultado: 'D', gols: 0, assistencias: 1 },
+          { partidaId: p3.id, corDoTime: 'branco', corAdversario: 'preto', placarTime: 0, placarAdversario: 1, resultado: 'D', gols: 0, assistencias: 1 },
         ],
       },
       {
         peladaData: '2026-11-04', jogos: 2, vitorias: 1, empates: 1, derrotas: 0, gols: 1, assistencias: 0,
         partidas: [
-          { partidaId: p1.id, corDoTime: 'azul', corAdversario: 'laranja', placarTime: 1, placarAdversario: 0, resultado: 'V', gols: 1, assistencias: 0 },
-          { partidaId: p2.id, corDoTime: 'azul', corAdversario: 'verde', placarTime: 0, placarAdversario: 0, resultado: 'E', gols: 0, assistencias: 0 },
+          { partidaId: p1.id, corDoTime: 'branco', corAdversario: 'preto', placarTime: 1, placarAdversario: 0, resultado: 'V', gols: 1, assistencias: 0 },
+          { partidaId: p2.id, corDoTime: 'branco', corAdversario: 'verde', placarTime: 0, placarAdversario: 0, resultado: 'E', gols: 0, assistencias: 0 },
         ],
       },
     ]);
@@ -179,6 +179,6 @@ describe('historicoDoJogador', () => {
       { jogadorId: 9, tipo: 'gol' },
     ]);
     const [q] = historicoDoJogador([p], 2);
-    expect(q.partidas[0]).toMatchObject({ corDoTime: 'laranja', corAdversario: 'azul', placarTime: 1, placarAdversario: 2, resultado: 'D', gols: 1 });
+    expect(q.partidas[0]).toMatchObject({ corDoTime: 'preto', corAdversario: 'branco', placarTime: 1, placarAdversario: 2, resultado: 'D', gols: 1 });
   });
 });

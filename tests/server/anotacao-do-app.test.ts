@@ -29,14 +29,14 @@ async function cenario() {
     [l1, l2],
     [v1, v2],
   ]);
-  const [azul, laranja, verde] = (await timesDaPelada(db, p.id)).map((t) => t.id);
-  return { peladaId: p.id, a1, a2, l1, l2, v1, v2, gil, azul, laranja, verde };
+  const [branco, preto, verde] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+  return { peladaId: p.id, a1, a2, l1, l2, v1, v2, gil, branco, preto, verde };
 }
 
 const partida = (c: Awaited<ReturnType<typeof cenario>>, extra: Record<string, unknown> = {}) => ({
   origem: 'app-0001-aaaa',
-  timeAId: c.azul,
-  timeBId: c.laranja,
+  timeAId: c.branco,
+  timeBId: c.preto,
   iniciadaEm: depois(0),
   encerradaEm: depois(8 * MIN),
   pausadoMs: 30_000,
@@ -85,7 +85,7 @@ describe('receberEnvio', () => {
     const r = await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c)] })!);
     expect(r).toEqual([{ origem: 'app-0001-aaaa', situacao: 'gravada', id: expect.any(Number) }]);
     const [p] = await db.select().from(partidas);
-    expect(p).toMatchObject({ timeAId: c.azul, timeBId: c.laranja, resultado: 'A', pausadoMs: 30_000, origem: 'app-0001-aaaa', desempate: null });
+    expect(p).toMatchObject({ timeAId: c.branco, timeBId: c.preto, resultado: 'A', pausadoMs: 30_000, origem: 'app-0001-aaaa', desempate: null });
     expect(p.encerradaEm?.toISOString()).toBe(depois(8 * MIN));
     expect(await db.select().from(partidaJogadores)).toHaveLength(4);
     const ls = await db.select().from(lances).orderBy(asc(lances.criadoEm), asc(lances.id));
@@ -135,7 +135,7 @@ describe('receberEnvio', () => {
         partida(c, { origem: 'app-0001-fora', lances: [{ jogadorId: c.v1, tipo: 'gol', tempoMs: 0 }] }),
         partida(c, { origem: 'app-0002-time', timeBId: 99_999 }),
         partida(c, { origem: 'app-0003-hora', iniciadaEm: '2026-11-12T20:40:00-03:00', encerradaEm: '2026-11-12T20:48:00-03:00' }),
-        partida(c, { origem: 'app-0004-boa', timeAId: c.laranja, timeBId: c.verde, lances: [] }),
+        partida(c, { origem: 'app-0004-boa', timeAId: c.preto, timeBId: c.verde, lances: [] }),
       ],
     })!;
     expect(await receberEnvio(db, envio)).toEqual([
@@ -149,8 +149,8 @@ describe('receberEnvio', () => {
 
   it('convive com uma partida aberta pelo site', async () => {
     const c = await cenario();
-    await iniciarPartida(db, c.peladaId, c.azul, c.verde, NOITE);
-    const r = await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { timeAId: c.laranja, timeBId: c.verde, lances: [] })] })!);
+    await iniciarPartida(db, c.peladaId, c.branco, c.verde, NOITE);
+    const r = await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { timeAId: c.preto, timeBId: c.verde, lances: [] })] })!);
     expect(r![0].situacao).toBe('gravada');
   });
 
@@ -163,21 +163,21 @@ describe('receberEnvio', () => {
 describe('lerParaAnotar', () => {
   it('traz os times, os jogadores ativos e as partidas já encerradas, na ordem', async () => {
     const c = await cenario();
-    const id = await iniciarPartida(db, c.peladaId, c.azul, c.laranja, NOITE);
+    const id = await iniciarPartida(db, c.peladaId, c.branco, c.preto, NOITE);
     await encerrarPartida(db, id, new Date(NOITE.getTime() + 8 * MIN));
-    await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { timeAId: c.laranja, timeBId: c.verde, iniciadaEm: depois(10 * MIN), encerradaEm: depois(18 * MIN), lances: [] })] })!);
+    await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { timeAId: c.preto, timeBId: c.verde, iniciadaEm: depois(10 * MIN), encerradaEm: depois(18 * MIN), lances: [] })] })!);
     const d = (await lerParaAnotar(db, HOJE))!;
     expect(d.peladaId).toBe(c.peladaId);
     expect(d.times.map((t) => [t.id, t.jogadores.length, t.vagas])).toEqual([
-      [c.azul, 2, 0],
-      [c.laranja, 2, 0],
+      [c.branco, 2, 0],
+      [c.preto, 2, 0],
       [c.verde, 2, 0],
     ]);
     expect(d.jogadores).toHaveLength(7);
     expect(d.jogadores.find((j) => j.nome === 'Gil')?.agarra).toBe(true);
     expect(d.partidas).toEqual([
-      { timeAId: c.azul, timeBId: c.laranja, resultado: 'empate', desempate: null, origem: null },
-      { timeAId: c.laranja, timeBId: c.verde, resultado: 'empate', desempate: null, origem: 'app-0001-aaaa' },
+      { timeAId: c.branco, timeBId: c.preto, resultado: 'empate', desempate: null, origem: null },
+      { timeAId: c.preto, timeBId: c.verde, resultado: 'empate', desempate: null, origem: 'app-0001-aaaa' },
     ]);
   });
 

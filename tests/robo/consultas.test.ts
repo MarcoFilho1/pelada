@@ -22,9 +22,9 @@ async function criar(nome: string) {
 async function novembroJogado() {
   const [p] = await db.insert(peladas).values({ data: '2026-11-04' }).returning({ id: peladas.id });
   await salvarTimesDefinitivos(db, p.id, [[ana, bia], [caio, davi]]);
-  const [azul, laranja] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+  const [branco, preto] = (await timesDaPelada(db, p.id)).map((t) => t.id);
   const inicio = new Date('2026-11-04T20:40:00-03:00');
-  const id = await iniciarPartida(db, p.id, azul, laranja, inicio);
+  const id = await iniciarPartida(db, p.id, branco, preto, inicio);
   for (const [j, t] of [[ana, 'gol'], [ana, 'gol'], [bia, 'gol'], [bia, 'assistencia'], [davi, 'assistencia']] as const) await registrarLance(db, id, j, t);
   await encerrarPartida(db, id, new Date(inicio.getTime() + 5 * 60_000));
 }
@@ -63,9 +63,9 @@ describe('consultas do robô (artilheiro, garçom, ranking, times)', () => {
     await novembroJogado();
     const [p] = await db.insert(peladas).values({ data: '2026-11-11' }).returning({ id: peladas.id });
     await salvarTimesDefinitivos(db, p.id, [[ana, caio], [bia, davi]]);
-    const [azul, laranja] = (await timesDaPelada(db, p.id)).map((t) => t.id);
+    const [branco, preto] = (await timesDaPelada(db, p.id)).map((t) => t.id);
     const inicio = new Date('2026-11-11T20:40:00-03:00');
-    const id = await iniciarPartida(db, p.id, azul, laranja, inicio);
+    const id = await iniciarPartida(db, p.id, branco, preto, inicio);
     for (const j of [caio, davi]) await registrarLance(db, id, j, 'gol');
     await encerrarPartida(db, id, new Date(inicio.getTime() + 5 * 60_000));
     const linhas = (await consultar(db, 'artilheiro', NOVEMBRO)).split('\n');
@@ -81,7 +81,7 @@ describe('consultas do robô (artilheiro, garçom, ranking, times)', () => {
     const [p] = await db.insert(peladas).values({ data: '2026-11-11' }).returning({ id: peladas.id });
     expect(await consultar(db, 'times', quarta)).toBe('👕 Os times da quarta ainda não foram sorteados.');
     await salvarTimesDefinitivos(db, p.id, [[ana, bia, caio], [davi]], [[], [3]]);
-    expect(await consultar(db, 'times', quarta)).toBe('👕 Times de hoje:\n\n🔵 Azul\n- Ana\n- Bia\n- Caio\n\n🟠 Laranja\n- Davi\n- COMPLETE');
+    expect(await consultar(db, 'times', quarta)).toBe('👕 Times de hoje:\n\n⚪ Branco\n- Ana\n- Bia\n- Caio\n\n⚫ Preto\n- Davi\n- COMPLETE');
     await db.update(jogadores).set({ nome: 'Ana Maria' }).where(eq(jogadores.id, ana));
     expect(await consultar(db, 'times', quarta)).toContain('- Ana Maria');
   });
@@ -91,6 +91,6 @@ describe('consultas do robô (artilheiro, garçom, ranking, times)', () => {
     const [p] = await db.insert(peladas).values({ data: '2026-11-11' }).returning({ id: peladas.id });
     expect(await consultar(db, 'times', segunda)).toBe('👕 Os times da quarta ainda não foram sorteados.');
     await salvarTimesDefinitivos(db, p.id, [[ana, bia], [caio, davi]], [[], []]);
-    expect(await consultar(db, 'times', segunda)).toBe('👕 Times de quarta, 11/11:\n\n🔵 Azul\n- Ana\n- Bia\n\n🟠 Laranja\n- Caio\n- Davi');
+    expect(await consultar(db, 'times', segunda)).toBe('👕 Times de quarta, 11/11:\n\n⚪ Branco\n- Ana\n- Bia\n\n⚫ Preto\n- Caio\n- Davi');
   });
 });
