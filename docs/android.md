@@ -81,6 +81,19 @@ node scripts/android/publicar-robo.mjs --subir   # empacota, assina, manda os ar
 Blob store do projeto na Vercel) do ambiente ou de
 `~/Library/Application Support/PeladaRobo/android-publicar.env`.
 
+**Publicar sozinho a cada merge na `main`.** Um serviço do Mac confere a `main` de 5 em 5
+minutos; quando ela muda e a mudança mexe no robô (código, dependências ou empacotamento), ele
+empacota, assina e publica, e mostra uma notificação. A chave de assinatura continua só no Mac;
+por isso só publica com o Mac ligado.
+
+```sh
+git clone <repositório> ~/pelada-publicar && cd ~/pelada-publicar
+scripts/android/instalar-publicador.sh          # instala; `tirar` desinstala
+tail ~/Library/Logs/PeladaRobo/publicar.log
+```
+
+A cópia tem de ficar fora da Mesa e de Documentos (o macOS não deixa serviços lerem essas pastas).
+
 Para incluir uma versão nova do próprio app:
 `publicar-robo.mjs --subir --app=caminho.apk --app-versao=0.2.0 --app-numero=2`. O app baixa o
 APK sozinho e mostra o botão de instalar; o Android sempre pede a confirmação de quem está com o
