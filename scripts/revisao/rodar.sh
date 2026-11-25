@@ -13,11 +13,23 @@ export ROBO_LOG="$LOGS/robo.log"
 export GATE_DB="$HOME/zapgate-teste/dados/sessions/pelada/gate.db"
 CLONE="$HOME/pelada-revisao"
 PROMPT="$(dirname "$0")/PROMPT.md"
+# Com o robô num celular (existe o arquivo "robo-no-celular"), o que ele viveu e os recados passam
+# pelo banco: quem fala com o banco é só o ponte.mjs, daqui; o Claude Code continua sem acesso.
+DADOS="$HOME/Library/Application Support/PeladaRobo"
+PONTE="$(cd "$(dirname "$0")/../.." && pwd)/scripts/revisao/ponte.mjs"
+NO_CELULAR=0
+[[ -f "$DADOS/robo-no-celular" ]] && NO_CELULAR=1
+ponte() { (cd "$(dirname "$PONTE")/../.." && node "$PONTE" "$@"); }
 LIMITE_S=2700 # 45 min
 mkdir -p "$REVISAO_DIR"
 
 # O robô só vê resultado.json quando ele já está inteiro (mv é atômico na mesma pasta).
-entregar() { mv -f "$1" "$REVISAO_DIR/resultado.json"; }
+entregar() {
+  mv -f "$1" "$REVISAO_DIR/resultado.json"
+  if (( NO_CELULAR )); then
+    ponte por resultado < "$REVISAO_DIR/resultado.json" || echo "$(date '+%F %R') não consegui deixar o resultado no banco para o robô"
+  fi
+}
 falhou() {
   printf '{"quando":"%s","status":"falhou","motivo":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$REVISAO_DIR/falhou.tmp"
   entregar "$REVISAO_DIR/falhou.tmp"
@@ -36,6 +48,16 @@ $(cat "$PROMPT")" || falhou "não achei as instruções da revisão"
 rm -f "$REVISAO_DIR/saida.json"
 # Revisão nova substitui a pendente: um "pode mergear" depois dela nunca junta o PR de outra noite.
 rm -f "$REVISAO_DIR/pendente.json"
+if (( NO_CELULAR )); then
+  ponte apagar pendente
+  # O registro do robô do celular vai para um arquivo à parte; o ZapGate dele não está neste Mac.
+  export ROBO_LOG="$LOGS/robo-celular.log"
+  export GATE_DB="(não disponível: o ZapGate roda no celular)"
+  ponte baixar "$HOJE" "$CONVERSAS" "$ROBO_LOG" || falhou "não consegui trazer do banco as conversas do robô"
+  PROMPT_TEXTO="Valores de hoje: HOJE=$HOJE; CONVERSAS=$CONVERSAS; ROBO_LOG=$ROBO_LOG; GATE_DB=$GATE_DB; REVISAO_DIR=$REVISAO_DIR
+
+$(cat "$PROMPT")"
+fi
 
 # Clone só da revisão (fora do Desktop: o launchd não entra lá), sempre igual à develop.
 if [[ ! -d "$CLONE/.git" ]]; then

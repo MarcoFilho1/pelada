@@ -10,11 +10,19 @@ CLONE="$HOME/pelada-revisao"
 SERVICO="$HOME/pelada"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 mkdir -p "$CAIXA"
+# Com o robô num celular (arquivo "robo-no-celular"): o fim do merge vai também para o banco, que é
+# onde o robô lê, e o robô do Mac não é reiniciado (a correção chega ao celular pela atualização).
+NO_CELULAR=0
+[[ -f "$HOME/Library/Application Support/PeladaRobo/robo-no-celular" ]] && NO_CELULAR=1
+PONTE="$(cd "$(dirname "$0")/../.." && pwd)/scripts/revisao/ponte.mjs"
 
 fim() { # fim <ok|falhou> [motivo]
   local motivo="${2:-}"
   printf '{"quando":"%s","status":"%s","pr":%s%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$PR" \
     "${motivo:+,\"motivo\":\"$motivo\"}" > "$CAIXA/merge.json.tmp" && mv "$CAIXA/merge.json.tmp" "$CAIXA/merge.json"
+  if (( NO_CELULAR )); then
+    (cd "$(dirname "$PONTE")/../.." && node "$PONTE" por merge < "$CAIXA/merge.json") || echo "$(date '+%F %R') não consegui deixar o fim do merge no banco"
+  fi
   echo "$(date '+%F %R') merge do PR #$PR: $1 ${motivo}"
 }
 
@@ -38,6 +46,11 @@ git diff --quiet origin/develop origin/main || { fim falhou "a main ficou difere
 cd "$SERVICO" || { fim falhou "a pasta do robô não existe"; exit 1; }
 git pull -q --ff-only || { fim falhou "não consegui atualizar a pasta do robô (o PR já está na main)"; exit 1; }
 pnpm install --frozen-lockfile --silent || { fim falhou "a instalação das dependências falhou (o PR já está na main; o robô segue na versão anterior)"; exit 1; }
+if (( NO_CELULAR )); then
+  # O robô não roda neste Mac: nada a reiniciar. A main mudou; o serviço que publica cuida do resto.
+  fim ok
+  exit 0
+fi
 # O reinício compila antes de parar o robô velho: compilação quebrada não derruba nada.
 scripts/robo-reiniciar.sh || { fim falhou "o reinício falhou (o PR já está na main); confira o robô"; exit 1; }
 # Só depois do reinício: quem lê e avisa é o robô novo.

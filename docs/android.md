@@ -162,7 +162,28 @@ Nunca os dois ligados na mesma conta: foi o que derrubou a sessão em 10/11.
 Se a sessão foi para o celular, a cópia que ficou no Mac está desatualizada (as chaves da conversa
 avançam a cada mensagem) e não deve ser religada.
 
+## A auto-revisão com o robô no celular
+
+A revisão das 23h (`claude -p`) continua no Mac, mas o robô está longe. A ponte entre os dois é o
+banco, que os dois já alcançam. Liga-se criando o arquivo vazio
+`~/Library/Application Support/PeladaRobo/robo-no-celular` no Mac; no celular o robô já usa o
+banco sozinho (em qualquer sistema que não seja o macOS).
+
+| Passo | Como acontece |
+| --- | --- |
+| **Guardar o que o robô viveu** | o robô grava cada conversa e cada linha do registro dele na tabela `robo_diario` (7 dias, como o diário em arquivo) |
+| **Revisar** | antes de chamar o Claude Code, o `rodar.sh` traz do banco as conversas e o registro do dia para os arquivos de sempre (`scripts/revisao/ponte.mjs baixar`). O Claude Code continua sem acesso ao banco |
+| **Avisar o dono** | o resultado vira o recado `resultado` na tabela `robo_recados`; o robô lê na volta de cada minuto e manda no privado |
+| **"Pode mergear"** | o robô deixa o recado `pedido`; o serviço do Mac que confere a `main` de 5 em 5 minutos vê o pedido, roda os testes, junta o PR e deixa o recado `merge`, que o robô lê e avisa |
+| **A correção chegar** | o merge muda a `main`, o mesmo serviço publica, e o celular troca o robô na busca seguinte |
+
+Os recados têm os mesmos nomes dos arquivos da pasta de troca que o robô usa quando roda no
+próprio Mac. O Mac precisa estar ligado às 23h e para juntar, como já era.
+
+As conversas do grupo (nomes e mensagens) passam a ficar 7 dias no banco, e não só no disco do Mac.
+
 ## O que não vai para o celular
 
-- **A auto-revisão (`claude -p`)** continua no Mac. Com o robô no celular, o "pode mergear" pelo
-  privado deixa de funcionar, porque quem roda o script de merge é o Mac.
+- **A auto-revisão (`claude -p`)** continua no Mac, falando com o robô pelo banco (acima).
+- **As mensagens que saíram pelo ZapGate** (a tabela `activity` do `gate.db`) ficam no celular: a
+  revisão trabalha só com as conversas e o registro do robô.
