@@ -1589,6 +1589,18 @@ describe('resposta que saiu pela metade', () => {
   });
 });
 
+describe('resposta sem confirmação', () => {
+  it('nenhuma parte confirmada: o log não diz "pela metade", e não sai ❌', async () => {
+    const enviar = vi.fn().mockRejectedValue(new EnvioIncerto('O servidor do WhatsApp não confirmou a mensagem a tempo; ela pode ter saído.'));
+    const c = ctx({ reagir: vi.fn(), enviar, esperar: async () => {}, perguntar: vi.fn(async () => ['Oxe, faço um bocado', 'Quer começar por qual?']) });
+    const r = await responder(msg('o que você faz?', { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false }), c);
+    expect(r).not.toBeNull();
+    expect(c.log).toHaveBeenCalledWith(expect.stringContaining('resposta sem confirmação do WhatsApp (pode ter saído)'));
+    expect(c.log).not.toHaveBeenCalledWith(expect.stringContaining('pela metade'));
+    expect((c.reagir as ReturnType<typeof vi.fn>).mock.calls.map((x) => x[0])).not.toContain('❌');
+  });
+});
+
 describe('privado com enviarPartes (ZapGate): uma entrega só', () => {
   const PRIV = { privado: true, grupoId: 'conversa', remetenteTelefone: ADMIN, mencionaORobo: false };
 
