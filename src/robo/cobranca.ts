@@ -2,7 +2,7 @@
 // para o dono da pelada no privado (agrupado: um comprovante espera uns minutos pelos próximos).
 // Tudo puro: quem lê o comprovante (IA) e quem envia ficam no `principal`.
 import { normalizarNome } from '@/domain/nome';
-import { diaMes } from '@/domain/tempo';
+import { dataDe, diaMes } from '@/domain/tempo';
 
 export type Diarista = { jogadorId: number; nome: string };
 
@@ -27,23 +27,34 @@ export type Cobranca = {
   pagos: Pagamento[];
   /** Quando mandar o próximo aviso ao dono (ISO); `null`: nada novo para avisar. */
   avisarDonoEm: string | null;
-  /** Imagens já olhadas pela IA (há um teto por noite). */
+  /** Imagens já olhadas pela IA no dia `analisadasEm` (há um teto por dia). */
   analisadas: number;
+  /** O dia ('YYYY-MM-DD', Recife) a que `analisadas` se refere. Sem ele: o dia da pelada. */
+  analisadasEm?: string;
+  /** O dia ('YYYY-MM-DD', Recife) do último lembrete diário a quem falta pagar. */
+  lembradoEm?: string | null;
+  /** Um organizador pediu para parar os lembretes diários (os comprovantes continuam valendo). */
+  semLembrete?: boolean;
 };
 
 export type Pix = { valor: string; chave: string };
 
 /** Espera depois de um comprovante, juntando os que chegarem, antes de avisar o dono. */
 export const ESPERA_AVISO_DONO_MS = 3 * 60_000;
-/** Teto de imagens que a IA olha por noite (custo). */
+/** Teto de imagens que a IA olha por dia (custo). */
 export const MAX_ANALISES = 40;
+/** Por quantos dias depois da pelada a cobrança fica aberta (até a véspera da pelada seguinte). */
+export const DIAS_DA_COBRANCA = 6;
+/** O lembrete diário a quem falta pagar sai entre estas horas de Recife (uma vez por dia). */
+export const LEMBRETE_DIARIO_DAS = 12;
+export const LEMBRETE_DIARIO_ATE = 20;
 
 // Recife é sempre UTC-03:00 (sem horário de verão), como em tempo.ts.
 const OFFSET_RECIFE_MS = -3 * 60 * 60 * 1000;
 
-/** Comprovante conta até as 23:00 (Recife) do dia seguinte à pelada. */
+/** Comprovante conta até as 23:00 (Recife) do sexto dia depois da pelada (a véspera da seguinte). */
 export function prazoDaCobranca(data: string): Date {
-  return new Date(Date.parse(`${data}T23:00:00Z`) - OFFSET_RECIFE_MS + 24 * 60 * 60 * 1000);
+  return new Date(Date.parse(`${data}T23:00:00Z`) - OFFSET_RECIFE_MS + DIAS_DA_COBRANCA * 24 * 60 * 60 * 1000);
 }
 
 /** O próximo 07:05 de Recife depois de `now` (o ZapGate não começa conversa entre 22:00 e 07:00). */
@@ -63,7 +74,9 @@ export function novaCobranca(data: string, diaristas: Diarista[]): Cobranca {
 }
 
 export function cobrancaAtiva(c: Cobranca | null | undefined, now: Date): c is Cobranca {
-  return !!c && now < new Date(c.ate);
+  // O prazo sai da data da pelada, não do `ate` gravado: uma cobrança aberta antes de o prazo
+  // crescer (era só até o dia seguinte) também ganha os dias a mais.
+  return !!c && now < prazoDaCobranca(c.data);
 }
 
 export function textoDoLembrete(diaristas: Diarista[], pix: Pix, ontem = false): string {
@@ -133,4 +146,60 @@ export function textoParaODono(c: Cobranca): string {
     linhas.push(`❓ Comprovante que não sei de quem é: ${nomes(semDono.map((p) => (p.pagador ? `${p.nome} (no comprovante: ${p.pagador})` : p.nome)))}`);
   }
   return linhas.join('\n');
+}
+
+/** Os diaristas que ainda não pagaram. */
+export function quemFalta(c: Cobranca): Diarista[] {
+  return c.diaristas.filter((d) => !jaPagou(c, d.jogadorId));
+}
+
+const horaDeRecife = (now: Date) => new Date(now.getTime() + OFFSET_RECIFE_MS).getUTCHours();
+
+/**
+ * Hora do lembrete diário? A partir do dia seguinte à pelada, uma vez por dia, entre 12h e 20h
+ * (se o robô estava fora do ar ao meio-dia, sai mais tarde no mesmo dia), enquanto faltar alguém
+ * e nenhum organizador tiver mandado parar.
+ */
+export function horaDoLembreteDiario(c: Cobranca | null | undefined, now: Date): c is Cobranca {
+  if (!cobrancaAtiva(c, now) || c.semLembrete || !quemFalta(c).length) return false;
+  const hoje = dataDe(now);
+  if (hoje <= c.data || c.lembradoEm === hoje) return false;
+  const hora = horaDeRecife(now);
+  return hora >= LEMBRETE_DIARIO_DAS && hora < LEMBRETE_DIARIO_ATE;
+}
+
+/** O lembrete diário: só o nome de quem falta. */
+export function textoDoLembreteDiario(c: Cobranca, pix: Pix): string {
+  const faltam = quemFalta(c);
+  return [
+    `⏳ Pix da pelada de ${diaMes(c.data)}: ${faltam.length === 1 ? 'falta' : 'faltam'} ${nomes(faltam.map((d) => d.nome))}`,
+    `R$ ${pix.valor} pra chave ${pix.chave}`,
+    'Manda o comprovante aqui no grupo',
+  ].join('\n');
+}
+
+export function aposLembrar(c: Cobranca, now: Date): Cobranca {
+  return { ...c, lembradoEm: dataDe(now) };
+}
+
+/** Um organizador mandou parar os lembretes diários. */
+export function semLembretes(c: Cobranca): Cobranca {
+  return { ...c, semLembrete: true };
+}
+
+/** Um organizador disse que todo mundo pagou: marca quem faltava (o dono recebe a situação final). */
+export function marcarTodos(c: Cobranca, now: Date): Cobranca {
+  return quemFalta(c).reduce<Cobranca>(
+    (acc, d) => registrarPagamento(acc, { jogadorId: d.jogadorId, nome: d.nome, quando: now.toISOString(), mensagemId: 'manual' }, now),
+    c,
+  );
+}
+
+/** Quantas imagens a IA já olhou hoje (o teto é por dia: a cobrança fica aberta vários dias). */
+export function analisadasHoje(c: Cobranca, now: Date): number {
+  return (c.analisadasEm ?? c.data) === dataDe(now) ? c.analisadas : 0;
+}
+
+export function contarAnalise(c: Cobranca, now: Date): Cobranca {
+  return { ...c, analisadas: analisadasHoje(c, now) + 1, analisadasEm: dataDe(now) };
 }

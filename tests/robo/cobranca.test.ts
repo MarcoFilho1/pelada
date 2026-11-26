@@ -10,6 +10,15 @@ import {
   registrarPagamento,
   textoDoLembrete,
   textoParaODono,
+  MAX_ANALISES,
+  analisadasHoje,
+  aposLembrar,
+  contarAnalise,
+  horaDoLembreteDiario,
+  marcarTodos,
+  quemFalta,
+  semLembretes,
+  textoDoLembreteDiario,
 } from '@/robo/cobranca';
 
 const DIARISTAS = [
@@ -30,9 +39,11 @@ describe('cobrança do Pix', () => {
   });
 
   it('comprovante vale até as 23:00 do dia seguinte', () => {
-    expect(prazoDaCobranca('2026-11-25').toISOString()).toBe('2026-11-27T02:00:00.000Z');
-    expect(cobrancaAtiva(c0(), t('2026-11-26T22:59:00-03:00'))).toBe(true);
-    expect(cobrancaAtiva(c0(), t('2026-11-26T23:00:00-03:00'))).toBe(false);
+    expect(prazoDaCobranca('2026-11-25').toISOString()).toBe('2026-12-02T02:00:00.000Z');
+    expect(cobrancaAtiva(c0(), t('2026-12-01T22:59:00-03:00'))).toBe(true);
+    expect(cobrancaAtiva(c0(), t('2026-12-01T23:00:00-03:00'))).toBe(false);
+    // Uma cobrança gravada com o prazo antigo (até o dia seguinte) também ganha os dias a mais.
+    expect(cobrancaAtiva({ ...c0(), ate: '2026-11-27T02:00:00.000Z' }, t('2026-11-28T12:00:00-03:00'))).toBe(true);
     expect(cobrancaAtiva(null, t('2026-11-26T12:00:00-03:00'))).toBe(false);
   });
 
@@ -72,5 +83,58 @@ describe('cobrança do Pix', () => {
   it('de madrugada, o aviso fica para as 07:05', () => {
     expect(proximaManha(t('2026-11-25T22:50:00-03:00')).toISOString()).toBe('2026-11-26T10:05:00.000Z');
     expect(proximaManha(t('2026-11-26T03:00:00-03:00')).toISOString()).toBe('2026-11-26T10:05:00.000Z');
+  });
+});
+
+describe('lembrete diário do Pix', () => {
+  const PIX = { valor: '15,00', chave: 'pix@exemplo.com' };
+  const paga = (c: ReturnType<typeof c0>, id: number) =>
+    registrarPagamento(c, { jogadorId: id, nome: 'x', quando: '2026-11-25T23:00:00-03:00', mensagemId: `m${id}` }, t('2026-11-25T23:00:00-03:00'));
+
+  it('sai uma vez por dia, do dia seguinte em diante, entre 12h e 20h', () => {
+    const c = c0();
+    expect(horaDoLembreteDiario(c, t('2026-11-25T23:30:00-03:00'))).toBe(false); // a noite da pelada já teve o lembrete
+    expect(horaDoLembreteDiario(c, t('2026-11-26T11:59:00-03:00'))).toBe(false);
+    expect(horaDoLembreteDiario(c, t('2026-11-26T12:00:00-03:00'))).toBe(true);
+    expect(horaDoLembreteDiario(c, t('2026-11-26T19:59:00-03:00'))).toBe(true); // robô fora do ar ao meio-dia: sai mais tarde
+    expect(horaDoLembreteDiario(c, t('2026-11-26T20:00:00-03:00'))).toBe(false);
+    const lembrado = aposLembrar(c, t('2026-11-26T12:00:00-03:00'));
+    expect(horaDoLembreteDiario(lembrado, t('2026-11-26T15:00:00-03:00'))).toBe(false);
+    expect(horaDoLembreteDiario(lembrado, t('2026-11-27T12:00:00-03:00'))).toBe(true);
+    expect(horaDoLembreteDiario(lembrado, t('2026-12-02T12:00:00-03:00'))).toBe(false); // passou do prazo
+    expect(horaDoLembreteDiario(null, t('2026-11-26T12:00:00-03:00'))).toBe(false);
+  });
+
+  it('para quando um organizador manda parar, e o comprovante continua valendo', () => {
+    const parado = semLembretes(c0());
+    expect(horaDoLembreteDiario(parado, t('2026-11-26T12:00:00-03:00'))).toBe(false);
+    expect(cobrancaAtiva(parado, t('2026-11-26T12:00:00-03:00'))).toBe(true);
+  });
+
+  it('para quando todos pagam; "todos pagaram" marca só quem faltava e avisa o dono', () => {
+    const um = paga(c0(), 1);
+    const todos = marcarTodos({ ...um, avisarDonoEm: null }, t('2026-11-26T10:00:00-03:00'));
+    expect(quemFalta(todos)).toEqual([]);
+    expect(todos.pagos).toHaveLength(4);
+    expect(todos.pagos.filter((p) => p.mensagemId === 'manual')).toHaveLength(3);
+    expect(todos.avisarDonoEm).not.toBeNull();
+    expect(horaDoLembreteDiario(todos, t('2026-11-26T12:00:00-03:00'))).toBe(false);
+    expect(textoParaODono(todos)).toContain('ninguém, todo mundo pagou');
+  });
+
+  it('o texto traz só quem falta', () => {
+    const c = paga(paga(c0(), 1), 4);
+    expect(textoDoLembreteDiario(c, PIX)).toBe('⏳ Pix da pelada de 25/11: faltam João Pedro e João Victor\nR$ 15,00 pra chave pix@exemplo.com\nManda o comprovante aqui no grupo');
+    expect(textoDoLembreteDiario(paga(c, 2), PIX)).toContain('falta João Victor');
+  });
+
+  it('o teto de imagens olhadas é por dia', () => {
+    let c = c0();
+    for (let i = 0; i < MAX_ANALISES; i++) c = contarAnalise(c, t('2026-11-25T23:10:00-03:00'));
+    expect(analisadasHoje(c, t('2026-11-25T23:50:00-03:00'))).toBe(MAX_ANALISES);
+    expect(analisadasHoje(c, t('2026-11-26T09:00:00-03:00'))).toBe(0);
+    expect(analisadasHoje(contarAnalise(c, t('2026-11-26T09:00:00-03:00')), t('2026-11-26T10:00:00-03:00'))).toBe(1);
+    // Estado antigo, sem o dia: a conta é do dia da pelada.
+    expect(analisadasHoje({ ...c0(), analisadas: 7 }, t('2026-11-25T23:10:00-03:00'))).toBe(7);
   });
 });
