@@ -35,6 +35,7 @@ import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTim
 import { PedidosDoPrivado } from './juntar';
 import { MAX_ANALISES, analisadasHoje, aposLembrar, casarDiarista, cobrancaAtiva, contarAnalise, horaDeAvisarDono, horaDoLembreteDiario, jaPagou, marcarTodos, novaCobranca, proximaManha, quemFalta, registrarPagamento, semLembretes, textoDoLembrete, textoDoLembreteDiario, textoParaODono, type Pix } from './cobranca';
 import { lerComprovante } from './comprovante';
+import { MAX_NATURAIS_POR_DIA, naturalizar } from './natural';
 import { marcaDe } from '@/domain/lista';
 import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
 import { configurarSegunda, horaDeMandarBomDia, textoDoBomDia } from './segunda';
@@ -401,9 +402,29 @@ async function laco(): Promise<void> {
     for (const [tel, jid] of conversas) if (ehAdmin(tel, [admin])) return jid;
     return (await conexao!).conversaDoTelefone(comDdi);
   };
-  /** Um texto no privado de cada organizador (menos `exceto`); falha de um não impede os outros. */
-  const avisarOrganizadores = async (texto: string, exceto: string[]) => {
+  // ---- Avisos naturais: a IA reescreve o aviso fixo no jeito do grupo, sem mudar os fatos ----
+  // `ROBO_AVISOS_NATURAIS=0` desliga. Sem IA, com a IA parada ou passado o teto do dia, vai o texto fixo.
+  const avisosNaturais = process.env.ROBO_AVISOS_NATURAIS !== '0';
+  let naturaisDoDia = { dia: '', quantos: 0 };
+  const natural = async (texto: string, para: 'grupo' | 'organizador', fixos: string[] = []): Promise<string> => {
+    if (!avisosNaturais || !ia || !clienteIA) return texto;
+    const hoje = dataDe(new Date());
+    if (naturaisDoDia.dia !== hoje) naturaisDoDia = { dia: hoje, quantos: 0 };
+    if (naturaisDoDia.quantos >= MAX_NATURAIS_POR_DIA) return texto;
+    naturaisDoDia.quantos++;
+    const novo = await naturalizar(texto, { cliente: clienteIA, modelo: ia.modelo || 'claude-haiku-5-5', para, fixos, caderno: cadernoLigado ? linhasDoCaderno(caderno) : undefined, aoUsar: registrarUso });
+    if (novo === texto) log('aviso natural: a reescrita não serviu ou a IA falhou; foi o texto fixo');
+    return novo;
+  };
+
+  /**
+   * Um texto no privado de cada organizador (menos `exceto`); falha de um não impede os outros.
+   * Com `fixos` (os nomes de gente que o aviso cita), o aviso é reescrito no jeito do grupo antes
+   * de sair; sem ele, vai palavra por palavra (times, listas, erros).
+   */
+  const avisarOrganizadores = async (textoFixo: string, exceto: string[], fixos?: string[]) => {
     const wa = await conexao!;
+    const texto = fixos ? await natural(textoFixo, 'organizador', fixos) : textoFixo;
     for (const admin of admins) {
       if (exceto.some((t) => ehAdmin(t, [admin]))) continue;
       try {
@@ -458,13 +479,14 @@ async function laco(): Promise<void> {
     // Entre 23:00 e 08:00 o ZapGate recusa mensagem que o robô começa: o aviso sai de manhã, com o nível da hora.
     if (emSilencio(now)) return;
     const wa = await conexao!;
+    const textoDaBateriaNatural = await natural(r.texto, 'organizador');
     let saiu = 0;
     let motivo = '';
     for (const numero of avisadosDaBateria) {
       try {
         const jid = await conversaDe(numero);
         if (!jid) throw new Error('o número não tem WhatsApp');
-        await wa.enviar(jid, r.texto);
+        await wa.enviar(jid, textoDaBateriaNatural);
         saiu++;
       } catch (err) {
         motivo = (err as Error).message;
@@ -825,7 +847,7 @@ async function laco(): Promise<void> {
       log('lembrete do Pix: nenhum diarista na lista de hoje');
       return marcar();
     }
-    await enviarNoFimDaPelada(textoDoLembrete(diaristas, pix, vez.ontem), vez.ate);
+    await enviarNoFimDaPelada(await natural(textoDoLembrete(diaristas, pix, vez.ontem), 'grupo', diaristas.map((d) => d.nome)), vez.ate);
     marcar(novaCobranca(hoje, diaristas));
     log(`lembrete do Pix mandado (${diaristas.length} diaristas${vez.ontem ? ', da pelada de ontem' : ''})`);
   };
@@ -834,10 +856,16 @@ async function laco(): Promise<void> {
    * Todo dia, do dia seguinte à pelada até o fim do prazo, lembra no grupo quem ainda não pagou.
    * Para quando todos pagam ou quando um organizador manda parar, no privado.
    */
+  // O robô acabou de ligar (voltou de uma queda, foi conectado de novo): os comprovantes mandados
+  // enquanto ele estava fora não chegaram. Espera meia hora antes de cobrar, para um organizador
+  // marcar quem já pagou.
+  const ligadoEm = Date.now();
+  const ESPERA_DEPOIS_DE_LIGAR_MS = 30 * 60_000;
   const talvezLembreteDiario = async (now: Date) => {
     const c = estado.cobranca;
     if (!pix || !horaDoLembreteDiario(c, now)) return;
-    await (await conexao!).enviar(grupoId, textoDoLembreteDiario(c, pix));
+    if (now.getTime() - ligadoEm < ESPERA_DEPOIS_DE_LIGAR_MS) return;
+    await (await conexao!).enviar(grupoId, await natural(textoDoLembreteDiario(c, pix), 'grupo', quemFalta(c).map((d) => d.nome)));
     estado = { ...estado, cobranca: aposLembrar(estado.cobranca ?? c, now) };
     gravar(estado);
     log(`lembrete diário do Pix mandado (faltam ${quemFalta(c).length})`);

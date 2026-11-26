@@ -319,7 +319,7 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.salvar).toHaveBeenCalledWith(expect.any(Date), { ...guardada, votos: [ADMIN, OUTRO_ADMIN] });
     expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
     // Só quem sorteou recebe a pergunta (todos os outros ficam no `exceto`).
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(`🏆 Pepe confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, [OUTRO_ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith(`🏆 Pepe confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, [OUTRO_ADMIN], ['Pepe']);
     expect(c.anuncio.atual).toMatchObject({ texto: `🏆 Times da noite:\n\n${BLOCOS}`, quemPropos: ADMIN });
     expect(c.proposta.atual).toBeNull();
     expect((await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_PROPOSTA);
@@ -378,7 +378,7 @@ describe('responder: sorteio com 2 de 3', () => {
     await passo('sortear', c, ADMIN, noPrivado(ADMIN, 'Marco'));
     await passo('sim', c, ADMIN, noPrivado(ADMIN, 'Marco'));
     await passo('sim', c, OUTRO_ADMIN, noPrivado(OUTRO_ADMIN, 'Pepe'));
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Times confirmados e salvos no site. Marco decide quando mandar no grupo.', [ADMIN, OUTRO_ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('🏆 Times confirmados e salvos no site. Marco decide quando mandar no grupo.', [ADMIN, OUTRO_ADMIN], ['Marco']);
   });
 
   it('mandar: só quem sorteou, só no privado; aí os times vão ao grupo e os outros são avisados', async () => {
@@ -391,7 +391,7 @@ describe('responder: sorteio com 2 de 3', () => {
     expect(c.anunciarNoGrupo).not.toHaveBeenCalled();
     expect((await passo('pode mandar', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_MANDADOS);
     expect(c.anunciarNoGrupo).toHaveBeenCalledWith(`🏆 Times da noite:\n\n${BLOCOS}`);
-    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('📣 Marco mandou os times no grupo.', [ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenLastCalledWith('📣 Marco mandou os times no grupo.', [ADMIN], ['Marco']);
     expect(c.anuncio.atual).toBeNull();
     expect((await passo('mandar', c, ADMIN, noPrivado(ADMIN, 'Marco')))?.texto).toBe(TEXTO_SEM_ANUNCIO);
   });
@@ -1406,7 +1406,7 @@ describe('privado: memória da conversa, troca nos times e desfazer', () => {
     const c = ctx({ trocarNosTimes: vi.fn(async () => ({ proposta: proposta(), feitas: ['Ana ↔ Bia'] })) });
     c.proposta.atual = proposta({ criadaEm: t('2026-11-10T15:30:00'), votos: [ADMIN] });
     await ferramentasDoOrganizador(noPrivado('x'), c).find((x) => x.nome === 'trocar_nos_times')!.executar({ trocas: 'Ana por Bia' });
-    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN], ['Zeca']);
   });
 
   it('trocar_nos_times depois de aprovar: o aviso aos outros não segura a resposta (o envio pelo WhatsApp demora)', async () => {
@@ -1418,7 +1418,7 @@ describe('privado: memória da conversa, troca nos times e desfazer', () => {
     const r = await Promise.race([f.executar({ trocas: 'Ana por Bia' }), new Promise((ok) => setTimeout(() => ok('travou'), 300))]);
     expect(r).not.toBe('travou');
     expect((r as TextoPronto).texto).toContain('🔁 Troquei: Ana ↔ Bia.');
-    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN]);
+    expect(c.avisarOrganizadores).toHaveBeenCalledWith(expect.stringContaining('Zeca trocou jogadores'), [ADMIN], ['Zeca']);
   });
 
   it('trocar_nos_times: sem proposta, proposta de outro ou troca que não dá', async () => {
