@@ -1740,6 +1740,12 @@ describe('ferramentas novas do organizador (privado)', () => {
     const sem = ctx();
     expect(await ferramenta(sem, 'ver_pagamentos_do_pix').executar({})).toContain('Não tem cobrança');
     expect(await ferramenta(sem, 'marcar_pagamento_do_pix').executar({ nome: 'X' })).toContain('Não tem cobrança');
+    expect(await ferramenta(sem, 'marcar_todos_pagos_no_pix').executar({})).toContain('Não tem cobrança');
+    expect(await ferramenta(sem, 'parar_lembretes_do_pix').executar({})).toContain('Não tem cobrança');
+    const tudo = { ...pix, todosPagaram: vi.fn(() => '✅ Marquei como pago: Ana.'), pararLembretes: vi.fn(() => '🔕 Parei os lembretes.') };
+    const c2 = ctx({ pix: tudo });
+    expect(((await ferramenta(c2, 'marcar_todos_pagos_no_pix').executar({})) as TextoPronto).texto).toBe('✅ Marquei como pago: Ana.');
+    expect(((await ferramenta(c2, 'parar_lembretes_do_pix').executar({})) as TextoPronto).texto).toBe('🔕 Parei os lembretes.');
   });
 });
 

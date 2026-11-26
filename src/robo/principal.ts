@@ -33,7 +33,7 @@ import { montarMensagem } from './mensagem';
 import { apelidosDoEnv, calvinhoDoEnv, configDasRespostas, podeGravarLista, responder, type Cancelamento, type MensagemRecebida } from './responder';
 import { anuncioDeGuardado, anuncioParaGuardar, deGuardada, ehAdmin, importarTimesColados, paraGuardar, propostaVencida, salvarProposta, sortearTimesDaNoite, trocarNaProposta, type Proposta } from './sorteio-zap';
 import { PedidosDoPrivado } from './juntar';
-import { MAX_ANALISES, casarDiarista, cobrancaAtiva, horaDeAvisarDono, jaPagou, novaCobranca, proximaManha, registrarPagamento, textoDoLembrete, textoParaODono, type Pix } from './cobranca';
+import { MAX_ANALISES, analisadasHoje, aposLembrar, casarDiarista, cobrancaAtiva, contarAnalise, horaDeAvisarDono, horaDoLembreteDiario, jaPagou, marcarTodos, novaCobranca, proximaManha, quemFalta, registrarPagamento, semLembretes, textoDoLembrete, textoDoLembreteDiario, textoParaODono, type Pix } from './cobranca';
 import { lerComprovante } from './comprovante';
 import { marcaDe } from '@/domain/lista';
 import { fimDePeladaDaVez, paraDeEsperar, textosDoResumo } from './resumo-da-noite';
@@ -772,7 +772,7 @@ async function laco(): Promise<void> {
     const now = new Date();
     if (!m.midia || !m.id || !cobrancaAtiva(c, now)) return;
     if (!ia || !clienteIA) return log('comprovante: a IA está desligada, não dá para conferir a imagem');
-    if (c.analisadas >= MAX_ANALISES) return log(`comprovante: já olhei ${MAX_ANALISES} imagens desta noite; esta fica sem conferir`);
+    if (analisadasHoje(c, now) >= MAX_ANALISES) return log(`comprovante: já olhei ${MAX_ANALISES} imagens hoje; esta fica sem conferir`);
     const telefoneDoJogador = m.remetenteTelefone ? apelidos.find((a) => ehAdmin(m.remetenteTelefone!, [a.telefone]))?.nome : null;
     // Quem já pagou pode mandar foto à vontade (resenha, print): não gasta IA.
     const pelosNomes = casarDiarista(c, [telefoneDoJogador, m.remetenteNome]);
@@ -781,7 +781,8 @@ async function laco(): Promise<void> {
     if (!wa.baixarMidia) return;
     const arquivo = await wa.baixarMidia(m.midia.id);
     const leitura = await lerComprovante(clienteIA, ia.modelo || 'claude-haiku-5-5', arquivo.bytes, m.midia.mime ?? arquivo.mime, registrarUso);
-    estado = { ...estado, cobranca: { ...c, analisadas: c.analisadas + 1 } };
+    // Sobre o estado de agora: a leitura demora, e outra coisa pode ter mudado a cobrança no meio.
+    estado = { ...estado, cobranca: contarAnalise(estado.cobranca ?? c, now) };
     gravar(estado);
     if (!leitura.ehComprovante) return;
     const atual = estado.cobranca!;
@@ -829,6 +830,19 @@ async function laco(): Promise<void> {
     log(`lembrete do Pix mandado (${diaristas.length} diaristas${vez.ontem ? ', da pelada de ontem' : ''})`);
   };
 
+  /**
+   * Todo dia, do dia seguinte à pelada até o fim do prazo, lembra no grupo quem ainda não pagou.
+   * Para quando todos pagam ou quando um organizador manda parar, no privado.
+   */
+  const talvezLembreteDiario = async (now: Date) => {
+    const c = estado.cobranca;
+    if (!pix || !horaDoLembreteDiario(c, now)) return;
+    await (await conexao!).enviar(grupoId, textoDoLembreteDiario(c, pix));
+    estado = { ...estado, cobranca: aposLembrar(estado.cobranca ?? c, now) };
+    gravar(estado);
+    log(`lembrete diário do Pix mandado (faltam ${quemFalta(c).length})`);
+  };
+
   /** Quem pagou e quem falta, no privado do dono; de madrugada, guarda para a manhã. */
   const talvezAvisarDono = async (now: Date) => {
     const c = estado.cobranca;
@@ -871,6 +885,25 @@ async function laco(): Promise<void> {
       gravar(estado);
       log(`pagamento do Pix marcado na mão: ${d.nome}`);
       return `✅ ${d.nome} marcado como pago.`;
+    },
+    todosPagaram: (now: Date) => {
+      const c = estado.cobranca;
+      if (!cobrancaAtiva(c, now)) return 'Não tem cobrança de Pix aberta agora.';
+      const faltavam = quemFalta(c);
+      if (!faltavam.length) return 'Todo mundo já estava marcado como pago.';
+      estado = { ...estado, cobranca: marcarTodos(c, now) };
+      gravar(estado);
+      log(`Pix: um organizador disse que todos pagaram (${faltavam.length} marcado(s) na mão)`);
+      return `✅ Marquei como pago: ${faltavam.map((d) => d.nome).join(', ')}. Não mando mais lembrete desta pelada.`;
+    },
+    pararLembretes: (now: Date) => {
+      const c = estado.cobranca;
+      if (!cobrancaAtiva(c, now)) return 'Não tem cobrança de Pix aberta agora.';
+      if (c.semLembrete) return 'Os lembretes do Pix desta pelada já estavam parados.';
+      estado = { ...estado, cobranca: semLembretes(c) };
+      gravar(estado);
+      log('Pix: um organizador mandou parar os lembretes diários');
+      return '🔕 Parei os lembretes do Pix desta pelada. Comprovante mandado no grupo continua valendo.';
     },
   };
 
@@ -970,6 +1003,7 @@ async function laco(): Promise<void> {
     }
     await emFila(() => talvezResumo(now)).catch((err) => log(`resumo da noite falhou: ${(err as Error).message}`));
     await emFila(() => talvezLembrete(now)).catch((err) => log(`lembrete do Pix falhou: ${(err as Error).message}`));
+    await emFila(() => talvezLembreteDiario(now)).catch((err) => log(`lembrete diário do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezAvisarDono(now)).catch((err) => log(`aviso do Pix falhou: ${(err as Error).message}`));
     await emFila(() => talvezBateria(now)).catch((err) => log(`aviso de bateria falhou: ${(err as Error).message}`));
     await emFila(() => talvezCaderno(now)).catch((err) => log(`caderno falhou: ${(err as Error).message}`));

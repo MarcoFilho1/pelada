@@ -102,7 +102,14 @@ export type ContextoDaResposta = {
    */
   reagir?: (emoji: string) => void;
   /** O Pix dos diaristas (só com uma cobrança aberta): a situação e marcar um pagamento na mão. */
-  pix?: { situacao: () => string | null; marcar: (nome: string, now: Date) => string };
+  pix?: {
+    situacao: () => string | null;
+    marcar: (nome: string, now: Date) => string;
+    /** Um organizador disse que todos pagaram: marca quem faltava. */
+    todosPagaram?: (now: Date) => string;
+    /** Um organizador mandou parar os lembretes diários a quem falta. */
+    pararLembretes?: (now: Date) => string;
+  };
   /** Privado: descartar a resposta se chegar mais mensagem da pessoa antes dela sair. */
   cancelar?: Cancelamento;
   /** Pausa enquanto o limite de envio segura a resposta (nos testes, instantânea). */
@@ -900,6 +907,28 @@ export function ferramentasDoOrganizador(m: MensagemRecebida, c: ContextoDaRespo
         if (typeof nome !== 'string' || !nome.trim()) throw new ErroDeFerramenta('Faltou o nome de quem pagou.');
         if (!c.pix) return 'Não tem cobrança de Pix aberta agora.';
         return new TextoPronto(c.pix.marcar(nome.trim(), m.quando), 'acao');
+      },
+    },
+    {
+      nome: 'marcar_todos_pagos_no_pix',
+      altera: true,
+      descricao:
+        'Marca que TODOS os diaristas que faltavam pagaram o Pix da última pelada, e com isso os lembretes diários param. Só quando o organizador disser que todos pagaram (ou que está tudo pago). Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        if (!c.pix?.todosPagaram) return 'Não tem cobrança de Pix aberta agora.';
+        return new TextoPronto(c.pix.todosPagaram(m.quando), 'acao');
+      },
+    },
+    {
+      nome: 'parar_lembretes_do_pix',
+      altera: true,
+      descricao:
+        'Para os lembretes diários do Pix no grupo para esta pelada, sem marcar ninguém como pago. Quando o organizador disser que não precisa mais avisar, cobrar ou lembrar. Devolve o texto para a conversa.',
+      parametros: semParametros,
+      async executar() {
+        if (!c.pix?.pararLembretes) return 'Não tem cobrança de Pix aberta agora.';
+        return new TextoPronto(c.pix.pararLembretes(m.quando), 'acao');
       },
     },
   ];
