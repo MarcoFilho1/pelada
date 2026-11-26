@@ -59,7 +59,8 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
     !gol(goleiros.A) ||
     !gol(goleiros.B) ||
     !Array.isArray(b.lances) ||
-    b.lances.length > MAX_LANCES
+    b.lances.length > MAX_LANCES ||
+    !(b.substituir === undefined || typeof b.substituir === 'boolean')
   ) {
     return null;
   }
@@ -68,8 +69,10 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
     if (typeof l !== 'object' || l === null) return null;
     const x = l as Record<string, unknown>;
     if (!inteiroPositivo(x.jogadorId) || !(x.tipo === 'gol' || x.tipo === 'assistencia')) return null;
-    if (typeof x.tempoMs !== 'number' || !Number.isSafeInteger(x.tempoMs) || x.tempoMs < 0 || x.tempoMs > MAX_TEMPO_MS) return null;
-    lances.push({ jogadorId: x.jogadorId, tipo: x.tipo, tempoMs: x.tempoMs });
+    // Sem tempo: lance posto depois do fim, na correção (como o Corrigir do site).
+    const tempoMs = x.tempoMs ?? null;
+    if (tempoMs !== null && (typeof tempoMs !== 'number' || !Number.isSafeInteger(tempoMs) || tempoMs < 0 || tempoMs > MAX_TEMPO_MS)) return null;
+    lances.push({ jogadorId: x.jogadorId, tipo: x.tipo, tempoMs });
   }
   return {
     origem: b.origem,
@@ -83,6 +86,7 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
     ausentes: { A: fA, B: fB },
     goleiros: { A: (goleiros.A as number | null | undefined) ?? null, B: (goleiros.B as number | null | undefined) ?? null },
     lances,
+    ...(b.substituir === true ? { substituir: true } : {}),
   };
 }
 
@@ -102,7 +106,7 @@ export function limparEnvio(bruto: unknown): Envio | null {
   return { data: b.data, partidas: ps };
 }
 
-export type ResultadoDoEnvio = { origem: string } & ({ situacao: 'gravada' | 'repetida'; id: number } | { situacao: 'recusada'; motivo: string });
+export type ResultadoDoEnvio = { origem: string } & ({ situacao: 'gravada' | 'repetida' | 'corrigida'; id: number } | { situacao: 'recusada'; motivo: string });
 
 /**
  * Grava as partidas do envio, na ordem, cada uma na sua transação: uma recusada (time que não
@@ -127,6 +131,8 @@ export async function receberEnvio(db: DB, envio: Envio): Promise<ResultadoDoEnv
 export type ParaAnotar = {
   peladaId: number;
   data: string;
+  /** A pelada foi cancelada no site: partida anotada nela é recusada. */
+  cancelada: boolean;
   /** Os times do sorteio, na ordem; `vagas`: quantos COMPLETE o time tem. Vazio: ainda sem sorteio. */
   times: { id: number; cor: string; ordem: number; vagas: number; jogadores: { id: number; nome: string }[] }[];
   /** Todos os jogadores ativos: de onde saem quem completa e os goleiros. */
@@ -138,7 +144,7 @@ export type ParaAnotar = {
 /** O que o app precisa guardar para anotar a pelada dessa data sem internet. `null`: não há pelada. */
 export async function lerParaAnotar(db: DB, data: string): Promise<ParaAnotar | null> {
   if (!DATA.test(data)) return null;
-  const [pelada] = await db.select({ id: peladas.id }).from(peladas).where(eq(peladas.data, data));
+  const [pelada] = await db.select({ id: peladas.id, estadoManual: peladas.estadoManual }).from(peladas).where(eq(peladas.data, data));
   if (!pelada) return null;
   const ts = await timesDaPelada(db, pelada.id);
   const ativos = await db
@@ -154,6 +160,7 @@ export async function lerParaAnotar(db: DB, data: string): Promise<ParaAnotar | 
   return {
     peladaId: pelada.id,
     data,
+    cancelada: pelada.estadoManual === 'cancelada',
     times: ts.map((t) => ({ id: t.id, cor: t.cor, ordem: t.ordem, vagas: t.completes.length, jogadores: t.jogadores.map((j) => ({ id: j.id, nome: j.nome })) })),
     jogadores: ativos,
     partidas: jogadas.map((p) => ({ ...p, resultado: p.resultado! })),

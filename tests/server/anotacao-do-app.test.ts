@@ -73,6 +73,7 @@ describe('limparEnvio', () => {
       { data: HOJE, partidas: [partida(c, { lances: [{ jogadorId: c.a1, tipo: 'falta', tempoMs: 0 }] })] },
       { data: HOJE, partidas: [partida(c, { lances: [{ jogadorId: c.a1, tipo: 'gol', tempoMs: -5 }] })] },
       { data: HOJE, partidas: [partida(c, { goleiros: { A: 'Gil', B: null } })] },
+      { data: HOJE, partidas: [partida(c, { substituir: 'sim' })] },
     ]) {
       expect(limparEnvio(ruim), JSON.stringify(ruim)).toBeNull();
     }
@@ -108,6 +109,48 @@ describe('receberEnvio', () => {
     expect(dois).toEqual({ origem: 'app-0001-aaaa', situacao: 'repetida', id: (um as { id: number }).id });
     expect(await db.select().from(partidas)).toHaveLength(1);
     expect(await db.select().from(lances)).toHaveLength(4);
+  });
+
+  it('corrigida no app: os lances novos ficam no lugar dos gravados e o resultado é refeito', async () => {
+    const c = await cenario();
+    const [um] = (await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c)] })!))!; // Branco 2 × 1 Preto
+    // No app: tiraram um gol da Ana e puseram um do Davi, sem minuto. Agora é Branco 1 × 2 Preto.
+    const lancesNovos = [
+      { jogadorId: c.a2, tipo: 'assistencia', tempoMs: 60_000 },
+      { jogadorId: c.a1, tipo: 'gol', tempoMs: 60_000 },
+      { jogadorId: c.l1, tipo: 'gol', tempoMs: 5 * MIN },
+      { jogadorId: c.l2, tipo: 'gol', tempoMs: null },
+    ];
+    const corrigida = limparEnvio({ data: HOJE, partidas: [partida(c, { substituir: true, lances: lancesNovos })] })!;
+    const [dois] = (await receberEnvio(db, corrigida))!;
+    expect(dois).toEqual({ origem: 'app-0001-aaaa', situacao: 'corrigida', id: (um as { id: number }).id });
+    const [p] = await db.select().from(partidas);
+    expect(p.resultado).toBe('B');
+    const gravados = await db.select().from(lances).orderBy(asc(lances.criadoEm));
+    expect(gravados.map((l) => [l.jogadorId, l.tipo, l.tempoMs])).toEqual([
+      [c.a2, 'assistencia', 60_000],
+      [c.a1, 'gol', 60_000],
+      [c.l1, 'gol', 5 * MIN],
+      [c.l2, 'gol', null],
+    ]);
+    // Mandar a correção de novo dá no mesmo; e lance de quem não está na partida é recusado sem mexer em nada.
+    expect((await receberEnvio(db, corrigida))![0].situacao).toBe('corrigida');
+    const ruim = limparEnvio({ data: HOJE, partidas: [partida(c, { substituir: true, lances: [{ jogadorId: c.v1, tipo: 'gol', tempoMs: null }] })] })!;
+    expect((await receberEnvio(db, ruim))![0]).toMatchObject({ situacao: 'recusada', motivo: 'fora_da_partida' });
+    expect(await db.select().from(lances)).toHaveLength(4);
+  });
+
+  it('correção que vira empate guarda a moeda que veio; a que desfaz o empate apaga', async () => {
+    const c = await cenario();
+    await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c)] })!);
+    const empate = [
+      { jogadorId: c.a1, tipo: 'gol', tempoMs: 60_000 },
+      { jogadorId: c.l1, tipo: 'gol', tempoMs: 5 * MIN },
+    ];
+    await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { substituir: true, desempate: 'B', lances: empate })] })!);
+    expect((await db.select().from(partidas))[0]).toMatchObject({ resultado: 'empate', desempate: 'B' });
+    await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { substituir: true, desempate: 'B', lances: empate.slice(0, 1) })] })!);
+    expect((await db.select().from(partidas))[0]).toMatchObject({ resultado: 'A', desempate: null });
   });
 
   it('empate guarda a moeda; goleiro e quem completa entram na foto', async () => {
@@ -194,6 +237,7 @@ describe('lerParaAnotar', () => {
     await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { timeAId: c.preto, timeBId: c.verde, iniciadaEm: depois(10 * MIN), encerradaEm: depois(18 * MIN), lances: [] })] })!);
     const d = (await lerParaAnotar(db, HOJE))!;
     expect(d.peladaId).toBe(c.peladaId);
+    expect(d.cancelada).toBe(false);
     expect(d.times.map((t) => [t.id, t.jogadores.length, t.vagas])).toEqual([
       [c.branco, 2, 0],
       [c.preto, 2, 0],
@@ -205,6 +249,12 @@ describe('lerParaAnotar', () => {
       { timeAId: c.branco, timeBId: c.preto, resultado: 'empate', desempate: null, origem: null },
       { timeAId: c.preto, timeBId: c.verde, resultado: 'empate', desempate: null, origem: 'app-0001-aaaa' },
     ]);
+  });
+
+  it('avisa quando a pelada foi cancelada', async () => {
+    const c = await cenario();
+    await db.update(peladas).set({ estadoManual: 'cancelada' }).where(eq(peladas.id, c.peladaId));
+    expect((await lerParaAnotar(db, HOJE))!.cancelada).toBe(true);
   });
 
   it('sem pelada, ou data malformada: null', async () => {

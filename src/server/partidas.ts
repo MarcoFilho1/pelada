@@ -281,9 +281,22 @@ export type PartidaDoApp = {
   /** Quem é do time e não veio nesta noite: fora da foto, e a vaga dele pode ser completada. */
   ausentes?: { A: number[]; B: number[] };
   goleiros: Goleiros;
-  /** Na ordem em que aconteceram. `tempoMs`: o tempo de jogo na hora do toque. */
-  lances: { jogadorId: number; tipo: TipoLance; tempoMs: number }[];
+  /** Na ordem em que aconteceram. `tempoMs`: o tempo de jogo na hora do toque (null: posto depois, na correção). */
+  lances: { jogadorId: number; tipo: TipoLance; tempoMs: number | null }[];
+  /** A partida foi corrigida no app depois de enviada: os lances que vêm aqui ficam no lugar dos gravados. */
+  substituir?: boolean;
 };
+
+/** Os lances do app prontos para o banco. O `criadoEm` segue a ordem dos toques (a linha do tempo e o Desfazer do site ordenam por ele). */
+function lancesDoApp(partidaId: number, iniciadaEm: Date, encerradaEm: Date, ls: PartidaDoApp['lances']) {
+  return ls.map((l, i) => ({
+    partidaId,
+    jogadorId: l.jogadorId,
+    tipo: l.tipo,
+    tempoMs: l.tempoMs,
+    criadoEm: new Date((l.tempoMs === null ? encerradaEm.getTime() : Math.min(iniciadaEm.getTime() + l.tempoMs, encerradaEm.getTime())) + i),
+  }));
+}
 
 /** Até quando depois da pelada uma partida do app ainda é dela: 6h da manhã seguinte (Recife). */
 function limiteDaNoite(dataPelada: string): Date {
@@ -298,10 +311,31 @@ function limiteDaNoite(dataPelada: string): Date {
  * Devolve `gravada` com o id, ou `repetida` se essa `origem` já estava no banco (o app reenviou
  * depois de uma resposta que se perdeu).
  */
-export async function gravarPartidaDoApp(db: DB, peladaId: number, p: PartidaDoApp): Promise<{ id: number; situacao: 'gravada' | 'repetida' }> {
+export async function gravarPartidaDoApp(
+  db: DB,
+  peladaId: number,
+  p: PartidaDoApp,
+): Promise<{ id: number; situacao: 'gravada' | 'repetida' | 'corrigida' }> {
   return db.transaction(async (tx) => {
     const pelada = await travarPelada(tx, peladaId);
-    const [ja] = await tx.select({ id: partidas.id }).from(partidas).where(eq(partidas.origem, p.origem));
+    const [ja] = await tx
+      .select({ id: partidas.id, iniciadaEm: partidas.iniciadaEm, encerradaEm: partidas.encerradaEm })
+      .from(partidas)
+      .where(eq(partidas.origem, p.origem));
+    if (ja && p.substituir && ja.encerradaEm) {
+      // Corrigida no app: o elenco é o da foto já gravada; só os lances e o resultado mudam.
+      await travarPartida(tx, ja.id);
+      const lados = await ladosDaPartida(tx, ja.id);
+      if (p.lances.some((l) => !lados.has(l.jogadorId))) throw new ErroPartida('fora_da_partida');
+      await tx.delete(lances).where(eq(lances.partidaId, ja.id));
+      if (p.lances.length) await tx.insert(lances).values(lancesDoApp(ja.id, ja.iniciadaEm, ja.encerradaEm, p.lances));
+      const resultado = resultadoDoPlacar(placar(p.lances, lados));
+      await tx
+        .update(partidas)
+        .set({ resultado, desempate: resultado === 'empate' ? p.desempate : null })
+        .where(eq(partidas.id, ja.id));
+      return { id: ja.id, situacao: 'corrigida' as const };
+    }
     if (ja) return { id: ja.id, situacao: 'repetida' as const };
     if (pelada.estadoManual === 'cancelada') throw new ErroPartida('pelada_cancelada');
     const duracao = p.encerradaEm.getTime() - p.iniciadaEm.getTime();
@@ -327,18 +361,7 @@ export async function gravarPartidaDoApp(db: DB, peladaId: number, p: PartidaDoA
       })
       .returning({ id: partidas.id });
     await tx.insert(partidaJogadores).values(elenco.map((l) => ({ partidaId: partida.id, ...l })));
-    if (p.lances.length) {
-      // O `criadoEm` segue a ordem dos toques (a linha do tempo e o Desfazer do site ordenam por ele).
-      await tx.insert(lances).values(
-        p.lances.map((l, i) => ({
-          partidaId: partida.id,
-          jogadorId: l.jogadorId,
-          tipo: l.tipo,
-          tempoMs: l.tempoMs,
-          criadoEm: new Date(Math.min(p.iniciadaEm.getTime() + l.tempoMs, p.encerradaEm.getTime()) + i),
-        })),
-      );
-    }
+    if (p.lances.length) await tx.insert(lances).values(lancesDoApp(partida.id, p.iniciadaEm, p.encerradaEm, p.lances));
     return { id: partida.id, situacao: 'gravada' as const };
   });
 }

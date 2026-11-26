@@ -235,8 +235,13 @@ aparelho (`ROBO_SINAL_CHAVE`, a mesma do sinal de vida):
 - `POST`: as partidas anotadas, cada uma inteira (times, quem completa, goleiros, horários, pausa,
   moeda do empate e os lances na ordem). Cada partida leva uma identificação criada no app
   (`origem`, coluna nova em `partidas`, migração `0011`): mandar a mesma duas vezes não grava duas.
-  A resposta diz, por partida, `gravada`, `repetida` ou `recusada` com o motivo; uma recusada não
-  impede as outras.
+  A resposta diz, por partida, `gravada`, `repetida`, `corrigida` ou `recusada` com o motivo; uma
+  recusada não impede as outras.
+- **Corrigir no app** uma partida que já foi enviada: o app manda a mesma `origem` com
+  `substituir: true`. O site troca os lances gravados pelos que vieram e refaz o resultado (o
+  elenco da partida não muda). Um lance posto na correção vem com `tempoMs: null`, como no
+  Corrigir do site.
+- O `GET` também diz `cancelada`, para o app avisar antes de alguém anotar numa pelada cancelada.
 
 **O resumo do fim da pelada e o lembrete do Pix** passam a lidar com a falta de rede:
 
