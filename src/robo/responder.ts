@@ -88,7 +88,8 @@ export type ContextoDaResposta = {
   /** Grava a proposta confirmada como times definitivos, pelo caminho do site. */
   salvar: (now: Date, proposta: Proposta) => Promise<{ ok: true } | { erro: string }>;
   /** Manda um texto no privado de cada organizador, menos os telefones de `exceto`. */
-  avisarOrganizadores: (texto: string, exceto: string[]) => Promise<void>;
+  /** Com `fixos` (os nomes de gente citados), o aviso sai reescrito no jeito do grupo; sem, palavra por palavra. */
+  avisarOrganizadores: (texto: string, exceto: string[], fixos?: string[]) => Promise<void>;
   /** Manda no grupo configurado (o anúncio dos times confirmados no privado, a lista pedida no privado). */
   anunciarNoGrupo: (texto: string) => Promise<void>;
   /** Várias mensagens curtas no grupo, como separadas (o aviso escrito pela IA). Sem ela, vai tudo num texto só. */
@@ -319,11 +320,12 @@ const menosQuemPropos = (c: ContextoDaResposta, quemPropos: string) => c.admins.
 // dois ou três avisos passava dos 30 s do prazo da IA, a ação era desfeita e a pessoa recebia
 // "Não consegui responder agora" (aconteceu numa troca de jogadores depois de aprovar os times).
 const filaDeAvisos = new WeakMap<object, Promise<void>>();
-function avisarOutros(c: ContextoDaResposta, texto: string, exceto: string[]): Promise<void> {
+function avisarOutros(c: ContextoDaResposta, texto: string, exceto: string[], fixos?: string[]): Promise<void> {
   const antes = filaDeAvisos.get(c.proposta) ?? Promise.resolve();
   const envio = antes.then(async () => {
     try {
-      await c.avisarOrganizadores(texto, exceto);
+      if (fixos) await c.avisarOrganizadores(texto, exceto, fixos);
+      else await c.avisarOrganizadores(texto, exceto);
     } catch (err) {
       c.log(`aviso aos organizadores não saiu: ${(err as Error).message}`);
     }
@@ -410,7 +412,7 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
         await avisarOutros(c, textoParaConfirmar(proposta), [tel]);
         return `✅ Aprovado! Mandei para os outros organizadores; falta ${resultado.faltam} confirmar.`;
       }
-      await avisarOutros(c, `✅ ${nome} confirmou os times. Falta ${resultado.faltam}: responda *sim* para confirmar.`, [tel]);
+      await avisarOutros(c, `✅ ${nome} confirmou os times. Falta ${resultado.faltam}: responda *sim* para confirmar.`, [tel], [nome]);
       return `✅ Confirmado! Falta ${resultado.faltam} organizador confirmar.`;
     case 'fechou': {
       // A proposta acaba antes de salvar: um "sim" atrasado não salva duas vezes.
@@ -431,9 +433,9 @@ async function respostaSim(m: MensagemRecebida, c: ContextoDaResposta, jonas: bo
       };
       const votouQuemPropos = ehAdmin(tel, [proposta.quemPropos]);
       const outros = menosQuemPropos(c, proposta.quemPropos).filter((a) => !ehAdmin(tel, [a]));
-      if (!votouQuemPropos) await avisarOutros(c, `🏆 ${nome} confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, menosQuemPropos(c, proposta.quemPropos));
+      if (!votouQuemPropos) await avisarOutros(c, `🏆 ${nome} confirmou e os times estão salvos no site.\n${PERGUNTA_MANDAR}`, menosQuemPropos(c, proposta.quemPropos), [nome]);
       if (outros.length) {
-        await avisarOutros(c, `🏆 Times confirmados e salvos no site. ${proposta.quemProposNome} decide quando mandar no grupo.`, c.admins.filter((a) => !outros.includes(a)));
+        await avisarOutros(c, `🏆 Times confirmados e salvos no site. ${proposta.quemProposNome} decide quando mandar no grupo.`, c.admins.filter((a) => !outros.includes(a)), [proposta.quemProposNome]);
       }
       const salvos = jonas && m.privado ? SALVOS_CALVINHO[Math.floor((c.rng ?? Math.random)() * SALVOS_CALVINHO.length)] : TEXTO_SALVOS;
       if (!votouQuemPropos) return `${salvos}\n${proposta.quemProposNome} decide quando mandar no grupo.`;
@@ -472,7 +474,7 @@ async function respostaMandar(m: MensagemRecebida, c: ContextoDaResposta): Promi
     return '😕 Não consegui mandar no grupo agora. Tente *mandar* de novo daqui a pouco.';
   }
   c.anuncio.atual = null;
-  await avisarOutros(c, `📣 ${a.quemProposNome} mandou os times no grupo.`, [tel]);
+  await avisarOutros(c, `📣 ${a.quemProposNome} mandou os times no grupo.`, [tel], [a.quemProposNome]);
   return TEXTO_MANDADOS;
 }
 
@@ -973,7 +975,7 @@ async function respostaTrocar(trocas: TrocaNosTimes[], m: MensagemRecebida, c: C
   c.proposta.atual = r.proposta;
   // Quem propôs já tinha aprovado: os outros receberam os times antigos e precisam saber que mudou.
   if (p.votos.some((v) => ehAdmin(v, [p.quemPropos]))) {
-    await avisarOutros(c, `🔁 ${p.quemProposNome} trocou jogadores nos times que eu mandei, então aqueles não valem mais. Quando ele aprovar os novos, eu mando para você confirmar.`, [tel]);
+    await avisarOutros(c, `🔁 ${p.quemProposNome} trocou jogadores nos times que eu mandei, então aqueles não valem mais. Quando ele aprovar os novos, eu mando para você confirmar.`, [tel], [p.quemProposNome]);
   }
   const corpo = r.proposta.aviso ? `${r.proposta.texto}\n\n${r.proposta.aviso}` : r.proposta.texto;
   return { texto: `🔁 Troquei: ${r.feitas.join(', ')}.\n\n${corpo}`, antes: p };

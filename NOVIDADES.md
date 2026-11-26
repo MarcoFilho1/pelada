@@ -12,6 +12,7 @@ começando com `- `. Diga o que a pessoa passa a ver ou a poder fazer. Mudança 
 - Todo dia, entre 12h e 20h, o robô lembra no grupo quem ainda não pagou o Pix, até todos pagarem.
 - Diga no privado que todos pagaram, ou que não precisa mais avisar, e o robô para de lembrar.
 - O comprovante mandado no grupo vale por seis dias depois da pelada, não só até o dia seguinte.
+- Os avisos do robô (quem confirmou os times, o lembrete do Pix, a bateria) saem escritos de um jeito mais natural, sem mudar nomes nem valores. Lista, times e ranking continuam iguais.
 
 ## 2026-11-25
 
