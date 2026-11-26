@@ -33,8 +33,12 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
   const completam = (b.completam ?? { A: [], B: [] }) as Record<string, unknown>;
   const goleiros = (b.goleiros ?? { A: null, B: null }) as Record<string, unknown>;
   if (typeof completam !== 'object' || completam === null || typeof goleiros !== 'object' || goleiros === null) return null;
-  const cA = idsDe(completam.A ?? [], 5);
-  const cB = idsDe(completam.B ?? [], 5);
+  const cA = idsDe(completam.A ?? [], 10);
+  const cB = idsDe(completam.B ?? [], 10);
+  const ausentes = (b.ausentes ?? { A: [], B: [] }) as Record<string, unknown>;
+  if (typeof ausentes !== 'object' || ausentes === null) return null;
+  const fA = idsDe(ausentes.A ?? [], 10);
+  const fB = idsDe(ausentes.B ?? [], 10);
   const gol = (v: unknown) => v === null || v === undefined || inteiroPositivo(v);
   if (
     typeof b.origem !== 'string' ||
@@ -50,6 +54,8 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
     !(b.desempate === null || b.desempate === undefined || lado(b.desempate)) ||
     !cA ||
     !cB ||
+    !fA ||
+    !fB ||
     !gol(goleiros.A) ||
     !gol(goleiros.B) ||
     !Array.isArray(b.lances) ||
@@ -74,6 +80,7 @@ function limparPartida(bruto: unknown): PartidaDoApp | null {
     pausadoMs: b.pausadoMs,
     desempate: lado(b.desempate) ? b.desempate : null,
     completam: { A: cA, B: cB },
+    ausentes: { A: fA, B: fB },
     goleiros: { A: (goleiros.A as number | null | undefined) ?? null, B: (goleiros.B as number | null | undefined) ?? null },
     lances,
   };

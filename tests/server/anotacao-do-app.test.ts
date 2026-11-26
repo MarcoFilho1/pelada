@@ -127,6 +127,32 @@ describe('receberEnvio', () => {
     expect(gk).toMatchObject({ lado: 'A', goleiro: true });
   });
 
+  it('quem faltou fica fora da foto e abre uma vaga para quem completa', async () => {
+    const c = await cenario();
+    // Bia (a2) não veio; Gil joga no lugar dela, num time sem COMPLETE.
+    const lances = [{ jogadorId: c.gil, tipo: 'gol', tempoMs: 60_000 }];
+    const envio = limparEnvio({ data: HOJE, partidas: [partida(c, { ausentes: { A: [c.a2], B: [] }, completam: { A: [c.gil], B: [] }, lances })] })!;
+    const [r] = (await receberEnvio(db, envio))!;
+    expect(r.situacao).toBe('gravada');
+    const foto = await db.select().from(partidaJogadores).where(eq(partidaJogadores.partidaId, (r as { id: number }).id));
+    expect(foto.map((f) => f.jogadorId).sort()).toEqual([c.a1, c.l1, c.l2, c.gil].sort());
+    expect(foto.find((f) => f.jogadorId === c.gil)).toMatchObject({ lado: 'A', completando: true });
+  });
+
+  it('falta de quem não é do time, falta repetida, lance de quem faltou e completar sem vaga são recusados', async () => {
+    const c = await cenario();
+    const tenta = async (extra: Record<string, unknown>, origem: string) => {
+      const [r] = (await receberEnvio(db, limparEnvio({ data: HOJE, partidas: [partida(c, { origem, ...extra })] })!))!;
+      return r.situacao === 'recusada' ? r.motivo : r.situacao;
+    };
+    expect(await tenta({ ausentes: { A: [c.l1], B: [] } }, 'app-0002-aaaa')).toBe('ausente_invalido');
+    expect(await tenta({ ausentes: { A: [c.a2, c.a2], B: [] } }, 'app-0003-aaaa')).toBe('ausente_invalido');
+    // O lance de Bia (a2) continua no envio, mas ela faltou.
+    expect(await tenta({ ausentes: { A: [c.a2], B: [] } }, 'app-0004-aaaa')).toBe('fora_da_partida');
+    expect(await tenta({ completam: { A: [c.gil], B: [] } }, 'app-0005-aaaa')).toBe('completes_demais');
+    expect(limparEnvio({ data: HOJE, partidas: [partida(c, { ausentes: { A: ['x'], B: [] } })] })).toBeNull();
+  });
+
   it('uma partida recusada não impede as outras, e diz o motivo', async () => {
     const c = await cenario();
     const envio = limparEnvio({
