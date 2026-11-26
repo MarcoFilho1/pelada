@@ -856,9 +856,15 @@ async function laco(): Promise<void> {
    * Todo dia, do dia seguinte à pelada até o fim do prazo, lembra no grupo quem ainda não pagou.
    * Para quando todos pagam ou quando um organizador manda parar, no privado.
    */
+  // O robô acabou de ligar (voltou de uma queda, foi conectado de novo): os comprovantes mandados
+  // enquanto ele estava fora não chegaram. Espera meia hora antes de cobrar, para um organizador
+  // marcar quem já pagou.
+  const ligadoEm = Date.now();
+  const ESPERA_DEPOIS_DE_LIGAR_MS = 30 * 60_000;
   const talvezLembreteDiario = async (now: Date) => {
     const c = estado.cobranca;
     if (!pix || !horaDoLembreteDiario(c, now)) return;
+    if (now.getTime() - ligadoEm < ESPERA_DEPOIS_DE_LIGAR_MS) return;
     await (await conexao!).enviar(grupoId, await natural(textoDoLembreteDiario(c, pix), 'grupo', quemFalta(c).map((d) => d.nome)));
     estado = { ...estado, cobranca: aposLembrar(estado.cobranca ?? c, now) };
     gravar(estado);
